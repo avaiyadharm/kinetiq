@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>KINETIQ | Master the Laws of the Universe</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface": "#10131a",
+                      "on-tertiary": "#1000a9",
+                      "on-secondary-container": "#00424e",
+                      "surface-container-low": "#191b23",
+                      "on-tertiary-fixed-variant": "#2f2ebe",
+                      "tertiary": "#c0c1ff",
+                      "primary-fixed": "#d8e2ff",
+                      "surface-container": "#1d2027",
+                      "on-error": "#690005",
+                      "on-primary-container": "#00285d",
+                      "on-secondary-fixed-variant": "#004e5c",
+                      "error": "#ffb4ab",
+                      "tertiary-fixed-dim": "#c0c1ff",
+                      "tertiary-fixed": "#e1e0ff",
+                      "surface-container-lowest": "#0b0e15",
+                      "on-primary-fixed-variant": "#004395",
+                      "secondary-fixed": "#acedff",
+                      "surface-tint": "#adc6ff",
+                      "secondary-fixed-dim": "#4cd7f6",
+                      "inverse-on-surface": "#2e3038",
+                      "surface-container-highest": "#32353c",
+                      "inverse-primary": "#005ac2",
+                      "surface-variant": "#32353c",
+                      "on-tertiary-fixed": "#07006c",
+                      "secondary": "#4cd7f6",
+                      "on-error-container": "#ffdad6",
+                      "on-primary": "#002e6a",
+                      "on-surface-variant": "#c2c6d6",
+                      "on-tertiary-container": "#0d0096",
+                      "on-secondary-fixed": "#001f26",
+                      "inverse-surface": "#e1e2ec",
+                      "surface-dim": "#10131a",
+                      "tertiary-container": "#8083ff",
+                      "primary-fixed-dim": "#adc6ff",
+                      "on-surface": "#e1e2ec",
+                      "on-background": "#e1e2ec",
+                      "on-secondary": "#003640",
+                      "primary": "#adc6ff",
+                      "outline-variant": "#424754",
+                      "surface-bright": "#363941",
+                      "error-container": "#93000a",
+                      "outline": "#8c909f",
+                      "on-primary-fixed": "#001a42",
+                      "background": "#10131a",
+                      "secondary-container": "#03b5d3",
+                      "primary-container": "#4d8eff",
+                      "surface-container-high": "#272a31"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "gutter": "24px",
+                      "container-max": "1280px",
+                      "md": "1rem",
+                      "xl": "2.5rem",
+                      "xs": "0.5rem",
+                      "lg": "1.5rem",
+                      "sm": "0.75rem",
+                      "base": "4px"
+              },
+              "fontFamily": {
+                      "headline-lg": ["Space Grotesk"],
+                      "display-lg-mobile": ["Space Grotesk"],
+                      "body-md": ["Inter"],
+                      "display-lg": ["Space Grotesk"],
+                      "body-lg": ["Inter"],
+                      "label-sm": ["Inter"],
+                      "headline-xl": ["Space Grotesk"]
+              },
+              "fontSize": {
+                      "headline-lg": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                      "display-lg-mobile": ["36px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                      "display-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                      "label-sm": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                      "headline-xl": ["32px", {"lineHeight": "1.2", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+      </script>
+<style>
+        body {
+            background-color: #0a0a0c;
+            color: #e1e2ec;
+        }
+        .glass-surface {
+            backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-surface-high {
+            backdrop-filter: blur(20px);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 40px rgba(59, 130, 246, 0.1);
+        }
+        .primary-glow {
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+        .orbit-bg {
+            background: radial-gradient(circle at center, rgba(59, 130, 246, 0.05) 0%, transparent 70%);
+        }
+      </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md selection:bg-primary selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-container-max rounded-xl backdrop-blur-md border border-white/10 bg-white/3 z-50 shadow-[0_0_40px_rgba(173,198,255,0.1)] flex justify-between items-center px-6 py-3">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-headline-xl">hub</span>
+<span class="font-headline-xl text-headline-xl font-bold tracking-tighter text-primary">KINETIQ</span>
+</div>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="text-primary font-bold font-body-md hover:text-secondary transition-all" href="#">Simulations</a>
+<a class="text-on-surface-variant font-medium font-body-md hover:text-secondary transition-all" href="#">Curriculum</a>
+<a class="text-on-surface-variant font-medium font-body-md hover:text-secondary transition-all" href="#">Infrastructure</a>
+<a class="text-on-surface-variant font-medium font-body-md hover:text-secondary transition-all" href="#">Research</a>
+</nav>
+<button class="bg-primary text-on-primary px-lg py-sm rounded-full font-label-sm uppercase tracking-wider primary-glow hover:scale-95 duration-200 transition-all">
+            Launch Lab
+        </button>
+</header>
+<main>
+<!-- Hero Section -->
+<section class="relative min-vh-100 pt-48 pb-32 overflow-hidden flex flex-col items-center justify-center text-center px-gutter">
+<div class="absolute inset-0 orbit-bg -z-10"></div>
+<!-- Decorative Orbit -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/5 rounded-full -z-20"></div>
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-primary/10 rounded-full -z-20 animate-pulse"></div>
+<div class="max-w-4xl mx-auto space-y-lg">
+<span class="inline-block py-1 px-4 rounded-full border border-secondary/30 bg-secondary/5 text-secondary font-label-sm">NEXT GEN PHYSICS ENGINE</span>
+<h1 class="font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface max-w-3xl mx-auto">
+                    Master the Laws of the <span class="text-primary">Universe.</span>
+</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">
+                    Dive into high-fidelity interactive physics simulations designed for the next generation of scientists, researchers, and explorers.
+                </p>
+<div class="pt-lg">
+<button class="bg-primary text-on-primary px-xl py-md rounded-lg font-headline-lg primary-glow hover:brightness-110 transition-all">
+                        Launch Platform
+                    </button>
+</div>
+</div>
+<!-- Hero Image Preview -->
+<div class="mt-xl w-full max-w-container-max mx-auto px-gutter">
+<div class="glass-surface-high rounded-2xl p-base overflow-hidden">
+<img alt="Simulation Preview" class="w-full h-[500px] object-cover rounded-xl opacity-80" data-alt="A cinematic, high-detail visualization of a complex physical phenomenon with glowing blue particles and mathematical grids. The aesthetic is deep-space dark with electric blue energy flows. Sharp laboratory cyan lines represent vector forces against a dark charcoal cosmic background. The mood is sophisticated and intellectually stimulating." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKKfLphurRvTlHxA34Va69QEjA1wQs3kr4GQPjyl_yxJhjcZ9yKAZYM3RRZgO6VFuDfrWCpX1wyE138-1JPRBForqq-wo_FSzoonoQFNTvMFfYHD5Bv-LRcMOaxyEqd4bemQw_SACP7g5JZ-44AueWZHvUtsmJLKtAQ698FvPow0yEIq4tZLV-_H4pPfgYZlx8eAARXMK3eTqVSVVfeKNT93P8xY8o8KiQhdp_e8mBoeHxqI2Ng7hG-iz10Ju-ga583AmC6H0B06w"/>
+</div>
+</div>
+</section>
+<!-- Featured Simulations Grid -->
+<section class="py-xl max-w-container-max mx-auto px-gutter">
+<div class="flex justify-between items-end mb-xl">
+<div>
+<h2 class="font-headline-xl text-headline-xl text-on-surface">Core Simulations</h2>
+<p class="font-body-md text-on-surface-variant">High-precision computational models</p>
+</div>
+<button class="text-primary font-label-sm flex items-center gap-2 hover:gap-3 transition-all">
+                    VIEW ALL MODULES <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg">
+<!-- Card 1 -->
+<div class="glass-surface rounded-xl p-lg flex flex-col group hover:border-secondary/40 transition-all duration-300">
+<div class="aspect-video rounded-lg overflow-hidden mb-md bg-surface-container-highest border border-white/5 relative">
+<img alt="Black Hole" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" data-alt="A dramatic digital depiction of a black hole accretion disk with intense glowing edges and light distortion effects. The background is a dense star field. Deep indigos and electric blues dominate the color palette, emphasizing extreme gravitational forces in a high-tech science aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5NQYi5RDIJxgNu0RbQTEHdBGzYn5gIsD-87ibmHz6LckxWMf_hV4UZcA650Uq-pg7HQ9x0cCWAbCyPRogPr5LXHmxh9ioKk9Dk8WU5RgzAFqxKDkJTBIWjAXRzQyWzCJwcWMShSZ2ZWtElvHTPnoiIu0FSWgI0aVlkyaA96P-y1haoAlkt986QvoeOdO0iroR3NnScxlXIXwUNyleBpr_QByWVpGvAfiorTWaNWSzpJXoRZbuXWgfRivJVqK5NIIvO-AvWvss8BU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent opacity-60"></div>
+<span class="absolute top-2 right-2 material-symbols-outlined text-secondary bg-surface/80 p-xs rounded-full">cyclone</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg mb-xs">Black Hole Dynamics</h3>
+<p class="text-on-surface-variant font-body-md mb-lg">Calculate event horizons and spacetime curvature in real-time general relativity models.</p>
+<button class="mt-auto w-full py-sm border border-secondary/20 rounded-lg text-secondary font-label-sm flex justify-center items-center gap-2 hover:bg-secondary/10 transition-all">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span> LAUNCH SIM
+                    </button>
+</div>
+<!-- Card 2 -->
+<div class="glass-surface rounded-xl p-lg flex flex-col group hover:border-secondary/40 transition-all duration-300">
+<div class="aspect-video rounded-lg overflow-hidden mb-md bg-surface-container-highest border border-white/5 relative">
+<img alt="Quantum Wave" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" data-alt="A vibrant visualization of quantum wavefunctions showing interference patterns in glowing neon cyan and violet colors. Probability density clouds are rendered with high precision against a deep charcoal background, evoking a sense of microscopic mystery and advanced laboratory research." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAIWEOrd-hX2vlEgnC0nEf936QyK90pNj5I1rCRpOpxY3Zg3T3sPjctgD9XmYQ_gtqtMaaGxrKDJvskjTmSX3SFdv5UuU-H1ictyY-coqUIkpx9W7CCCWo10X1ax1ueALnEdRo4sJHgbjCpr-tHf-dVZD-2HX1SwCf2XH3z4iam_Lv1B88Jd6sQZoZtoXpfXp1NTIEQptsiHaSO_THaMAVHMNHnADlNqMXVctMFp88YU0yBXhoNwM3YP4EHTqmpNBCReZbqWeHR0QA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent opacity-60"></div>
+<span class="absolute top-2 right-2 material-symbols-outlined text-secondary bg-surface/80 p-xs rounded-full">waves</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg mb-xs">Quantum Wavefunctions</h3>
+<p class="text-on-surface-variant font-body-md mb-lg">Visualize probability density and particle-wave duality using the Schrödinger equation.</p>
+<button class="mt-auto w-full py-sm border border-secondary/20 rounded-lg text-secondary font-label-sm flex justify-center items-center gap-2 hover:bg-secondary/10 transition-all">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span> LAUNCH SIM
+                    </button>
+</div>
+<!-- Card 3 -->
+<div class="glass-surface rounded-xl p-lg flex flex-col group hover:border-secondary/40 transition-all duration-300">
+<div class="aspect-video rounded-lg overflow-hidden mb-md bg-surface-container-highest border border-white/5 relative">
+<img alt="Relativistic" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" data-alt="An abstract visualization of time dilation and relativistic travel with light-speed trails and cosmic distortion. The style is sleek and futuristic, using high-contrast whites and laboratory blues to illustrate high-energy physics concepts within a dark vacuum environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCvB3yYVhVhlh3bWSpRbYBtgaOtnpG1jU9fCp76lChkFKUXN68Nfs_YmCPhPz0BPfUUHcpOgMm37JDvzOT8P5zZjog3bG3_fT_r1qyQ_YNkijzb683yEv6QyZWA7tgtWPyzxIWGUbTCm9SKoRVC2CLMkE_-w4ghS36mGstyinLLBaCVRA5fnffC4CI46QOMZbRdC8UADag78v-AI3-plvudYlqwg9EAcuNSr9t5zgx8sJrYe7Xx8v-ImIyk2C0lQsSqEjCJrNv0PMU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent opacity-60"></div>
+<span class="absolute top-2 right-2 material-symbols-outlined text-secondary bg-surface/80 p-xs rounded-full">speed</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg mb-xs">Relativistic Mechanics</h3>
+<p class="text-on-surface-variant font-body-md mb-lg">Explore time dilation and length contraction at near-light speeds in high-speed frames.</p>
+<button class="mt-auto w-full py-sm border border-secondary/20 rounded-lg text-secondary font-label-sm flex justify-center items-center gap-2 hover:bg-secondary/10 transition-all">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span> LAUNCH SIM
+                    </button>
+</div>
+</div>
+</section>
+<!-- Platform Features -->
+<section class="py-xl bg-surface-container-lowest">
+<div class="max-w-container-max mx-auto px-gutter">
+<div class="text-center mb-xl">
+<h2 class="font-headline-xl text-headline-xl text-on-surface">The Precision Engine</h2>
+<p class="font-body-md text-on-surface-variant max-w-xl mx-auto">Built on a proprietary computational core that balances high-end visualization with scientific accuracy.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-xl">
+<div class="text-center space-y-md p-lg border-r border-white/5 last:border-0">
+<div class="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-lg">
+<span class="material-symbols-outlined text-primary text-[32px]">visibility</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg">Real-time Visualization</h4>
+<p class="text-on-surface-variant font-body-md">Render multi-million particle systems at 60fps with high-dynamic-range lighting and accuracy.</p>
+</div>
+<div class="text-center space-y-md p-lg border-r border-white/5 last:border-0">
+<div class="w-16 h-16 mx-auto bg-secondary/10 rounded-full flex items-center justify-center mb-lg">
+<span class="material-symbols-outlined text-secondary text-[32px]">settings_input_component</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg">Precision Physics Engine</h4>
+<p class="text-on-surface-variant font-body-md">Mathematical kernels built with peer-reviewed algorithms ensuring laboratory-grade data output.</p>
+</div>
+<div class="text-center space-y-md p-lg border-r border-white/5 last:border-0">
+<div class="w-16 h-16 mx-auto bg-tertiary/10 rounded-full flex items-center justify-center mb-lg">
+<span class="material-symbols-outlined text-tertiary text-[32px]">groups</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg">Collaborative Labs</h4>
+<p class="text-on-surface-variant font-body-md">Seamlessly join remote sessions to work on shared simulations with researchers across the globe.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Teacher Insights Dashboard Preview -->
+<section class="py-xl px-gutter">
+<div class="max-w-container-max mx-auto glass-surface rounded-3xl p-xl flex flex-col md:flex-row gap-xl items-center">
+<div class="md:w-1/2 space-y-lg">
+<span class="text-secondary font-label-sm tracking-widest flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">insights</span> RESEARCHER PORTAL
+                    </span>
+<h2 class="font-display-lg text-headline-xl md:text-display-lg text-on-surface leading-tight">Teacher Insights &amp; Global Analytics</h2>
+<p class="font-body-lg text-on-surface-variant">Monitor student progression, concept mastery, and experimental creativity through our advanced laboratory dashboard.</p>
+<ul class="space-y-sm">
+<li class="flex items-center gap-3 text-on-surface">
+<span class="material-symbols-outlined text-primary" data-weight="fill">check_circle</span>
+                            Real-time student engagement tracking
+                        </li>
+<li class="flex items-center gap-3 text-on-surface">
+<span class="material-symbols-outlined text-primary" data-weight="fill">check_circle</span>
+                            Automated assessment of physics derivation
+                        </li>
+<li class="flex items-center gap-3 text-on-surface">
+<span class="material-symbols-outlined text-primary" data-weight="fill">check_circle</span>
+                            Custom curriculum integration
+                        </li>
+</ul>
+</div>
+<div class="md:w-1/2 w-full">
+<div class="glass-surface-high rounded-xl overflow-hidden shadow-2xl relative border-primary/20">
+<!-- Dashboard UI Mockup -->
+<div class="bg-surface-container-high px-lg py-sm flex justify-between items-center border-b border-white/10">
+<div class="flex gap-2">
+<div class="w-3 h-3 rounded-full bg-error/50"></div>
+<div class="w-3 h-3 rounded-full bg-secondary/50"></div>
+<div class="w-3 h-3 rounded-full bg-primary/50"></div>
+</div>
+<span class="text-on-surface-variant font-label-sm">Analytics: Simulation Unit 04</span>
+</div>
+<div class="p-lg grid grid-cols-2 gap-md">
+<div class="col-span-2 glass-surface p-md rounded-lg">
+<div class="flex justify-between items-center mb-md">
+<span class="text-on-surface-variant font-label-sm">STUDENT ENGAGEMENT</span>
+<span class="text-secondary font-label-sm">+12.4%</span>
+</div>
+<!-- Chart Mockup -->
+<div class="h-32 flex items-end gap-1">
+<div class="flex-1 bg-primary/20 h-[40%] rounded-t-sm"></div>
+<div class="flex-1 bg-primary/20 h-[60%] rounded-t-sm"></div>
+<div class="flex-1 bg-primary/20 h-[45%] rounded-t-sm"></div>
+<div class="flex-1 bg-primary/20 h-[70%] rounded-t-sm"></div>
+<div class="flex-1 bg-primary h-[90%] rounded-t-sm shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
+<div class="flex-1 bg-primary/20 h-[65%] rounded-t-sm"></div>
+<div class="flex-1 bg-primary/20 h-[80%] rounded-t-sm"></div>
+</div>
+</div>
+<div class="glass-surface p-md rounded-lg">
+<span class="text-on-surface-variant font-label-sm block mb-xs">ACTIVE USERS</span>
+<span class="text-headline-xl font-bold text-on-surface">1,248</span>
+</div>
+<div class="glass-surface p-md rounded-lg">
+<span class="text-on-surface-variant font-label-sm block mb-xs">AVG MASTERY</span>
+<span class="text-headline-xl font-bold text-secondary">84%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="mt-xl w-full py-xl border-t border-white/5 bg-gradient-to-b from-transparent to-surface-container">
+<div class="max-w-container-max mx-auto px-gutter flex flex-col md:flex-row justify-between items-start gap-xl">
+<div class="max-w-xs space-y-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-headline-xl">hub</span>
+<span class="font-headline-lg text-headline-lg font-bold text-on-surface uppercase tracking-tighter">KINETIQ</span>
+</div>
+<p class="text-outline font-body-md">Advancing human understanding through digital scientific exploration. Founded in 2024 at the intersection of tech and physics.</p>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-xl">
+<div class="flex flex-col gap-sm">
+<span class="text-on-surface font-label-sm uppercase opacity-50">Ecosystem</span>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Simulations</a>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Curriculum</a>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Infrastructure</a>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Case Studies</a>
+</div>
+<div class="flex flex-col gap-sm">
+<span class="text-on-surface font-label-sm uppercase opacity-50">Company</span>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Mission</a>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Careers</a>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Contact</a>
+<a class="text-outline font-body-md hover:text-primary transition-colors" href="#">Privacy</a>
+</div>
+</div>
+<div class="max-w-sm w-full space-y-md">
+<span class="text-on-surface font-label-sm uppercase opacity-50 block">Stay Updated</span>
+<div class="flex gap-2">
+<input class="flex-1 bg-white/5 border-0 border-b-2 border-white/10 text-on-surface px-md py-sm focus:ring-0 focus:border-primary transition-all placeholder:text-white/20" placeholder="Researcher Email" type="email"/>
+<button class="bg-primary/20 text-primary border border-primary/30 px-lg py-sm rounded hover:bg-primary hover:text-on-primary transition-all">JOIN</button>
+</div>
+<p class="text-[10px] text-outline uppercase tracking-widest">Get the latest simulation updates and research notes.</p>
+</div>
+</div>
+<div class="max-w-container-max mx-auto px-gutter mt-xl pt-lg border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-md">
+<p class="text-outline font-body-md opacity-80">© 2024 Kinetiq Research Lab. All rights reserved.</p>
+<div class="flex gap-lg">
+<a class="text-outline hover:text-primary transition-all opacity-80 hover:opacity-100" href="#">Twitter / X</a>
+<a class="text-outline hover:text-primary transition-all opacity-80 hover:opacity-100" href="#">GitHub</a>
+<a class="text-outline hover:text-primary transition-all opacity-80 hover:opacity-100" href="#">Discord</a>
+</div>
+</div>
+</footer>
+</body></html>
