@@ -4,33 +4,33 @@ import React from "react";
 import Link from "next/link";
 import { 
   LayoutDashboard, 
-  Assignment, 
-  Science, 
-  BarChart, 
-  Bookmarks, 
-  Settings, 
-  Notifications,
+  ClipboardList, 
+  FlaskConical, 
+  BarChart3, 
+  Bookmark, 
+  Settings2, 
+  Bell,
   Plus,
   TrendingUp,
-  PendingActions,
-  RocketLaunch,
-  ElectricBolt,
+  Clock,
+  Rocket,
+  Zap,
   MoreVertical,
-  AddCircle,
-  Speed
+  PlusCircle,
+  Gauge
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function TeacherDashboardPage() {
   const stats = [
-    { title: "Active Assignments", value: "12", change: "+2 this week", icon: <Assignment className="w-10 h-10 text-[#2563eb]" />, trend: "up" },
-    { title: "Student Submissions", value: "148", change: "32 need grading", icon: <Assignment className="w-10 h-10 text-[#6bd8cb]" />, trend: "pending" },
-    { title: "Saved Labs", value: "24", change: "Go to Lab Manager →", icon: <Science className="w-10 h-10 text-[#ffb596]" />, trend: "link" }
+    { title: "Active Assignments", value: "12", change: "+2 this week", icon: <ClipboardList className="w-10 h-10 text-[#2563eb]" />, trend: "up" },
+    { title: "Student Submissions", value: "148", change: "32 need grading", icon: <ClipboardList className="w-10 h-10 text-[#6bd8cb]" />, trend: "pending" },
+    { title: "Saved Labs", value: "24", change: "Go to Lab Manager →", icon: <FlaskConical className="w-10 h-10 text-[#ffb596]" />, trend: "link" }
   ];
 
   const assignments = [
-    { title: "Projectile Motion Challenge", class: "Physics 101", due: "Tomorrow", submitted: "24/30", icon: <RocketLaunch className="w-5 h-5" />, color: "bg-[#2563eb]/20 text-[#2563eb]" },
-    { title: "Circuits Basics: Series vs Parallel", class: "Intro to Electronics", due: "3 days", submitted: "5/28", icon: <ElectricBolt className="w-5 h-5" />, color: "bg-[#6bd8cb]/20 text-[#6bd8cb]" }
+    { title: "Projectile Motion Challenge", class: "Physics 101", due: "Tomorrow", submitted: "24/30", icon: <Rocket className="w-5 h-5" />, color: "bg-[#2563eb]/20 text-[#2563eb]" },
+    { title: "Circuits Basics: Series vs Parallel", class: "Intro to Electronics", due: "3 days", submitted: "5/28", icon: <Zap className="w-5 h-5" />, color: "bg-[#6bd8cb]/20 text-[#6bd8cb]" }
   ];
 
   return (
@@ -42,7 +42,7 @@ export default function TeacherDashboardPage() {
           <span className="bg-[#16202e] text-[#c3c6d7] text-[10px] font-bold px-2 py-1 rounded ml-2 uppercase">Teacher</span>
         </div>
         <div className="flex items-center gap-4">
-          <Notifications className="w-6 h-6 text-[#d9e3f6]" />
+          <Bell className="w-6 h-6 text-[#d9e3f6]" />
           <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/10">
             <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfwEdnqSPVIX3OQ3RjLqyAJ0hdRTikqjMIUIPIp5PpLpbOhz68soz8QDTf49_vRaVCkcUw-2Qvfj-svhbr4FJMGV6iJNmf6b2e_mbNkkrvRd5vyUuQh1DZ8gmUK4VDTZSFgJcZAFcm5j6IcJZ4EL6r6BzlneKaIpE0Iz9DE_TRclOuFMssAFPojwS6cLuCWr7TOttMeVnv8bnk67iKFqnnqAdXJyHjEUpIX-hOzBd__YlHd4TR64QXjd65T2W2dOiOt2n5Q4ir-ZY" alt="Avatar" className="w-full h-full object-cover" />
           </div>
@@ -62,26 +62,26 @@ export default function TeacherDashboardPage() {
             <span>Dashboard</span>
           </Link>
           <Link href="#" className="text-[#c3c6d7] hover:bg-white/5 rounded-xl font-medium flex items-center gap-3 p-4 transition-all">
-            <Assignment className="w-5 h-5" />
+            <ClipboardList className="w-5 h-5" />
             <span>Assignments</span>
           </Link>
           <Link href="#" className="text-[#c3c6d7] hover:bg-white/5 rounded-xl font-medium flex items-center gap-3 p-4 transition-all">
-            <Science className="w-5 h-5" />
+            <FlaskConical className="w-5 h-5" />
             <span>Lab Manager</span>
           </Link>
           <Link href="#" className="text-[#c3c6d7] hover:bg-white/5 rounded-xl font-medium flex items-center gap-3 p-4 transition-all">
-            <BarChart className="w-5 h-5" />
+            <BarChart3 className="w-5 h-5" />
             <span>Student Progress</span>
           </Link>
           <Link href="#" className="text-[#c3c6d7] hover:bg-white/5 rounded-xl font-medium flex items-center gap-3 p-4 transition-all">
-            <Bookmarks className="w-5 h-5" />
+            <Bookmark className="w-5 h-5" />
             <span>Bookmarks</span>
           </Link>
         </nav>
 
         <div className="mt-auto pt-8 border-t border-white/5 flex flex-col gap-4">
           <Link href="#" className="text-[#c3c6d7] hover:bg-white/5 rounded-xl font-medium flex items-center gap-3 p-4 transition-all">
-            <Settings className="w-5 h-5" />
+            <Settings2 className="w-5 h-5" />
             <span>Class Settings</span>
           </Link>
           <div className="flex items-center gap-3 p-3 bg-[#091421] rounded-xl border border-white/5">
@@ -120,7 +120,7 @@ export default function TeacherDashboardPage() {
               <p className="text-5xl font-bold text-[#2563eb] font-display">{stat.value}</p>
               <div className={`mt-6 flex items-center gap-1.5 ${stat.trend === 'up' ? 'text-[#6bd8cb]' : stat.trend === 'pending' ? 'text-[#c3c6d7]' : 'text-[#2563eb]'}`}>
                 {stat.trend === 'up' && <TrendingUp className="w-4 h-4" />}
-                {stat.trend === 'pending' && <PendingActions className="w-4 h-4" />}
+                {stat.trend === 'pending' && <Clock className="w-4 h-4" />}
                 <span className="text-xs font-bold tracking-wide cursor-pointer hover:underline">{stat.change}</span>
               </div>
             </div>
@@ -195,24 +195,26 @@ export default function TeacherDashboardPage() {
               <div className="flex flex-col gap-6 flex-1">
                 {[
                   { title: "Simple Pendulum", concepts: "Gravity, Period, Mass", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuBrP08iZmVgqf8nWp3iJs5rWrGQZLZwf183ZgVBGvtsecFDv--GfdYs37BTAAJnyH-6yQOSk9sAoTbRprLewbIDWR6LdOhurHkr5gz3A72CzyZlplJI-s-cnDK0vjIzoAMmUw0_Z6kUqUzQacyEgwiqHeCttrHPte6j3sQpYAhtUbNTU5yHWJhKCAcYgUcVtDfX-Bf9LXqEADVHEjDZuhPrid5S6m34pPv5IN7solbGZjVeL3cGwYye6GAJOTcp9mOLvNKBBvcnU3U" },
-                  { title: "Friction Surfaces", concepts: "Kinetic/Static Friction", icon: <Speed className="w-8 h-8 text-[#ffb596]" />, color: "bg-[#ffdbcd]" }
+                  { title: "Friction Surfaces", concepts: "Kinetic/Static Friction", icon: <Gauge className="w-8 h-8 text-[#ffb596]" />, color: "bg-[#ffdbcd]" }
                 ].map((lab, i) => (
-                  <div key={i} className="border border-white/5 rounded-2xl p-4 hover:shadow-2xl hover:border-white/10 transition-all cursor-pointer bg-[#091421] group relative overflow-hidden">
-                    <div className="h-32 bg-[#16202e] rounded-xl mb-4 overflow-hidden flex items-center justify-center">
-                      {lab.img ? (
-                        <img src={lab.img} alt={lab.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                      ) : (
-                        <div className={`w-full h-full ${lab.color} flex items-center justify-center`}>
-                          {lab.icon}
-                        </div>
-                      )}
+                  <Link key={i} href={lab.title === "Simple Pendulum" ? "/simulations/pendulum-lab" : "#"} className="block">
+                    <div className="border border-white/5 rounded-2xl p-4 hover:shadow-2xl hover:border-white/10 transition-all cursor-pointer bg-[#091421] group relative overflow-hidden">
+                      <div className="h-32 bg-[#16202e] rounded-xl mb-4 overflow-hidden flex items-center justify-center">
+                        {lab.img ? (
+                          <img src={lab.img} alt={lab.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        ) : (
+                          <div className={`w-full h-full ${lab.color} flex items-center justify-center`}>
+                            {lab.icon}
+                          </div>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-white mb-1">{lab.title}</h4>
+                      <p className="text-[10px] text-[#c3c6d7] uppercase font-bold tracking-widest mb-4">{lab.concepts}</p>
+                      <Button className="w-full bg-[#16202e] text-[#2563eb] border border-[#2563eb]/20 font-bold py-5 rounded-xl group-hover:bg-[#2563eb] group-hover:text-white transition-all flex items-center justify-center gap-2">
+                        <PlusCircle className="w-4 h-4" /> Quick Assign
+                      </Button>
                     </div>
-                    <h4 className="font-bold text-white mb-1">{lab.title}</h4>
-                    <p className="text-[10px] text-[#c3c6d7] uppercase font-bold tracking-widest mb-4">{lab.concepts}</p>
-                    <Button className="w-full bg-[#16202e] text-[#2563eb] border border-[#2563eb]/20 font-bold py-5 rounded-xl group-hover:bg-[#2563eb] group-hover:text-white transition-all flex items-center justify-center gap-2">
-                      <AddCircle className="w-4 h-4" /> Quick Assign
-                    </Button>
-                  </div>
+                  </Link>
                 ))}
               </div>
               

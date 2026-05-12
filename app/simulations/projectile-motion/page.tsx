@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { RotateCcw, Play, Pause, SkipForward, Info, BarChart2, List } from "lucide-react";
+import { RotateCcw, Play, Pause, SkipForward, Info, BarChart2, List, Settings } from "lucide-react";
 import { SimulationPageLayout } from "@/components/simulations/SimulationPageLayout";
 import { ProjectileMotionCanvas } from "@/components/simulations/ProjectileMotionCanvas";
 import { ProjectileControlPanel } from "@/components/simulations/ProjectileControlPanel";

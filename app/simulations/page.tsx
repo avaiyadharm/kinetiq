@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Search, Play, Bookmark, ArrowRight, MotionPhotosOn, LineChart, Activity, Thermometer, Box, Zap } from "lucide-react";
+import { Search, Play, Bookmark, ArrowRight, LayoutGrid, LineChart, Activity, Thermometer, Box, Zap } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,7 @@ export default function SimulationGalleryPage() {
   ];
 
   const categories = [
-    { name: "All", icon: <MotionPhotosOn className="w-4 h-4" />, active: true },
+    { name: "All", icon: <LayoutGrid className="w-4 h-4" />, active: true },
     { name: "Motion", icon: <Activity className="w-4 h-4" /> },
     { name: "Waves", icon: <LineChart className="w-4 h-4" /> },
     { name: "Energy", icon: <Zap className="w-4 h-4" /> },

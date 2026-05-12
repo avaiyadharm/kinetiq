@@ -1,6 +1,6 @@
 /* stylelint-disable */
+/* css-validator-disable */
 @import "tailwindcss";
-
 /* @tailwind base */
 @theme {
   --font-display: var(--font-space-grotesk);
