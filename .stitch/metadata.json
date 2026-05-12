@@ -1,0 +1,65 @@
+{
+  "name": "projects/9439526024794915798",
+  "projectId": "9439526024794915798",
+  "title": "Kinetiq Physics Platform",
+  "visibility": "PRIVATE",
+  "createTime": "2026-05-12T05:24:54.397817Z",
+  "updateTime": "2026-05-12T08:20:05.958572Z",
+  "projectType": "TEXT_TO_UI_PRO",
+  "origin": "STITCH",
+  "deviceType": "DESKTOP",
+  "designTheme": {
+    "colorMode": "LIGHT",
+    "font": "SPACE_GROTESK",
+    "roundness": "ROUND_EIGHT",
+    "customColor": "#2563eb",
+    "headlineFont": "SPACE_GROTESK",
+    "bodyFont": "INTER",
+    "labelFont": "JETBRAINS_MONO"
+  },
+  "screens": {
+    "index": {
+      "id": "fc00fd628ae0413690bc2984fb75f336",
+      "sourceScreen": "projects/9439526024794915798/screens/7731358121d54714a3e830cb727e1c37",
+      "x": 2236,
+      "y": 0,
+      "width": 390,
+      "height": 884
+    },
+    "login": {
+      "id": "d8afad120c1f4ff3b307ab91cfd9bb01",
+      "sourceScreen": "projects/9439526024794915798/screens/86c0f5d742ae4233966b07b2dbcf1030",
+      "x": 2690,
+      "y": 0,
+      "width": 390,
+      "height": 938
+    },
+    "gallery": {
+      "id": "597141eec5324e8a965fc50c901ac376",
+      "sourceScreen": "projects/9439526024794915798/screens/7534742eb9414308bbe0ac67d41ce3ca",
+      "x": 3144,
+      "y": 0,
+      "width": 390,
+      "height": 2503
+    },
+    "projectile-motion": {
+      "id": "a9807e1b69524271b752e379e1354ae7",
+      "sourceScreen": "projects/9439526024794915798/screens/e2cd9b7ce0a34901aec35e52ed20d664",
+      "x": 3598,
+      "y": 0,
+      "width": 390,
+      "height": 884
+    },
+    "dashboard": {
+      "id": "80ca79efc94d4395ae0942bb88f1e9e0",
+      "sourceScreen": "projects/9439526024794915798/screens/d585f1483ed341be90c97a997e3a720a",
+      "x": 1118,
+      "y": 0,
+      "width": 390,
+      "height": 884
+    }
+  },
+  "metadata": {
+    "userRole": "OWNER"
+  }
+}

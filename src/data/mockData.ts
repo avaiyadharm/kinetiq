@@ -1,8 +1,7 @@
 export const NAVIGATION_LINKS = [
-  { label: "Simulations", href: "#simulations" },
-  { label: "Categories", href: "#categories" },
-  { label: "Learn", href: "#learn" },
-  { label: "About", href: "#about" },
+  { label: "Gallery", href: "/simulations" },
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Login", href: "/login" },
 ];
 
 export const SIMULATIONS = [

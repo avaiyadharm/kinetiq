@@ -2,6 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { NAVIGATION_LINKS } from "@/src/data/mockData";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,13 +25,13 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
       
       <nav className="hidden md:flex items-center gap-10">
         {NAVIGATION_LINKS.map((link) => (
-          <a
+          <Link
             key={link.label}
             href={link.href}
             className="text-sm font-semibold text-gray-400 hover:text-blue-400 transition-all hover:scale-105"
           >
             {link.label}
-          </a>
+          </Link>
         ))}
       </nav>
       

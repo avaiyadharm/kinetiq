@@ -2,6 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Play, ArrowRight } from "lucide-react";
 
 export const Hero = () => {
@@ -52,12 +53,16 @@ export const Hero = () => {
           transition={{ delay: 0.6, duration: 0.8 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4"
         >
-          <button className="group relative bg-blue-600 text-white px-10 py-4 rounded-xl text-lg font-bold shadow-[0_0_30px_rgba(59,130,246,0.4)] hover:bg-blue-500 transition-all active:scale-95 flex items-center gap-3">
-            Explore Simulations <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </button>
-          <button className="group px-10 py-4 rounded-xl text-lg font-bold text-white border border-white/10 hover:bg-white/5 transition-all flex items-center gap-3">
-            <Play className="w-5 h-5 fill-current" /> Watch Demo
-          </button>
+          <Link href="/simulations">
+            <button className="group relative bg-blue-600 text-white px-10 py-4 rounded-xl text-lg font-bold shadow-[0_0_30px_rgba(59,130,246,0.4)] hover:bg-blue-500 transition-all active:scale-95 flex items-center gap-3">
+              Explore Simulations <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </Link>
+          <Link href="/login">
+            <button className="group px-10 py-4 rounded-xl text-lg font-bold text-white border border-white/10 hover:bg-white/5 transition-all flex items-center gap-3">
+              <Play className="w-5 h-5 fill-current" /> Teacher Portal
+            </button>
+          </Link>
         </motion.div>
       </div>
 

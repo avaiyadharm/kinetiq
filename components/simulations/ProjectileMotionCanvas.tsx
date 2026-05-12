@@ -12,13 +12,10 @@ interface ProjectileMotionCanvasProps {
 
 export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasProps>> = ({ angle, velocity, isPlaying, showPath }) => {
   return (
-    <div className="w-full h-full relative bg-[#050507]">
-      {/* Background Grid */}
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdHRlcm4gaWQ9InNtYWxsR3JpZCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDEwIDAgTCAwIDAgMCAxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDAuMDUpIiBzdHJva2Utd2lkdGg9IjAuNSIvPjwvcGF0dGVybj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIGZpbGw9InVybCgjc21hbGxHcmlkKSIvPjxwYXRoIGQ9Ik0gNDAgMCBMIDAgMCAwIDQwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LCAyNTUsIDI1NSwgMC4xKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-40" />
-      
+    <div className="w-full h-full relative bg-transparent">
       {/* Ground */}
-      <div className="absolute bottom-0 w-full h-[15%] border-t border-white/10 bg-white/[0.02]">
-        <div className="absolute top-2 w-full px-12 flex justify-between text-[10px] font-bold text-white/20 uppercase tracking-widest">
+      <div className="absolute bottom-0 w-full h-[15%] border-t border-[#434655] bg-[#16202e]/50">
+        <div className="absolute top-2 w-full px-12 flex justify-between text-[10px] font-bold text-[#8d90a0] uppercase tracking-widest opacity-40">
            <span>0m</span>
            <span>10m</span>
            <span>20m</span>
@@ -29,62 +26,58 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
       </div>
 
       {/* Trajectory and Projectile Group */}
-      <div className="absolute bottom-[15%] left-[10%]">
+      <div className="absolute bottom-[15%] left-[10%] w-[calc(100%-20%)] h-[80%]">
         {/* Cannon */}
-        <div className="relative w-12 h-12 bg-white/10 rounded-full border-2 border-white/20 flex items-center justify-center z-20 shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-           <div className="w-4 h-4 bg-white/40 rounded-full" />
+        <div className="absolute bottom-0 left-0 w-16 h-16 bg-[#091421] rounded-full border-2 border-[#434655] flex items-center justify-center z-20 shadow-2xl">
+           <div className="w-6 h-6 bg-[#2563eb]/20 rounded-full flex items-center justify-center border border-[#2563eb]/40">
+             <div className="w-2 h-2 bg-[#2563eb] rounded-full" />
+           </div>
            {/* Barrel */}
            <motion.div 
              animate={{ rotate: -angle }}
-             className="absolute w-16 h-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-r-full border border-white/20 origin-left"
-             style={{ left: "50%", top: "50%", marginTop: "-8px" }}
+             className="absolute w-20 h-5 bg-[#2563eb] rounded-r-xl border border-white/20 origin-left shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+             style={{ left: "50%", top: "50%", marginTop: "-10px" }}
            />
         </div>
 
         {/* Trajectory Path (Dashed) */}
         {showPath && (
-           <svg className="absolute bottom-0 left-0 overflow-visible -z-10" width="800" height="400" viewBox="0 0 800 400">
+           <svg className="absolute inset-0 overflow-visible -z-10" width="100%" height="100%" viewBox="0 0 800 400" preserveAspectRatio="none">
              <motion.path 
                initial={{ pathLength: 0 }}
                animate={{ pathLength: 1 }}
                transition={{ duration: 1, ease: "easeOut" }}
-               d="M 24,376 Q 200,100 600,376" 
+               d="M 32,400 Q 200,50 600,400" 
                fill="none" 
-               stroke="url(#grad)" 
+               stroke="#2563eb" 
                strokeWidth="3" 
-               strokeDasharray="8 8"
-               className="opacity-40"
+               strokeDasharray="12 12"
+               className="opacity-20"
              />
-             <defs>
-               <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                 <stop offset="0%" stopColor="#3b82f6" />
-                 <stop offset="100%" stopColor="#a855f7" />
-               </linearGradient>
-             </defs>
              
              {/* The Projectile Dot */}
              {isPlaying && (
                <motion.circle 
                  animate={{ 
-                   x: [24, 200, 600], 
-                   y: [376, 100, 376] 
+                   x: [32, 200, 600], 
+                   y: [400, 50, 400] 
                  }}
                  transition={{ 
                    duration: 2, 
                    repeat: Infinity, 
                    ease: "linear" 
                  }}
-                 r="6" 
-                 fill="#3b82f6"
-                 className="shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                 r="8" 
+                 fill="#2563eb"
+                 className="shadow-[0_0_30px_rgba(37,99,235,1)]"
                />
              )}
            </svg>
         )}
       </div>
 
-      {/* Decorative Blur */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-blue-500/5 rounded-full blur-[150px] -z-10" />
+      {/* Decorative Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-[#2563eb]/5 rounded-full blur-[150px] -z-10" />
     </div>
   );
 };

@@ -26,14 +26,12 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
   showPath, setShowPath
 }) => {
   return (
-    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 flex flex-col gap-8">
-      <h3 className="text-xs font-bold text-white/40 uppercase tracking-widest">Kinematics</h3>
-      
+    <div className="flex flex-col gap-8 h-full">
       {/* Angle Slider */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-white/80">Launch Angle</Label>
-          <span className="text-blue-400 font-mono text-sm font-bold bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">{angle}°</span>
+          <Label className="text-sm font-bold text-[#d9e3f6]">Launch Angle</Label>
+          <span className="text-[#2563eb] font-mono text-sm font-bold bg-[#2563eb]/10 px-2 py-0.5 rounded border border-[#2563eb]/20">{angle}°</span>
         </div>
         <Slider 
           value={[angle]} 
@@ -47,8 +45,8 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
       {/* Velocity Slider */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-white/80">Initial Velocity</Label>
-          <span className="text-purple-400 font-mono text-sm font-bold bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">{velocity} m/s</span>
+          <Label className="text-sm font-bold text-[#d9e3f6]">Initial Velocity</Label>
+          <span className="text-[#6bd8cb] font-mono text-sm font-bold bg-[#6bd8cb]/10 px-2 py-0.5 rounded border border-[#6bd8cb]/20">{velocity} m/s</span>
         </div>
         <Slider 
           value={[velocity]} 
@@ -59,14 +57,14 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
         />
       </div>
 
-      <div className="pt-2 grid grid-cols-2 gap-4">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
-          <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Air Resistance</Label>
-          <Switch checked={airResistance} onCheckedChange={setAirResistance} />
+      <div className="pt-2 grid grid-cols-2 gap-4 mt-auto">
+        <div className="flex flex-col gap-3 p-4 rounded-xl bg-[#16202e] border border-white/5">
+          <Label className="text-[10px] font-bold text-[#8d90a0] uppercase tracking-widest">Air Resistance</Label>
+          <Switch checked={airResistance} onCheckedChange={setAirResistance} className="data-[state=checked]:bg-[#2563eb]" />
         </div>
-        <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
-          <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Show Trajectory</Label>
-          <Switch checked={showPath} onCheckedChange={setShowPath} />
+        <div className="flex flex-col gap-3 p-4 rounded-xl bg-[#16202e] border border-white/5">
+          <Label className="text-[10px] font-bold text-[#8d90a0] uppercase tracking-widest">Show Trajectory</Label>
+          <Switch checked={showPath} onCheckedChange={setShowPath} className="data-[state=checked]:bg-[#2563eb]" />
         </div>
       </div>
     </div>

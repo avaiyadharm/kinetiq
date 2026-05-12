@@ -6,9 +6,11 @@
   --font-display: var(--font-space-grotesk);
   --font-sans: var(--font-inter);
   
-  --color-brand-blue: #3b82f6;
-  --color-brand-purple: #a855f7;
-  --color-brand-cyan: #06b6d4;
+  --color-primary: #2563eb;
+  --color-secondary: #6bd8cb;
+  --color-tertiary: #ffb596;
+  --color-surface: #050f1c;
+  --color-background: #091421;
   
   --animate-orbit: orbit 60s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
@@ -25,8 +27,8 @@
 }
 
 :root {
-  --background: #0a0a0c;
-  --foreground: #e1e2ec;
+  --background: #091421;
+  --foreground: #d9e3f6;
 }
 
 body {
