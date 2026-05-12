@@ -2,8 +2,9 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { CATEGORIES } from "@/lib/data";
+import { CATEGORIES } from "@/src/data/mockData";
 import { Activity, Waves, Zap, Eye, Thermometer } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 const ICON_MAP: Record<string, any> = {
   activity: Activity,
@@ -13,7 +14,9 @@ const ICON_MAP: Record<string, any> = {
   thermometer: Thermometer,
 };
 
-export const CategoryGrid = () => {
+interface CategoryGridProps {}
+
+export const CategoryGrid: React.FC<Readonly<CategoryGridProps>> = () => {
   return (
     <section className="py-24 bg-white/[0.02] border-y border-white/5">
       <div className="max-w-[1400px] mx-auto px-6">
@@ -32,14 +35,15 @@ export const CategoryGrid = () => {
                 whileInView={{ opacity: 1, scale: 1 }}
                 transition={{ delay: index * 0.1 }}
                 viewport={{ once: true }}
-                whileHover={{ y: -5 }}
-                className="group cursor-pointer backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl p-8 text-center hover:bg-blue-500/10 hover:border-blue-500/30 transition-all duration-300"
+                className="flex"
               >
-                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors shadow-inner">
-                  {Icon && <Icon className="w-8 h-8 text-white/50 group-hover:text-blue-400 transition-colors" />}
-                </div>
-                <h4 className="text-lg font-bold text-white mb-2">{category.name}</h4>
-                <p className="text-gray-500 text-xs font-medium uppercase tracking-widest">{category.count}</p>
+                <Card className="group cursor-pointer backdrop-blur-md bg-white/5 border-white/10 rounded-2xl p-8 text-center hover:bg-blue-500/10 hover:border-blue-500/30 transition-all duration-300 w-full flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors shadow-inner mb-6">
+                    {Icon && <Icon className="w-8 h-8 text-white/50 group-hover:text-blue-400 transition-colors" />}
+                  </div>
+                  <h4 className="text-lg font-bold text-white mb-2">{category.name}</h4>
+                  <p className="text-gray-500 text-xs font-medium uppercase tracking-widest">{category.count}</p>
+                </Card>
               </motion.div>
             );
           })}

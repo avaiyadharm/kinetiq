@@ -3,8 +3,11 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export const CTASection = () => {
+interface CTASectionProps {}
+
+export const CTASection: React.FC<Readonly<CTASectionProps>> = () => {
   return (
     <section className="py-32 px-6">
       <div className="max-w-[1200px] mx-auto relative group">
@@ -37,12 +40,12 @@ export const CTASection = () => {
           </div>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="bg-white text-black px-12 py-5 rounded-2xl text-lg font-bold hover:bg-blue-500 hover:text-white transition-all duration-300 shadow-2xl active:scale-95">
+            <Button size="lg" className="bg-white text-black px-12 py-8 rounded-2xl text-lg font-bold hover:bg-blue-500 hover:text-white transition-all duration-300 shadow-2xl active:scale-95">
               Get Started for Free
-            </button>
-            <button className="px-12 py-5 rounded-2xl text-lg font-bold text-white border border-white/10 hover:bg-white/5 transition-all">
+            </Button>
+            <Button size="lg" variant="outline" className="px-12 py-8 rounded-2xl text-lg font-bold text-white border-white/10 hover:bg-white/5 transition-all">
               Contact Sales
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -2,10 +2,13 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { NAVIGATION_LINKS } from "@/lib/data";
+import { NAVIGATION_LINKS } from "@/src/data/mockData";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
-export const Navbar = () => {
+interface NavbarProps {}
+
+export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
   return (
     <motion.header
       initial={{ y: -100, opacity: 0 }}
@@ -31,9 +34,9 @@ export const Navbar = () => {
         ))}
       </nav>
       
-      <button className="bg-white text-black px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all duration-300 shadow-xl active:scale-95">
+      <Button variant="outline" className="bg-white text-black rounded-full hover:bg-blue-500 hover:text-white transition-all duration-300">
         Start Exploring
-      </button>
+      </Button>
     </motion.header>
   );
 };

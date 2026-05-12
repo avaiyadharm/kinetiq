@@ -2,9 +2,9 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { FEATURES } from "@/lib/data";
+import { FEATURES } from "@/src/data/mockData";
 import { Play, Eye, Brain, MousePointer, Smile } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
 
 const ICON_MAP: Record<string, any> = {
   play: Play,
@@ -14,7 +14,9 @@ const ICON_MAP: Record<string, any> = {
   smile: Smile,
 };
 
-export const FeatureGrid = () => {
+interface FeatureGridProps {}
+
+export const FeatureGrid: React.FC<Readonly<FeatureGridProps>> = () => {
   return (
     <section className="py-32 relative overflow-hidden">
       {/* Decorative Glow */}
@@ -39,15 +41,17 @@ export const FeatureGrid = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1, duration: 0.6 }}
                 viewport={{ once: true }}
-                className="group p-8 rounded-3xl backdrop-blur-sm bg-white/[0.03] border border-white/5 hover:border-blue-500/30 transition-all duration-300"
+                className="flex"
               >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-600/10 flex items-center justify-center mb-8 border border-white/5 group-hover:scale-110 transition-transform">
-                  {Icon && <Icon className="w-7 h-7 text-blue-400" />}
-                </div>
-                <h4 className="text-xl font-bold text-white mb-4 tracking-tight">{feature.title}</h4>
-                <p className="text-gray-400 text-sm leading-relaxed font-medium">
-                  {feature.description}
-                </p>
+                <Card className="group p-8 rounded-3xl backdrop-blur-sm bg-white/[0.03] border-white/5 hover:border-blue-500/30 transition-all duration-300 w-full">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-600/10 flex items-center justify-center mb-8 border border-white/5 group-hover:scale-110 transition-transform">
+                    {Icon && <Icon className="w-7 h-7 text-blue-400" />}
+                  </div>
+                  <h4 className="text-xl font-bold text-white mb-4 tracking-tight">{feature.title}</h4>
+                  <p className="text-gray-400 text-sm leading-relaxed font-medium">
+                    {feature.description}
+                  </p>
+                </Card>
               </motion.div>
             );
           })}
