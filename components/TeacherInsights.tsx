@@ -15,7 +15,7 @@ export const TeacherInsights = () => {
           <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
             Teacher Insights & Global Analytics
           </h2>
-          <p className="text-lg text-gray-400 leading-relaxed">
+          <p className="text-lg text-white/60 leading-relaxed">
             Monitor student progression, concept mastery, and experimental creativity through our advanced laboratory dashboard.
           </p>
           <ul className="space-y-4">
@@ -25,7 +25,7 @@ export const TeacherInsights = () => {
               "Custom curriculum integration",
             ].map((item) => (
               <li key={item} className="flex items-center gap-3 text-white/90">
-                <CheckCircle className="w-5 h-5 text-blue-500 fill-blue-500/20" />
+                <CheckCircle className="w-5 h-5 text-primary fill-primary/20" />
                 {item}
               </li>
             ))}
@@ -38,16 +38,16 @@ export const TeacherInsights = () => {
             whileInView={{ rotateY: 0, rotateX: 0, opacity: 1 }}
             transition={{ duration: 1, ease: "easeOut" }}
             viewport={{ once: true }}
-            className="backdrop-blur-xl bg-white/5 rounded-xl overflow-hidden shadow-2xl relative border border-blue-500/20"
+            className="backdrop-blur-xl bg-black/40 rounded-xl overflow-hidden shadow-2xl shadow-black/60 relative border border-primary/20"
           >
             {/* Dashboard UI Mockup */}
-            <div className="bg-white/10 px-6 py-3 flex justify-between items-center border-b border-white/10">
+            <div className="bg-white/5 px-6 py-3 flex justify-between items-center border-b border-white/10">
               <div className="flex gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-500/50" />
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/50" />
               </div>
-              <span className="text-gray-400 text-[10px] font-bold tracking-wider uppercase">
+              <span className="text-white/40 text-[10px] font-bold tracking-wider uppercase">
                 Analytics: Simulation Unit 04
               </span>
             </div>
@@ -55,7 +55,7 @@ export const TeacherInsights = () => {
             <div className="p-8 grid grid-cols-2 gap-6">
               <div className="col-span-2 backdrop-blur-md bg-white/5 p-6 rounded-lg border border-white/10">
                 <div className="flex justify-between items-center mb-6">
-                  <span className="text-gray-400 text-xs font-bold tracking-wider uppercase">STUDENT ENGAGEMENT</span>
+                  <span className="text-white/40 text-xs font-bold tracking-wider uppercase">STUDENT ENGAGEMENT</span>
                   <span className="text-cyan-400 text-xs font-bold">+12.4%</span>
                 </div>
                 {/* Chart Mockup */}
@@ -66,19 +66,19 @@ export const TeacherInsights = () => {
                       initial={{ height: 0 }}
                       whileInView={{ height: `${height}%` }}
                       transition={{ delay: i * 0.1, duration: 1 }}
-                      className={`flex-1 rounded-t-sm ${i === 4 ? "bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" : "bg-blue-500/20"}`}
+                      className={`flex-1 rounded-t-sm ${i === 4 ? "bg-primary shadow-[0_0_15px_rgba(59,130,246,0.5)]" : "bg-primary/20"}`}
                     />
                   ))}
                 </div>
               </div>
               
               <div className="backdrop-blur-md bg-white/5 p-6 rounded-lg border border-white/10">
-                <span className="text-gray-400 text-[10px] font-bold tracking-wider uppercase block mb-1">ACTIVE USERS</span>
+                <span className="text-white/40 text-[10px] font-bold tracking-wider uppercase block mb-1">ACTIVE USERS</span>
                 <span className="text-2xl font-bold text-white">1,248</span>
               </div>
               
               <div className="backdrop-blur-md bg-white/5 p-6 rounded-lg border border-white/10">
-                <span className="text-gray-400 text-[10px] font-bold tracking-wider uppercase block mb-1">AVG MASTERY</span>
+                <span className="text-white/40 text-[10px] font-bold tracking-wider uppercase block mb-1">AVG MASTERY</span>
                 <span className="text-2xl font-bold text-cyan-400">84%</span>
               </div>
             </div>

@@ -18,11 +18,11 @@ interface CategoryGridProps {}
 
 export const CategoryGrid: React.FC<Readonly<CategoryGridProps>> = () => {
   return (
-    <section className="py-24 bg-white/[0.02] border-y border-white/5">
+    <section className="py-24 bg-black/40 border-y border-border/50">
       <div className="max-w-[1400px] mx-auto px-6">
         <div className="text-center mb-16">
           <h2 className="text-3xl font-bold text-white mb-4 font-display">Explore by Category</h2>
-          <p className="text-gray-500">Dive into specific branches of physics with tailored learning paths.</p>
+          <p className="text-white/50">Dive into specific branches of physics with tailored learning paths.</p>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
@@ -37,12 +37,12 @@ export const CategoryGrid: React.FC<Readonly<CategoryGridProps>> = () => {
                 viewport={{ once: true }}
                 className="flex"
               >
-                <Card className="group cursor-pointer backdrop-blur-md bg-white/5 border-white/10 rounded-2xl p-8 text-center hover:bg-blue-500/10 hover:border-blue-500/30 transition-all duration-300 w-full flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors shadow-inner mb-6">
-                    {Icon && <Icon className="w-8 h-8 text-white/50 group-hover:text-blue-400 transition-colors" />}
+                <Card className="group cursor-pointer lab-card rounded-2xl p-8 text-center hover:bg-primary/5 hover:border-primary/20 transition-all duration-300 w-full flex flex-col items-center bg-[#18181b] shadow-sm border-border">
+                  <div className="w-16 h-16 rounded-2xl bg-black/40 flex items-center justify-center group-hover:bg-primary/10 transition-colors shadow-inner mb-6">
+                    {Icon && <Icon className="w-8 h-8 text-white/30 group-hover:text-primary transition-colors" />}
                   </div>
-                  <h4 className="text-lg font-bold text-white mb-2">{category.name}</h4>
-                  <p className="text-gray-500 text-xs font-medium uppercase tracking-widest">{category.count}</p>
+                  <h4 className="text-lg font-bold text-white mb-2 font-display">{category.name}</h4>
+                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">{category.count}</p>
                 </Card>
               </motion.div>
             );

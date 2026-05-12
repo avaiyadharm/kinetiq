@@ -8,42 +8,42 @@ export const SIMULATIONS = [
   {
     title: "Projectile Motion",
     description: "Analyze the physics of trajectories, drag, and impact mechanics in a vacuum or atmosphere.",
-    image: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&q=80&w=800",
+    image: "/images/simulations/projectile-motion.png",
     difficulty: "Beginner",
     href: "/simulations/projectile-motion"
   },
   {
     title: "Pendulum Dynamics",
     description: "Explore simple harmonic motion, damping, and energy conservation in gravitational fields.",
-    image: "https://images.unsplash.com/photo-1509023467864-1ecbb3f636c8?auto=format&fit=crop&q=80&w=800",
+    image: "/images/simulations/pendulum.png",
     difficulty: "Beginner",
     href: "/simulations/pendulum"
   },
   {
     title: "Quantum Tunneling",
     description: "Visualize wave functions and the probability of particles bypassing potential barriers.",
-    image: "https://images.unsplash.com/photo-1539651044670-315229da9d2f?auto=format&fit=crop&q=80&w=800",
+    image: "/images/simulations/quantum-effects.png",
     difficulty: "Advanced",
     href: "/simulations/quantum"
   },
   {
     title: "Electric Circuits",
     description: "Build and test complex DC circuits with real-time current and voltage measurements.",
-    image: "https://images.unsplash.com/photo-1517077304055-6e89abbf09b0?auto=format&fit=crop&q=80&w=800",
+    image: "/images/simulations/circuits-lab.png",
     difficulty: "Intermediate",
     href: "/simulations/circuits"
   },
   {
     title: "Wave Interference",
     description: "Superimpose light and sound waves to observe diffraction and interference patterns.",
-    image: "https://images.unsplash.com/photo-1534067783941-51c9c23ecefd?auto=format&fit=crop&q=80&w=800",
+    image: "/images/simulations/wave-interferenc.png",
     difficulty: "Intermediate",
     href: "/simulations/waves"
   },
   {
     title: "Orbital Mechanics",
     description: "Simulate multi-body gravitational systems and calculate escape velocities for planetary travel.",
-    image: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&q=80&w=800",
+    image: "/images/simulations/gravitation.png",
     difficulty: "Advanced",
     href: "/simulations/orbit"
   },

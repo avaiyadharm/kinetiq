@@ -17,16 +17,16 @@ const Counter = ({ value, suffix }: { value: number; suffix: string }) => {
   }, [inView, spring, value]);
 
   return (
-    <div ref={ref} className="text-4xl md:text-6xl font-bold text-white tracking-tighter tabular-nums flex items-center justify-center">
+    <div ref={ref} className="text-4xl md:text-6xl font-bold text-foreground tracking-tighter tabular-nums flex items-center justify-center font-display">
       <motion.span>{display}</motion.span>
-      <span className="text-blue-500">{suffix}</span>
+      <span className="text-primary">{suffix}</span>
     </div>
   );
 };
 
 export const StatsSection = () => {
   return (
-    <section className="py-24">
+    <section className="py-24 bg-black/20 backdrop-blur-sm border-y border-border/50">
       <div className="max-w-[1200px] mx-auto px-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8">
           {STATS.map((stat, index) => (
@@ -39,7 +39,7 @@ export const StatsSection = () => {
               className="text-center space-y-3"
             >
               <Counter value={stat.value} suffix={stat.suffix} />
-              <p className="text-gray-500 text-xs font-bold uppercase tracking-[0.2em]">{stat.label}</p>
+              <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em]">{stat.label}</p>
             </motion.div>
           ))}
         </div>

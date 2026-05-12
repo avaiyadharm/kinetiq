@@ -30,8 +30,8 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
       {/* Length Slider */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-[#d9e3f6]">String Length (L)</Label>
-          <span className="text-[#2563eb] font-mono text-sm font-bold bg-[#2563eb]/10 px-2 py-0.5 rounded border border-[#2563eb]/20">{length.toFixed(1)}m</span>
+          <Label className="text-sm font-bold text-white">String Length (L)</Label>
+          <span className="text-primary font-mono text-sm font-bold bg-primary/10 px-2 py-0.5 rounded border border-primary/20">{length.toFixed(1)}m</span>
         </div>
         <Slider 
           value={[length]} 
@@ -46,8 +46,8 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
       {/* Mass Slider */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-[#d9e3f6]">Bob Mass (m)</Label>
-          <span className="text-[#6bd8cb] font-mono text-sm font-bold bg-[#6bd8cb]/10 px-2 py-0.5 rounded border border-[#6bd8cb]/20">{mass.toFixed(1)}kg</span>
+          <Label className="text-sm font-bold text-white">Bob Mass (m)</Label>
+          <span className="text-success font-mono text-sm font-bold bg-success/10 px-2 py-0.5 rounded border border-success/20">{mass.toFixed(1)}kg</span>
         </div>
         <Slider 
           value={[mass]} 
@@ -62,8 +62,8 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
       {/* Gravity Slider */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-[#d9e3f6]">Gravity (g)</Label>
-          <span className="text-amber-400 font-mono text-sm font-bold bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">{gravity.toFixed(1)} m/s²</span>
+          <Label className="text-sm font-bold text-white">Gravity (g)</Label>
+          <span className="text-amber-500 font-mono text-sm font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{gravity.toFixed(1)} m/s²</span>
         </div>
         <Slider 
           value={[gravity]} 
@@ -73,7 +73,7 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
           step={0.1} 
           className="cursor-pointer"
         />
-        <div className="flex justify-between text-[10px] font-bold text-[#8d90a0] uppercase tracking-tighter opacity-60">
+        <div className="flex justify-between text-[10px] font-bold text-white/40 uppercase tracking-tighter">
            <span>Moon (1.6)</span>
            <span>Earth (9.8)</span>
            <span>Jupiter (24.8)</span>
@@ -83,8 +83,8 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
       {/* Friction Slider */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-[#d9e3f6]">Damping (Friction)</Label>
-          <span className="text-rose-400 font-mono text-sm font-bold bg-rose-400/10 px-2 py-0.5 rounded border border-rose-400/20">{(friction * 100).toFixed(0)}%</span>
+          <Label className="text-sm font-bold text-white">Damping (Friction)</Label>
+          <span className="text-red-500 font-mono text-sm font-bold bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">{(friction * 100).toFixed(0)}%</span>
         </div>
         <Slider 
           value={[friction]} 
@@ -97,12 +97,12 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
       </div>
 
       <div className="pt-2 mt-auto">
-        <div className="flex items-center justify-between p-4 rounded-xl bg-[#16202e] border border-white/5">
+        <div className="flex items-center justify-between p-4 rounded-xl bg-black/40 border border-border">
           <div className="flex flex-col gap-1">
             <Label className="text-[10px] font-bold text-white uppercase tracking-widest">Real-time Telemetry</Label>
-            <p className="text-[10px] text-[#8d90a0]">Enable Period/Energy Graphs</p>
+            <p className="text-[10px] text-white/40">Enable Period/Energy Graphs</p>
           </div>
-          <Switch checked={showGraphs} onCheckedChange={setShowGraphs} className="data-[state=checked]:bg-[#2563eb]" />
+          <Switch checked={showGraphs} onCheckedChange={setShowGraphs} className="data-[state=checked]:bg-primary" />
         </div>
       </div>
     </div>

@@ -1,17 +1,22 @@
-/* stylelint-disable */
-/* css-validator-disable */
 @import "tailwindcss";
-/* @tailwind base */
+
 @theme {
-  --font-display: var(--font-space-grotesk);
-  --font-sans: var(--font-inter);
+  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
   
-  --color-primary: #2563eb;
-  --color-secondary: #6bd8cb;
-  --color-tertiary: #ffb596;
-  --color-surface: #050f1c;
-  --color-background: #091421;
+  --color-primary: #3b82f6;
+  --color-success: #10b981;
+  --color-accent: #f59e0b;
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-surface: #18181b;
+  --color-border: #27272a;
   
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.6);
+
   --animate-orbit: orbit 60s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
 
@@ -27,33 +32,44 @@
 }
 
 :root {
-  --background: #091421;
-  --foreground: #d9e3f6;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --primary: #3b82f6;
+  --success: #10b981;
+  --accent: #f59e0b;
+  --border: #27272a;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-sans);
   overflow-x: hidden;
 }
 
 @layer utilities {
-  .glass-surface {
-    backdrop-filter: blur(12px);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+  .lab-card {
+    background: #18181b;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s ease-in-out;
   }
   
-  .glow-blue {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  .lab-card:hover {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+    transform: translateY(-2px);
   }
   
-  .glow-purple {
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+  .hero-gradient {
+    background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent),
+                radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.1), transparent);
   }
   
-  .text-glow-blue {
-    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+  .text-precision {
+    font-family: var(--font-mono);
+    letter-spacing: -0.02em;
   }
 }
 
@@ -62,10 +78,10 @@ body {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0c;
+  background: #09090b;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e1e24;
+  background: #27272a;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {

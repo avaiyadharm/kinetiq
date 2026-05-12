@@ -14,8 +14,8 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
   return (
     <div className="w-full h-full relative bg-transparent">
       {/* Ground */}
-      <div className="absolute bottom-0 w-full h-[15%] border-t border-[#434655] bg-[#16202e]/50">
-        <div className="absolute top-2 w-full px-12 flex justify-between text-[10px] font-bold text-[#8d90a0] uppercase tracking-widest opacity-40">
+      <div className="absolute bottom-0 w-full h-[15%] border-t border-border bg-gray-50">
+        <div className="absolute top-2 w-full px-12 flex justify-between text-[10px] font-bold text-foreground/30 uppercase tracking-widest">
            <span>0m</span>
            <span>10m</span>
            <span>20m</span>
@@ -28,14 +28,14 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
       {/* Trajectory and Projectile Group */}
       <div className="absolute bottom-[15%] left-[10%] w-[calc(100%-20%)] h-[80%]">
         {/* Cannon */}
-        <div className="absolute bottom-0 left-0 w-16 h-16 bg-[#091421] rounded-full border-2 border-[#434655] flex items-center justify-center z-20 shadow-2xl">
-           <div className="w-6 h-6 bg-[#2563eb]/20 rounded-full flex items-center justify-center border border-[#2563eb]/40">
-             <div className="w-2 h-2 bg-[#2563eb] rounded-full" />
+        <div className="absolute bottom-0 left-0 w-16 h-16 bg-white rounded-full border-2 border-border flex items-center justify-center z-20 shadow-lg">
+           <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
+             <div className="w-2 h-2 bg-primary rounded-full" />
            </div>
            {/* Barrel */}
            <motion.div 
              animate={{ rotate: -angle }}
-             className="absolute w-20 h-5 bg-[#2563eb] rounded-r-xl border border-white/20 origin-left shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+             className="absolute w-20 h-5 bg-primary rounded-r-lg border border-primary/20 origin-left shadow-md"
              style={{ left: "50%", top: "50%", marginTop: "-10px" }}
            />
         </div>
@@ -49,7 +49,7 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
                transition={{ duration: 1, ease: "easeOut" }}
                d="M 32,400 Q 200,50 600,400" 
                fill="none" 
-               stroke="#2563eb" 
+               stroke="var(--color-primary)" 
                strokeWidth="3" 
                strokeDasharray="12 12"
                className="opacity-20"
@@ -68,8 +68,8 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
                    ease: "linear" 
                  }}
                  r="8" 
-                 fill="#2563eb"
-                 className="shadow-[0_0_30px_rgba(37,99,235,1)]"
+                 fill="var(--color-primary)"
+                 className="shadow-lg"
                />
              )}
            </svg>
@@ -77,7 +77,7 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
       </div>
 
       {/* Decorative Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-[#2563eb]/5 rounded-full blur-[150px] -z-10" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-primary/5 rounded-full blur-[150px] -z-10" />
     </div>
   );
 };
