@@ -69,7 +69,7 @@ export const Hero = () => {
       {/* Hero Visual Elements */}
       <div className="absolute bottom-0 left-0 w-full h-64 bg-gradient-to-t from-[#0a0a0c] to-transparent z-10" />
       
-      <div className="mt-20 relative w-full max-w-[1400px] aspect-[21/9] perspective-[1000px] overflow-hidden">
+      <div className="mt-20 relative w-full max-w-[1600px] aspect-[21/9] perspective-[1000px] overflow-hidden">
         <motion.div 
           initial={{ rotateX: 20, y: 100, opacity: 0 }}
           animate={{ rotateX: 0, y: 0, opacity: 1 }}

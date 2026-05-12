@@ -14,7 +14,7 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
     <motion.header
       initial={{ y: -100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="fixed top-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[1200px] rounded-2xl backdrop-blur-xl border border-white/10 bg-black/20 z-50 flex justify-between items-center px-8 py-4"
+      className="fixed top-6 left-1/2 -translate-x-1/2 w-[98%] max-w-[1600px] rounded-2xl backdrop-blur-xl border border-white/10 bg-black/20 z-50 flex justify-between items-center px-12 py-4"
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.5)]">

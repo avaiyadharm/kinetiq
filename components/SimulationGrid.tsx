@@ -18,7 +18,7 @@ export const SimulationGrid: React.FC<Readonly<SimulationGridProps>> = () => {
     <section className="py-32 relative overflow-hidden">
       <div className="absolute top-1/2 left-0 w-96 h-96 bg-blue-600/5 rounded-full blur-[100px] -z-10" />
       
-      <div className="max-w-[1400px] mx-auto px-6">
+      <div className="max-w-[1600px] mx-auto px-12">
         <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-20">
           <div className="space-y-4">
             <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight font-display">Featured Simulations</h2>
