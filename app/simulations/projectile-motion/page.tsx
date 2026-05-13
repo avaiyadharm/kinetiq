@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { RotateCcw, Play, Pause, SkipForward, BarChart2, Info, List, Settings } from "lucide-react";
 import { SimulationPageLayout } from "@/components/simulations/SimulationPageLayout";
 import { ProjectileMotionCanvas } from "@/components/simulations/ProjectileMotionCanvas";
@@ -16,12 +16,34 @@ export default function ProjectileMotionPage() {
   const [showPath, setShowPath] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // Real-time calculated values
+  // Real-time calculated values from Simulation
   const [stats, setStats] = useState({
     time: 0,
     range: 0,
     maxHeight: 0
   });
+
+  // THEORETICAL PREDICTIONS (Based on the formulas)
+  const theoreticalStats = useMemo(() => {
+    const rad = (angle * Math.PI) / 180;
+    const vx = velocity * Math.cos(rad);
+    const vy = velocity * Math.sin(rad);
+    
+    // T = 2u sin θ / g
+    const t = Math.max(0, (2 * vy) / gravity);
+    // R = u² sin 2θ / g
+    const r = (Math.pow(velocity, 2) * Math.sin(2 * rad)) / gravity;
+    // H = u² sin² θ / 2g
+    const h = (Math.pow(velocity, 2) * Math.pow(Math.sin(rad), 2)) / (2 * gravity);
+    
+    return { time: t, range: r, maxHeight: h };
+  }, [angle, velocity, gravity]);
+
+  // Which stats to display in the Bento Cards
+  // ALWAYS show the predictive/theoretical stats when not playing to ensure instant accuracy.
+  // Switch to live 'stats' only when the simulation is active.
+  const displayStats = isPlaying ? stats : theoreticalStats;
+  const isPredictive = !isPlaying;
 
   const handleUpdateStats = useCallback((newStats: { time: number; range: number; maxHeight: number }) => {
     setStats(newStats);
@@ -31,9 +53,6 @@ export default function ProjectileMotionPage() {
     setIsPlaying(false);
   }, []);
 
-  // Kinetic Energy calculation: 1/2 * m * v^2
-  // For initial display we use initial velocity. 
-  // In a more advanced version we could update this in real-time as well.
   const kineticEnergy = 0.5 * mass * Math.pow(velocity, 2);
 
   return (
@@ -45,9 +64,12 @@ export default function ProjectileMotionPage() {
             <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
               <RotateCcw className="w-8 h-8 text-primary" />
             </div>
-            <span className="text-primary text-[10px] font-bold uppercase tracking-[0.2em]">Simulation Time</span>
+            <div className="flex items-center justify-between">
+              <span className="text-primary text-[10px] font-bold uppercase tracking-[0.2em]">Simulation Time</span>
+              {isPredictive && <span className="text-[8px] font-bold text-primary/40 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10">TARGET</span>}
+            </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-white font-mono">{stats.time.toFixed(2)}</span>
+              <span className="text-2xl font-bold text-white font-mono">{displayStats.time.toFixed(2)}</span>
               <span className="text-xs font-bold text-white/40">seconds</span>
             </div>
           </div>
@@ -55,9 +77,12 @@ export default function ProjectileMotionPage() {
             <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
               <BarChart2 className="w-8 h-8 text-success" />
             </div>
-            <span className="text-success text-[10px] font-bold uppercase tracking-[0.2em]">Horizontal Range</span>
+            <div className="flex items-center justify-between">
+              <span className="text-success text-[10px] font-bold uppercase tracking-[0.2em]">Horizontal Range</span>
+              {isPredictive && <span className="text-[8px] font-bold text-success/40 bg-success/5 px-1.5 py-0.5 rounded border border-success/10">TARGET</span>}
+            </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-white font-mono">{stats.range.toFixed(1)}</span>
+              <span className="text-2xl font-bold text-white font-mono">{displayStats.range.toFixed(1)}</span>
               <span className="text-xs font-bold text-white/40">meters</span>
             </div>
           </div>
@@ -65,9 +90,12 @@ export default function ProjectileMotionPage() {
             <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
                <Info className="w-8 h-8 text-accent" />
             </div>
-            <span className="text-accent text-[10px] font-bold uppercase tracking-[0.2em]">Peak Altitude</span>
+            <div className="flex items-center justify-between">
+               <span className="text-accent text-[10px] font-bold uppercase tracking-[0.2em]">Peak Altitude</span>
+               {isPredictive && <span className="text-[8px] font-bold text-accent/40 bg-accent/5 px-1.5 py-0.5 rounded border border-accent/10">TARGET</span>}
+            </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-white font-mono">{stats.maxHeight.toFixed(1)}</span>
+              <span className="text-2xl font-bold text-white font-mono">{displayStats.maxHeight.toFixed(1)}</span>
               <span className="text-xs font-bold text-white/40">meters</span>
             </div>
           </div>
@@ -85,7 +113,6 @@ export default function ProjectileMotionPage() {
 
         {/* The Canvas Area */}
         <div className="flex-1 relative overflow-hidden bg-black/20">
-          {/* Subtle Grid Overlay */}
           <div className="absolute inset-0 opacity-[0.05] pointer-events-none" 
                style={{backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '40px 40px'}}></div>
           
@@ -101,7 +128,6 @@ export default function ProjectileMotionPage() {
             onSimulationEnd={handleSimulationEnd}
           />
           
-          {/* Playback Controls Overlay - Premium Floating Bar */}
           <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-6 px-8 py-4 rounded-2xl bg-[#18181b]/80 backdrop-blur-xl border border-white/10 z-20 shadow-2xl">
              <button 
               onClick={() => {
@@ -173,7 +199,6 @@ export default function ProjectileMotionPage() {
                  <p className="text-white/10">{isPlaying ? '> Simulating vector flow_' : '> Awaiting user trigger_'}</p>
                </div>
              </div>
-             {/* Decorative element */}
              <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-primary/5 rounded-full blur-3xl"></div>
           </section>
         </div>

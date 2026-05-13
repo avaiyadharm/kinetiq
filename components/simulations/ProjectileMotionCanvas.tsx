@@ -124,16 +124,33 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
 
     const nextVx = p.vx + ax * PHYSICS_DT;
     const nextVy = p.vy + ay * PHYSICS_DT;
-    const nextX = p.x + nextVx * PHYSICS_DT;
-    const nextY = p.y + nextVy * PHYSICS_DT;
+    let nextX = p.x + nextVx * PHYSICS_DT;
+    let nextY = p.y + nextVy * PHYSICS_DT;
+
+    // HIGH PRECISION HIT DETECTION (INTERPOLATION)
+    if (nextY <= 0 && nextVy < 0) {
+      // Find the exact fraction of PHYSICS_DT where y = 0
+      // simple linear approximation: alpha = (0 - y_old) / (y_new - y_old)
+      const dy = nextY - p.y;
+      if (Math.abs(dy) > 0.000001) {
+        const alpha = -p.y / dy;
+        nextX = p.x + (nextX - p.x) * alpha;
+        simTimeRef.current += PHYSICS_DT * alpha;
+      }
+      nextY = 0;
+      projectileRef.current = { 
+        ...p, 
+        x: nextX, 
+        y: 0, 
+        vx: 0, 
+        vy: 0, 
+        path: [...p.path, { x: nextX, y: 0 }] 
+      };
+      return false;
+    }
 
     simTimeRef.current += PHYSICS_DT;
     maxHRef.current = Math.max(maxHRef.current, nextY);
-
-    if (nextY <= 0 && nextVy < 0) {
-      projectileRef.current = { ...p, x: nextX, y: 0, vx: 0, vy: 0, path: [...p.path, { x: nextX, y: 0 }] };
-      return false;
-    }
 
     projectileRef.current = {
       x: nextX,
@@ -164,9 +181,10 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
         setMaxH(maxHRef.current);
         
         if (onUpdateStats) {
+          // Range is current X position minus the barrel's initial X position (muzzleOffset.x)
           onUpdateStats({
             time: simTimeRef.current,
-            range: projectileRef.current.x,
+            range: projectileRef.current.x - muzzleOffset.x,
             maxHeight: maxHRef.current
           });
         }

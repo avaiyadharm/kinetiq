@@ -154,6 +154,35 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
         </div>
       </div>
 
+      {/* 6. Physics Theory & Formulas */}
+      <div className="mt-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-primary" />
+          <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Theory & Formulas</Label>
+        </div>
+
+        <div className="space-y-3 font-serif italic text-white/60 text-[11px] leading-relaxed">
+          <div className="p-3 rounded-lg bg-black/40 border border-white/5 space-y-2 not-italic font-sans">
+             <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Max Height (H)</span>
+                <span className="text-primary font-mono text-[10px]">u² sin² θ / 2g</span>
+             </div>
+             <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Horizontal Range (R)</span>
+                <span className="text-success font-mono text-[10px]">u² sin 2θ / g</span>
+             </div>
+             <div className="flex justify-between items-center">
+                <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Time of Flight (T)</span>
+                <span className="text-success font-mono text-[10px]">2u sin θ / g</span>
+             </div>
+             
+          </div>
+          <p className="px-1 text-[10px] text-white/30">
+            * These formulas assume ground-to-ground trajectory and neglect air resistance for ideal kinematic analysis.
+          </p>
+        </div>
+      </div>
+
       {/* Toggles */}
       <div className="grid grid-cols-2 gap-3 mt-auto px-1">
         <div 
