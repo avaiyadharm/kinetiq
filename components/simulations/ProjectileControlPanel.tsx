@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,59 @@ const CustomToggle = ({ checked, colorClass = "bg-primary" }: { checked: boolean
   </div>
 );
 
+// High-fidelity number input that allows direct typing
+const ValueInput = ({ 
+  value, 
+  onChange, 
+  min, 
+  max, 
+  suffix, 
+  colorClass,
+  step = 1
+}: { 
+  value: number, 
+  onChange: (v: number) => void, 
+  min: number, 
+  max: number, 
+  suffix: string, 
+  colorClass: string,
+  step?: number
+}) => {
+  const [localValue, setLocalValue] = useState(value.toString());
+
+  useEffect(() => {
+    setLocalValue(value.toString());
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalValue(e.target.value);
+    const num = parseFloat(e.target.value);
+    if (!isNaN(num)) {
+      // Clamp values slightly loose for typing experience, but within bounds
+      const clamped = Math.max(min, Math.min(max, num));
+      onChange(clamped);
+    }
+  };
+
+  const handleBlur = () => {
+    setLocalValue(value.toString());
+  };
+
+  return (
+    <div className={cn("flex items-center gap-1 px-2 py-0.5 rounded border transition-all focus-within:ring-1", colorClass)}>
+      <input 
+        type="number"
+        value={localValue}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        step={step}
+        className="bg-transparent border-none outline-none font-mono text-sm font-bold w-12 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <span className="text-[10px] font-bold opacity-40 uppercase">{suffix}</span>
+    </div>
+  );
+};
+
 export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelProps>> = ({
   angle, setAngle,
   velocity, setVelocity,
@@ -73,11 +126,13 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
             <Compass className="w-3 h-3 text-primary" />
             Launch Angle
           </Label>
-          <div className="flex items-center gap-2">
-            <span className="text-primary font-mono text-sm font-bold bg-primary/10 px-2 py-0.5 rounded border border-primary/30">
-              {angle}°
-            </span>
-          </div>
+          <ValueInput 
+            value={angle} 
+            onChange={setAngle} 
+            min={0} max={90} 
+            suffix="deg" 
+            colorClass="bg-primary/10 border-primary/30 text-primary focus-within:border-primary/60 focus-within:ring-primary/20" 
+          />
         </div>
         <Slider value={[angle]} onValueChange={(v) => setAngle(v[0])} max={90} step={1} className="cursor-pointer" />
       </div>
@@ -89,11 +144,14 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
             <Rocket className="w-3 h-3 text-success" />
             Launch Velocity
           </Label>
-          <div className="flex items-center gap-2">
-            <span className="text-success font-mono text-sm font-bold bg-success/10 px-2 py-0.5 rounded border border-success/30">
-              {velocity} m/s
-            </span>
-          </div>
+          <ValueInput 
+            value={velocity} 
+            onChange={setVelocity} 
+            min={0.1} max={100} 
+            step={0.1}
+            suffix="m/s" 
+            colorClass="bg-success/10 border-success/30 text-success focus-within:border-success/60 focus-within:ring-success/20" 
+          />
         </div>
         <Slider value={[velocity]} onValueChange={(v) => setVelocity(v[0])} max={50} step={0.1} className="cursor-pointer" />
       </div>
@@ -114,15 +172,15 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
               onClick={() => setGravity(planet.gravity)}
               className={cn(
                 "flex flex-col items-center gap-2 p-2 rounded-xl border transition-all duration-300",
-                gravity === planet.gravity 
+                Math.abs(gravity - planet.gravity) < 0.01 
                   ? "bg-white/10 border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.05)]" 
                   : "bg-white/5 border-white/5 hover:border-white/10"
               )}
             >
-              <PlanetSphere style={planet.style} selected={gravity === planet.gravity} />
+              <PlanetSphere style={planet.style} selected={Math.abs(gravity - planet.gravity) < 0.01} />
               <span className={cn(
                 "text-[7px] font-bold uppercase tracking-tighter transition-colors",
-                gravity === planet.gravity ? "text-white" : "text-white/30"
+                Math.abs(gravity - planet.gravity) < 0.01 ? "text-white" : "text-white/30"
               )}>{planet.name}</span>
             </motion.button>
           ))}
@@ -136,9 +194,14 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
             <Zap className="w-3 h-3 text-amber-400" />
             Gravity
           </Label>
-          <div className="bg-amber-400/5 border border-amber-400/20 rounded-lg p-2 text-center">
-            <span className="text-amber-400 font-mono text-xs font-bold">{gravity.toFixed(2)} m/s²</span>
-          </div>
+          <ValueInput 
+            value={gravity} 
+            onChange={setGravity} 
+            min={0.01} max={100} 
+            step={0.01}
+            suffix="m/s²" 
+            colorClass="bg-amber-400/10 border-amber-400/30 text-amber-400 focus-within:border-amber-400/60 focus-within:ring-amber-400/20" 
+          />
           <Slider value={[gravity]} onValueChange={(v) => setGravity(v[0])} max={30} min={0.1} step={0.01} className="cursor-pointer" />
         </div>
 
@@ -147,9 +210,14 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
             <Weight className="w-3 h-3 text-purple-400" />
             Mass
           </Label>
-          <div className="bg-purple-400/5 border border-purple-400/20 rounded-lg p-2 text-center">
-            <span className="text-purple-400 font-mono text-xs font-bold">{mass} kg</span>
-          </div>
+          <ValueInput 
+            value={mass} 
+            onChange={setMass} 
+            min={0.1} max={500} 
+            step={0.1}
+            suffix="kg" 
+            colorClass="bg-purple-400/10 border-purple-400/30 text-purple-400 focus-within:border-purple-400/60 focus-within:ring-purple-400/20" 
+          />
           <Slider value={[mass]} onValueChange={(v) => setMass(v[0])} max={50} min={0.1} step={0.1} className="cursor-pointer" />
         </div>
       </div>
@@ -175,7 +243,6 @@ export const ProjectileControlPanel: React.FC<Readonly<ProjectileControlPanelPro
                 <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Time of Flight (T)</span>
                 <span className="text-success font-mono text-[10px]">2u sin θ / g</span>
              </div>
-             
           </div>
           <p className="px-1 text-[10px] text-white/30">
             * These formulas assume ground-to-ground trajectory and neglect air resistance for ideal kinematic analysis.
