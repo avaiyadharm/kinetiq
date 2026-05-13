@@ -19,12 +19,15 @@ interface Point {
   y: number;
 }
 
-interface Projectile {
+interface PhysicsState {
+  t: number;
   x: number;
   y: number;
   vx: number;
   vy: number;
+  maxH: number;
   path: Point[];
+  isFinished: boolean;
 }
 
 export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasProps>> = ({ 
@@ -43,129 +46,144 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
   const lastTimeRef = useRef<number>(0);
   const accumulatorRef = useRef<number>(0);
   
-  const [projectile, setProjectile] = useState<Projectile | null>(null);
-  const [simTime, setSimTime] = useState(0);
-  const [maxH, setMaxH] = useState(0);
+  const [renderState, setRenderState] = useState<PhysicsState | null>(null);
 
-  // Simulation Constants
-  const k = 0.1; 
+  const physicsRef = useRef<PhysicsState>({
+    t: 0, x: 0, y: 0, vx: 0, vy: 0, maxH: 0, path: [], isFinished: false
+  });
+
+  // Constants
   const scale = 20; 
   const barrelLengthMeters = 2.5; 
   const startXMeters = 3; 
-  const PHYSICS_DT = 0.001; // 1000Hz for high precision
+  const PHYSICS_DT = 0.001; 
 
-  const muzzleOffset = useMemo(() => {
+  // To match the theoretical formulas exactly, the launch point (Origin) 
+  // must be (0,0). The cannon pivot is our Origin.
+  const initPhysics = () => {
     const rad = (angle * Math.PI) / 180;
-    return {
-      x: barrelLengthMeters * Math.cos(rad),
-      y: barrelLengthMeters * Math.sin(rad)
+    const vx0 = velocity * Math.cos(rad);
+    const vy0 = velocity * Math.sin(rad);
+    
+    physicsRef.current = {
+      t: 0,
+      x: 0, // Start at absolute zero to match formulas
+      y: 0, // Start at absolute zero to match formulas
+      vx: vx0,
+      vy: vy0,
+      maxH: 0,
+      path: [{ x: 0, y: 0 }],
+      isFinished: false
     };
-  }, [angle]);
-
-  const launch = () => {
-    const rad = (angle * Math.PI) / 180;
-    const initialProjectile = {
-      x: muzzleOffset.x,
-      y: muzzleOffset.y,
-      vx: velocity * Math.cos(rad),
-      vy: velocity * Math.sin(rad),
-      path: [{ x: muzzleOffset.x, y: muzzleOffset.y }]
-    };
-    setProjectile(initialProjectile);
-    setSimTime(0);
-    setMaxH(muzzleOffset.y);
+    setRenderState({ ...physicsRef.current });
     accumulatorRef.current = 0;
   };
 
   useEffect(() => {
     if (isPlaying) {
-      launch();
+      initPhysics();
     } else {
-      setProjectile({
-        x: muzzleOffset.x,
-        y: muzzleOffset.y,
-        vx: 0,
-        vy: 0,
-        path: []
-      });
-      setSimTime(0);
-      setMaxH(muzzleOffset.y);
+      physicsRef.current = {
+        t: 0, x: 0, y: 0, vx: 0, vy: 0, maxH: 0, path: [], isFinished: false
+      };
+      setRenderState({ ...physicsRef.current });
     }
-  }, [isPlaying, muzzleOffset]);
-
-  // Use refs for internal state to avoid stale closures in the high-frequency loop
-  const projectileRef = useRef<Projectile | null>(null);
-  const simTimeRef = useRef<number>(0);
-  const maxHRef = useRef<number>(0);
-
-  useEffect(() => {
-    projectileRef.current = projectile;
-  }, [projectile]);
-
-  useEffect(() => {
-    simTimeRef.current = simTime;
-  }, [simTime]);
-
-  useEffect(() => {
-    maxHRef.current = maxH;
-  }, [maxH]);
+  }, [isPlaying, velocity, gravity, angle]);
 
   const stepPhysics = () => {
-    const p = projectileRef.current;
-    if (!p) return false;
+    const s = physicsRef.current;
+    if (s.isFinished) return false;
 
-    let ax = 0;
-    let ay = -gravity;
+    if (!airResistance) {
+      const nextT = s.t + PHYSICS_DT;
+      const rad = (angle * Math.PI) / 180;
+      const vx0 = velocity * Math.cos(rad);
+      const vy0 = velocity * Math.sin(rad);
 
-    if (airResistance) {
-      ax -= (k * p.vx) / mass;
-      ay -= (k * p.vy) / mass;
-    }
+      // x(t) = v_x0 * t
+      const nextX = vx0 * nextT;
+      // y(t) = v_y0 * t - 0.5 * g * t^2
+      let nextY = vy0 * nextT - 0.5 * gravity * Math.pow(nextT, 2);
+      
+      const currentVy = vy0 - gravity * nextT;
 
-    const nextVx = p.vx + ax * PHYSICS_DT;
-    const nextVy = p.vy + ay * PHYSICS_DT;
-    let nextX = p.x + nextVx * PHYSICS_DT;
-    let nextY = p.y + nextVy * PHYSICS_DT;
-
-    // HIGH PRECISION HIT DETECTION (INTERPOLATION)
-    if (nextY <= 0 && nextVy < 0) {
-      // Find the exact fraction of PHYSICS_DT where y = 0
-      // simple linear approximation: alpha = (0 - y_old) / (y_new - y_old)
-      const dy = nextY - p.y;
-      if (Math.abs(dy) > 0.000001) {
-        const alpha = -p.y / dy;
-        nextX = p.x + (nextX - p.x) * alpha;
-        simTimeRef.current += PHYSICS_DT * alpha;
+      // Ground is exactly at y=0 relative to the launch point
+      if (nextY <= 0 && currentVy < 0) {
+        // T_total = 2 * v_y0 / g
+        const tHit = (2 * vy0) / gravity;
+        const xHit = vx0 * tHit;
+        
+        physicsRef.current = {
+          ...s,
+          t: tHit,
+          x: xHit,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          isFinished: true,
+          path: [...s.path, { x: xHit, y: 0 }]
+        };
+        return false;
       }
-      nextY = 0;
-      projectileRef.current = { 
-        ...p, 
-        x: nextX, 
-        y: 0, 
-        vx: 0, 
-        vy: 0, 
-        path: [...p.path, { x: nextX, y: 0 }] 
+
+      physicsRef.current = {
+        ...s,
+        t: nextT,
+        x: nextX,
+        y: nextY,
+        vx: vx0,
+        vy: currentVy,
+        maxH: Math.max(s.maxH, nextY),
+        path: [...s.path, { x: nextX, y: nextY }]
       };
-      return false;
+    } else {
+      const k = 0.1; 
+      const ax = -(k * s.vx) / mass;
+      const ay = -gravity - (k * s.vy) / mass;
+
+      const nextVx = s.vx + ax * PHYSICS_DT;
+      const nextVy = s.vy + ay * PHYSICS_DT;
+      const nextX = s.x + nextVx * PHYSICS_DT;
+      const nextY = s.y + nextVy * PHYSICS_DT;
+      const nextT = s.t + PHYSICS_DT;
+
+      if (nextY <= 0 && nextVy < 0) {
+        const dy = nextY - s.y;
+        const alpha = Math.abs(dy) > 0.000001 ? -s.y / dy : 0;
+        const hitX = s.x + (nextX - s.x) * alpha;
+        
+        physicsRef.current = {
+          ...s,
+          t: nextT + (PHYSICS_DT * alpha),
+          x: hitX,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          isFinished: true,
+          path: [...s.path, { x: hitX, y: 0 }]
+        };
+        return false;
+      }
+
+      physicsRef.current = {
+        ...s,
+        t: nextT,
+        x: nextX,
+        y: nextY,
+        vx: nextVx,
+        vy: nextVy,
+        maxH: Math.max(s.maxH, nextY),
+        path: [...s.path, { x: nextX, y: nextY }]
+      };
     }
-
-    simTimeRef.current += PHYSICS_DT;
-    maxHRef.current = Math.max(maxHRef.current, nextY);
-
-    projectileRef.current = {
-      x: nextX,
-      y: nextY,
-      vx: nextVx,
-      vy: nextVy,
-      path: [...p.path, { x: nextX, y: nextY }]
-    };
+    
     return true;
   };
 
   const animate = (time: number) => {
     if (lastTimeRef.current !== 0) {
       const frameDt = (time - lastTimeRef.current) / 1000;
-      accumulatorRef.current += Math.min(frameDt, 0.1); // Cap to 100ms to avoid spiral of death
+      accumulatorRef.current += Math.min(frameDt, 0.1);
 
       let isStillFlying = true;
       while (accumulatorRef.current >= PHYSICS_DT) {
@@ -174,38 +192,41 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
         if (!isStillFlying) break;
       }
 
-      // Batch state updates after the sub-stepping loop
-      if (projectileRef.current) {
-        setProjectile(projectileRef.current);
-        setSimTime(simTimeRef.current);
-        setMaxH(maxHRef.current);
-        
-        if (onUpdateStats) {
-          // Range is current X position minus the barrel's initial X position (muzzleOffset.x)
-          onUpdateStats({
-            time: simTimeRef.current,
-            range: projectileRef.current.x - muzzleOffset.x,
-            maxHeight: maxHRef.current
-          });
-        }
+      const current = physicsRef.current;
+      setRenderState({ ...current });
+      
+      if (onUpdateStats) {
+        onUpdateStats({
+          time: current.t,
+          range: current.x, // Origin is 0, so range is just X
+          maxHeight: current.maxH
+        });
       }
 
       if (!isStillFlying) {
         if (onSimulationEnd) onSimulationEnd();
         lastTimeRef.current = 0;
-        draw();
         return;
       }
     }
     
     lastTimeRef.current = time;
-    draw();
     requestRef.current = requestAnimationFrame(animate);
   };
 
+  useEffect(() => {
+    if (isPlaying && !physicsRef.current.isFinished) {
+      requestRef.current = requestAnimationFrame(animate);
+    } else {
+      cancelAnimationFrame(requestRef.current);
+      lastTimeRef.current = 0;
+    }
+    return () => cancelAnimationFrame(requestRef.current);
+  }, [isPlaying]);
+
   const draw = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !renderState) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -247,14 +268,14 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
     ctx.fill();
 
     // 3. Draw Path
-    if (showPath && projectile && projectile.path.length > 1) {
+    if (showPath && renderState.path.length > 1) {
       ctx.beginPath();
       ctx.setLineDash([8, 8]);
       ctx.strokeStyle = "rgba(59, 130, 246, 0.3)";
       ctx.lineWidth = 2;
-      projectile.path.forEach((p, i) => {
+      renderState.path.forEach((p, i) => {
         const px = pivotX + p.x * scale;
-        const py = groundY - p.y * scale;
+        const py = pivotY - p.y * scale;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       });
@@ -263,33 +284,24 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
     }
 
     // 4. Draw Projectile
-    if (projectile) {
-      const px = pivotX + projectile.x * scale;
-      const py = groundY - projectile.y * scale;
-      ctx.shadowBlur = 25;
-      ctx.shadowColor = "#10b981";
-      ctx.beginPath();
-      ctx.arc(px, py, 8, 0, Math.PI * 2);
-      ctx.fillStyle = "#10b981";
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.arc(px, py, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-    }
+    const px = pivotX + renderState.x * scale;
+    const py = pivotY - renderState.y * scale;
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = "#10b981";
+    ctx.beginPath();
+    ctx.arc(px, py, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "#10b981";
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
   };
 
   useEffect(() => {
-    if (isPlaying && projectile && projectile.vx !== 0) {
-      requestRef.current = requestAnimationFrame(animate);
-    } else {
-      cancelAnimationFrame(requestRef.current);
-      lastTimeRef.current = 0;
-      draw();
-    }
-    return () => cancelAnimationFrame(requestRef.current);
-  }, [isPlaying, projectile]);
+    draw();
+  }, [renderState, angle]);
 
   useEffect(() => {
     const handleResize = () => {
