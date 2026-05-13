@@ -70,12 +70,12 @@ export const PendulumCanvas: React.FC<Readonly<PendulumCanvasProps>> = ({
   return (
     <div className="w-full h-full relative bg-transparent overflow-hidden">
       {/* Grid Background */}
-      <div className="absolute inset-0 opacity-20 pointer-events-none" 
-           style={{ backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      <div className="absolute inset-0 opacity-[0.05] pointer-events-none" 
+           style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
       
       {/* Pivot Point */}
-      <div className="absolute left-1/2 top-[20%] -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full border-2 border-border z-20 shadow-lg flex items-center justify-center">
-        <div className="w-2 h-2 bg-primary rounded-full shadow-md" />
+      <div className="absolute left-1/2 top-[20%] -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-[#18181b] rounded-full border-2 border-white/10 z-20 shadow-2xl flex items-center justify-center">
+        <div className="w-2 h-2 bg-primary rounded-full shadow-[0_0_8px_var(--color-primary)]" />
       </div>
 
       {/* Pendulum String and Bob */}
@@ -88,7 +88,7 @@ export const PendulumCanvas: React.FC<Readonly<PendulumCanvasProps>> = ({
             originX: 'center',
             originY: 'top',
           }}
-          className="relative bg-gradient-to-b from-gray-300 via-primary/30 to-primary"
+          className="relative bg-gradient-to-b from-white/20 via-primary/40 to-primary"
         >
           {/* Bob */}
           <div 
@@ -97,16 +97,16 @@ export const PendulumCanvas: React.FC<Readonly<PendulumCanvasProps>> = ({
               height: `${20 + mass * 20}px`,
               bottom: `-${(20 + mass * 20) / 2}px`
             }}
-            className="absolute left-1/2 -translate-x-1/2 rounded-full bg-primary border-2 border-white shadow-lg flex items-center justify-center"
+            className="absolute left-1/2 -translate-x-1/2 rounded-full bg-primary border-2 border-white/20 shadow-[0_0_20px_var(--color-primary)] flex items-center justify-center"
           >
              {/* Inner Glow */}
-             <div className="w-[60%] h-[60%] rounded-full bg-white/20 blur-sm" />
+             <div className="w-[60%] h-[60%] rounded-full bg-white/30 blur-sm" />
           </div>
         </motion.div>
       </div>
 
       {/* Trajectory Arc (Ghost) */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-10">
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.05]">
          <circle 
            cx="50%" 
            cy="20%" 
@@ -120,21 +120,21 @@ export const PendulumCanvas: React.FC<Readonly<PendulumCanvasProps>> = ({
 
       {/* Telemetry Displacement Line */}
       <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-         <div className="flex items-center gap-12 w-[400px] justify-between text-[10px] font-bold text-foreground/40 uppercase tracking-widest">
+         <div className="flex items-center gap-12 w-[400px] justify-between text-[10px] font-bold text-white/40 uppercase tracking-widest">
             <span>-90°</span>
             <span className="text-primary">0°</span>
             <span>+90°</span>
          </div>
-         <div className="w-[400px] h-1.5 bg-gray-100 rounded-full border border-border relative overflow-hidden">
+         <div className="w-[400px] h-1.5 bg-black/40 rounded-full border border-white/5 relative overflow-hidden">
             <motion.div 
               animate={{ left: `${50 + ((angle * 180) / Math.PI / 180) * 100}%` }}
-              className="absolute top-0 w-1 h-full bg-primary shadow-sm"
+              className="absolute top-0 w-1 h-full bg-primary shadow-[0_0_8px_var(--color-primary)]"
             />
          </div>
       </div>
 
       {/* Decorative Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-primary/5 rounded-full blur-[150px] -z-10" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-primary/10 rounded-full blur-[150px] -z-10" />
     </div>
   );
 };

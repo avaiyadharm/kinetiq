@@ -29,9 +29,14 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
     <div className="flex flex-col gap-8 h-full">
       {/* Length Slider */}
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-white">String Length (L)</Label>
-          <span className="text-primary font-mono text-sm font-bold bg-primary/10 px-2 py-0.5 rounded border border-primary/20">{length.toFixed(1)}m</span>
+        <div className="flex justify-between items-center group/value">
+          <Label className="text-sm font-bold text-white/70 group-hover/value:text-white transition-colors cursor-default">String Length (L)</Label>
+          <div className="flex items-center gap-2 cursor-pointer hover:scale-110 transition-all active:scale-95 group/badge">
+            <span className="text-primary font-mono text-sm font-bold bg-primary/10 px-2 py-0.5 rounded border border-primary/30 flex items-center gap-1.5 shadow-[0_0_15px_rgba(37,99,235,0.1)] group-hover/badge:bg-primary/20 group-hover/badge:border-primary/50 transition-colors">
+              {length.toFixed(1)}m
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            </span>
+          </div>
         </div>
         <Slider 
           value={[length]} 
@@ -45,9 +50,14 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
 
       {/* Mass Slider */}
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-white">Bob Mass (m)</Label>
-          <span className="text-success font-mono text-sm font-bold bg-success/10 px-2 py-0.5 rounded border border-success/20">{mass.toFixed(1)}kg</span>
+        <div className="flex justify-between items-center group/value">
+          <Label className="text-sm font-bold text-white/70 group-hover/value:text-white transition-colors cursor-default">Bob Mass (m)</Label>
+          <div className="flex items-center gap-2 cursor-pointer hover:scale-110 transition-all active:scale-95 group/badge">
+            <span className="text-success font-mono text-sm font-bold bg-success/10 px-2 py-0.5 rounded border border-success/30 flex items-center gap-1.5 shadow-[0_0_15px_rgba(34,197,94,0.1)] group-hover/badge:bg-success/20 group-hover/badge:border-success/50 transition-colors">
+              {mass.toFixed(1)}kg
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+            </span>
+          </div>
         </div>
         <Slider 
           value={[mass]} 
@@ -61,9 +71,14 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
 
       {/* Gravity Slider */}
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-white">Gravity (g)</Label>
-          <span className="text-amber-500 font-mono text-sm font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{gravity.toFixed(1)} m/s²</span>
+        <div className="flex justify-between items-center group/value">
+          <Label className="text-sm font-bold text-white/70 group-hover/value:text-white transition-colors cursor-default">Gravity (g)</Label>
+          <div className="flex items-center gap-2 cursor-pointer hover:scale-110 transition-all active:scale-95 group/badge">
+            <span className="text-amber-500 font-mono text-sm font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 flex items-center gap-1.5 shadow-[0_0_15px_rgba(245,158,11,0.1)] group-hover/badge:bg-amber-500/20 group-hover/badge:border-amber-500/50 transition-colors">
+              {gravity.toFixed(1)} m/s²
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            </span>
+          </div>
         </div>
         <Slider 
           value={[gravity]} 
@@ -82,9 +97,14 @@ export const PendulumControlPanel: React.FC<Readonly<PendulumControlPanelProps>>
 
       {/* Friction Slider */}
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <Label className="text-sm font-bold text-white">Damping (Friction)</Label>
-          <span className="text-red-500 font-mono text-sm font-bold bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">{(friction * 100).toFixed(0)}%</span>
+        <div className="flex justify-between items-center group/value">
+          <Label className="text-sm font-bold text-white/70 group-hover/value:text-white transition-colors cursor-default">Damping (Friction)</Label>
+          <div className="flex items-center gap-2 cursor-pointer hover:scale-110 transition-all active:scale-95 group/badge">
+            <span className="text-red-500 font-mono text-sm font-bold bg-red-500/10 px-2 py-0.5 rounded border border-red-500/30 flex items-center gap-1.5 shadow-[0_0_15px_rgba(239,68,68,0.1)] group-hover/badge:bg-red-500/20 group-hover/badge:border-red-500/50 transition-colors">
+              {(friction * 100).toFixed(0)}%
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            </span>
+          </div>
         </div>
         <Slider 
           value={[friction]} 

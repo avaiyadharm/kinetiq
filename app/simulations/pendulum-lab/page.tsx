@@ -26,9 +26,9 @@ export default function PendulumLabPage() {
 
   return (
     <SimulationPageLayout title="Pendulum Lab">
-      <div className="flex-1 flex overflow-hidden bg-gray-50/30">
+      <div className="flex-1 flex overflow-hidden bg-[#09090b]">
         {/* Simulation Area */}
-        <div className="flex-1 relative bg-gray-100/30 border-r border-border">
+        <div className="flex-1 relative bg-black/20 border-r border-white/5">
           <PendulumCanvas 
             length={length}
             mass={mass}
@@ -43,7 +43,7 @@ export default function PendulumLabPage() {
             <div className="flex items-center gap-4 pointer-events-auto">
               <button 
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-90 ${
+                className={`w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 ${
                   isPlaying ? "bg-red-500 text-white" : "bg-primary text-white"
                 }`}
               >
@@ -51,20 +51,20 @@ export default function PendulumLabPage() {
               </button>
               <button 
                 onClick={resetSimulation}
-                className="w-12 h-12 rounded-full bg-white border border-border flex items-center justify-center text-foreground/40 hover:text-primary transition-all shadow-md"
+                className="w-12 h-12 rounded-full bg-[#18181b] border border-white/10 flex items-center justify-center text-white/40 hover:text-primary transition-all shadow-xl"
               >
                 <RotateCcw className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex items-center gap-3 pointer-events-auto bg-white/90 backdrop-blur-md px-6 py-4 rounded-2xl border border-border shadow-xl">
+            <div className="flex items-center gap-3 pointer-events-auto bg-[#18181b]/80 backdrop-blur-xl px-6 py-4 rounded-2xl border border-white/10 shadow-2xl">
                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Angular Displacement</span>
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Angular Displacement</span>
                   <span className="text-xl font-mono font-bold text-primary">{currentAngle.toFixed(2)}°</span>
                </div>
-               <div className="w-[1px] h-8 bg-border mx-2" />
+               <div className="w-[1px] h-8 bg-white/5 mx-2" />
                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Period (T)</span>
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Period (T)</span>
                   <span className="text-xl font-mono font-bold text-success">{(2 * Math.PI * Math.sqrt(length / gravity)).toFixed(2)}s</span>
                </div>
             </div>
@@ -79,17 +79,17 @@ export default function PendulumLabPage() {
                 exit={{ opacity: 0, x: 20 }}
                 className="absolute top-8 right-8 w-64 flex flex-col gap-4 pointer-events-none"
               >
-                <div className="bg-white/90 backdrop-blur-md p-4 rounded-xl border border-border shadow-lg pointer-events-auto">
+                <div className="bg-[#18181b]/80 backdrop-blur-xl p-4 rounded-xl border border-white/10 shadow-2xl pointer-events-auto">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold text-foreground uppercase tracking-widest flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2">
                       <BarChart2 className="w-3 h-3 text-primary" /> Energy Distribution
                     </span>
                   </div>
                   <div className="h-24 w-full flex items-end gap-1 px-1">
                      {/* Dummy bar chart */}
-                     <div className="flex-1 bg-primary/10 border-t-2 border-primary rounded-t-sm" style={{ height: '80%' }} />
-                     <div className="flex-1 bg-success/10 border-t-2 border-success rounded-t-sm" style={{ height: '40%' }} />
-                     <div className="flex-1 bg-amber-400/10 border-t-2 border-amber-400 rounded-t-sm" style={{ height: '60%' }} />
+                     <div className="flex-1 bg-primary/20 border-t-2 border-primary rounded-t-sm" style={{ height: '80%' }} />
+                     <div className="flex-1 bg-success/20 border-t-2 border-success rounded-t-sm" style={{ height: '40%' }} />
+                     <div className="flex-1 bg-amber-400/20 border-t-2 border-amber-400 rounded-t-sm" style={{ height: '60%' }} />
                   </div>
                 </div>
               </motion.div>
@@ -98,10 +98,10 @@ export default function PendulumLabPage() {
         </div>
 
         {/* Sidebar Controls */}
-        <div className="w-[400px] bg-white p-8 overflow-y-auto shadow-sm">
+        <div className="w-[400px] bg-[#09090b] p-8 overflow-y-auto shadow-2xl border-l border-white/5">
           <div className="flex items-center gap-3 mb-10">
             <Settings className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold text-foreground font-display">Experiment Parameters</h2>
+            <h2 className="text-lg font-bold text-white font-display">Experiment Parameters</h2>
           </div>
           
           <PendulumControlPanel 
@@ -117,12 +117,12 @@ export default function PendulumLabPage() {
             setShowGraphs={setShowGraphs}
           />
 
-          <div className="mt-12 p-6 rounded-2xl bg-primary/5 border border-primary/10">
+          <div className="mt-12 p-6 rounded-2xl bg-primary/10 border border-primary/20">
             <div className="flex items-center gap-2 text-primary mb-3">
-              <Info className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-wider">Physics Tip</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="text-xs font-bold uppercase tracking-wider">Physics Insight</span>
             </div>
-            <p className="text-xs text-foreground/60 leading-relaxed italic">
+            <p className="text-xs text-white/60 leading-relaxed italic">
               "The period of a simple pendulum is independent of its mass and amplitude (for small angles)."
             </p>
           </div>
