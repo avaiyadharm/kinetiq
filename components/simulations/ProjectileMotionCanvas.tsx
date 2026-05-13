@@ -7,6 +7,7 @@ interface ProjectileMotionCanvasProps {
   velocity: number;
   mass: number;
   airResistance: boolean;
+  gravity: number;
   isPlaying: boolean;
   showPath: boolean;
   onUpdateStats?: (stats: { time: number; range: number; maxHeight: number }) => void;
@@ -31,6 +32,7 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
   velocity, 
   mass, 
   airResistance, 
+  gravity,
   isPlaying, 
   showPath,
   onUpdateStats,
@@ -39,17 +41,18 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const accumulatorRef = useRef<number>(0);
   
   const [projectile, setProjectile] = useState<Projectile | null>(null);
   const [simTime, setSimTime] = useState(0);
   const [maxH, setMaxH] = useState(0);
 
   // Simulation Constants
-  const gravity = 9.81;
-  const k = 0.1; // Drag constant
-  const scale = 20; // meters to pixels
+  const k = 0.1; 
+  const scale = 20; 
   const barrelLengthMeters = 2.5; 
   const startXMeters = 3; 
+  const PHYSICS_DT = 0.001; // 1000Hz for high precision
 
   const muzzleOffset = useMemo(() => {
     const rad = (angle * Math.PI) / 180;
@@ -61,15 +64,17 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
 
   const launch = () => {
     const rad = (angle * Math.PI) / 180;
-    setProjectile({
+    const initialProjectile = {
       x: muzzleOffset.x,
       y: muzzleOffset.y,
       vx: velocity * Math.cos(rad),
       vy: velocity * Math.sin(rad),
       path: [{ x: muzzleOffset.x, y: muzzleOffset.y }]
-    });
+    };
+    setProjectile(initialProjectile);
     setSimTime(0);
     setMaxH(muzzleOffset.y);
+    accumulatorRef.current = 0;
   };
 
   useEffect(() => {
@@ -88,58 +93,96 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
     }
   }, [isPlaying, muzzleOffset]);
 
-  const updatePhysics = (dt: number) => {
-    if (!projectile || !isPlaying) return false;
+  // Use refs for internal state to avoid stale closures in the high-frequency loop
+  const projectileRef = useRef<Projectile | null>(null);
+  const simTimeRef = useRef<number>(0);
+  const maxHRef = useRef<number>(0);
+
+  useEffect(() => {
+    projectileRef.current = projectile;
+  }, [projectile]);
+
+  useEffect(() => {
+    simTimeRef.current = simTime;
+  }, [simTime]);
+
+  useEffect(() => {
+    maxHRef.current = maxH;
+  }, [maxH]);
+
+  const stepPhysics = () => {
+    const p = projectileRef.current;
+    if (!p) return false;
 
     let ax = 0;
     let ay = -gravity;
 
     if (airResistance) {
-      ax -= (k * projectile.vx) / mass;
-      ay -= (k * projectile.vy) / mass;
+      ax -= (k * p.vx) / mass;
+      ay -= (k * p.vy) / mass;
     }
 
-    const nextVx = projectile.vx + ax * dt;
-    const nextVy = projectile.vy + ay * dt;
-    const nextX = projectile.x + nextVx * dt;
-    const nextY = projectile.y + nextVy * dt;
+    const nextVx = p.vx + ax * PHYSICS_DT;
+    const nextVy = p.vy + ay * PHYSICS_DT;
+    const nextX = p.x + nextVx * PHYSICS_DT;
+    const nextY = p.y + nextVy * PHYSICS_DT;
 
-    const nextPath = [...projectile.path, { x: nextX, y: nextY }];
-    
-    const currentMaxH = Math.max(maxH, nextY);
-    setMaxH(currentMaxH);
-    setSimTime(prev => prev + dt);
-
-    if (onUpdateStats) {
-      onUpdateStats({
-        time: simTime + dt,
-        range: nextX,
-        maxHeight: currentMaxH
-      });
-    }
+    simTimeRef.current += PHYSICS_DT;
+    maxHRef.current = Math.max(maxHRef.current, nextY);
 
     if (nextY <= 0 && nextVy < 0) {
-      setProjectile({
-        ...projectile,
-        x: nextX,
-        y: 0,
-        vx: 0,
-        vy: 0,
-        path: nextPath
-      });
-      if (onSimulationEnd) onSimulationEnd();
+      projectileRef.current = { ...p, x: nextX, y: 0, vx: 0, vy: 0, path: [...p.path, { x: nextX, y: 0 }] };
       return false;
     }
 
-    setProjectile({
+    projectileRef.current = {
       x: nextX,
       y: nextY,
       vx: nextVx,
       vy: nextVy,
-      path: nextPath
-    });
-    
+      path: [...p.path, { x: nextX, y: nextY }]
+    };
     return true;
+  };
+
+  const animate = (time: number) => {
+    if (lastTimeRef.current !== 0) {
+      const frameDt = (time - lastTimeRef.current) / 1000;
+      accumulatorRef.current += Math.min(frameDt, 0.1); // Cap to 100ms to avoid spiral of death
+
+      let isStillFlying = true;
+      while (accumulatorRef.current >= PHYSICS_DT) {
+        isStillFlying = stepPhysics();
+        accumulatorRef.current -= PHYSICS_DT;
+        if (!isStillFlying) break;
+      }
+
+      // Batch state updates after the sub-stepping loop
+      if (projectileRef.current) {
+        setProjectile(projectileRef.current);
+        setSimTime(simTimeRef.current);
+        setMaxH(maxHRef.current);
+        
+        if (onUpdateStats) {
+          onUpdateStats({
+            time: simTimeRef.current,
+            range: projectileRef.current.x,
+            maxHeight: maxHRef.current
+          });
+        }
+      }
+
+      if (!isStillFlying) {
+        if (onSimulationEnd) onSimulationEnd();
+        lastTimeRef.current = 0;
+        draw();
+        return;
+      }
+    }
+    
+    lastTimeRef.current = time;
+    draw();
+    requestRef.current = requestAnimationFrame(animate);
   };
 
   const draw = () => {
@@ -219,21 +262,6 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
     }
   };
 
-  const animate = (time: number) => {
-    if (lastTimeRef.current !== 0) {
-      const dt = (time - lastTimeRef.current) / 1000;
-      const cappedDt = Math.min(dt, 0.032); 
-      const continuing = updatePhysics(cappedDt);
-      if (!continuing) {
-        lastTimeRef.current = 0;
-        return;
-      }
-    }
-    lastTimeRef.current = time;
-    draw();
-    requestRef.current = requestAnimationFrame(animate);
-  };
-
   useEffect(() => {
     if (isPlaying && projectile && projectile.vx !== 0) {
       requestRef.current = requestAnimationFrame(animate);
@@ -268,12 +296,7 @@ export const ProjectileMotionCanvas: React.FC<Readonly<ProjectileMotionCanvasPro
            {[0, 10, 20, 30, 40, 50, 60, 70, 80].map(m => <span key={m}>{m}m</span>)}
         </div>
       </div>
-
-      <canvas 
-        ref={canvasRef} 
-        className="absolute inset-0 w-full h-full z-20"
-      />
-
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-20" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-blue-500/5 rounded-full blur-[150px] -z-10" />
     </div>
   );

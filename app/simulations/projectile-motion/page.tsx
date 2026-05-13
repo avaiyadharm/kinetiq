@@ -11,6 +11,7 @@ export default function ProjectileMotionPage() {
   const [angle, setAngle] = useState(45);
   const [velocity, setVelocity] = useState(15);
   const [mass, setMass] = useState(10);
+  const [gravity, setGravity] = useState(9.81);
   const [airResistance, setAirResistance] = useState(false);
   const [showPath, setShowPath] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -92,6 +93,7 @@ export default function ProjectileMotionPage() {
             angle={angle} 
             velocity={velocity} 
             mass={mass}
+            gravity={gravity}
             airResistance={airResistance}
             isPlaying={isPlaying}
             showPath={showPath}
@@ -139,6 +141,7 @@ export default function ProjectileMotionPage() {
               angle={angle} setAngle={setAngle}
               velocity={velocity} setVelocity={setVelocity}
               mass={mass} setMass={setMass}
+              gravity={gravity} setGravity={setGravity}
               airResistance={airResistance} setAirResistance={setAirResistance}
               showPath={showPath} setShowPath={setShowPath}
             />
@@ -150,8 +153,8 @@ export default function ProjectileMotionPage() {
               <BarChart2 className="w-4 h-4 text-success" />
               Trajectory Analysis
             </h3>
-            <div className="h-[calc(100%-40px)] w-full">
-              <TrajectoryGraph angle={angle} velocity={velocity} />
+            <div className="flex-1 min-h-[200px]">
+              <TrajectoryGraph angle={angle} velocity={velocity} gravity={gravity} />
             </div>
           </section>
 
