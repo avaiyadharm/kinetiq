@@ -129,9 +129,9 @@ export const TrajectoryGraph: React.FC<Readonly<TrajectoryGraphProps>> = ({ angl
             >
               <circle cx={data.endX} cy={data.groundY} r="1" fill="#f59e0b" />
               <text 
-                x={data.endX} 
+                x={data.endX + 1} 
                 y={data.groundY + 8} 
-                textAnchor="middle" 
+                textAnchor="end" 
                 className="text-[5px] fill-amber-500 font-bold"
               >
                 Range: {data.range.toFixed(1)}m

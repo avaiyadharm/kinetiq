@@ -6,12 +6,21 @@ import { ArrowLeft, LayoutGrid, Info, Settings, RotateCcw, Share2, HelpCircle } 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
+export type TabType = "canvas" | "config" | "theory" | "guide";
+
 interface SimulationPageLayoutProps {
   title: string;
   children: React.ReactNode;
+  activeTab?: TabType;
+  onTabChange?: (tab: TabType) => void;
 }
 
-export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>> = ({ title, children }) => {
+export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>> = ({ 
+  title, 
+  children,
+  activeTab = "canvas",
+  onTabChange
+}) => {
   return (
     <div className="flex h-screen w-full bg-[#09090b] overflow-hidden text-white font-sans antialiased selection:bg-primary/30">
       {/* Sidebar */}
@@ -30,19 +39,51 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
 
         <nav className="flex-1 px-4 py-8 space-y-2">
           <div className="text-[10px] font-bold text-white/20 uppercase tracking-[0.3em] px-4 mb-6">Core Modules</div>
-          <button className="w-full flex items-center gap-3 px-4 py-4 bg-primary text-white rounded-xl font-bold text-sm border border-primary shadow-lg shadow-primary/20 transition-all">
+          <button 
+            onClick={() => onTabChange?.("canvas")}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+              activeTab === "canvas" 
+                ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                : "text-white/60 hover:text-primary hover:bg-primary/10"
+            )}
+          >
             <LayoutGrid className="w-4.5 h-4.5" /> 
             Simulation Canvas
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-4 text-white/60 hover:text-primary hover:bg-primary/10 rounded-xl font-bold text-sm transition-all group">
-            <Settings className="w-4.5 h-4.5 group-hover:rotate-45 transition-transform" /> 
+          <button 
+            onClick={() => onTabChange?.("config")}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all group",
+              activeTab === "config" 
+                ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                : "text-white/60 hover:text-primary hover:bg-primary/10"
+            )}
+          >
+            <Settings className={cn("w-4.5 h-4.5 group-hover:rotate-45 transition-transform", activeTab === "config" ? "rotate-45" : "")} /> 
             Environment Config
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-4 text-white/60 hover:text-primary hover:bg-primary/10 rounded-xl font-bold text-sm transition-all group">
+          <button 
+            onClick={() => onTabChange?.("theory")}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+              activeTab === "theory" 
+                ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                : "text-white/60 hover:text-primary hover:bg-primary/10"
+            )}
+          >
             <Info className="w-4.5 h-4.5" /> 
             Theoretical Basis
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-4 text-white/60 hover:text-primary hover:bg-primary/10 rounded-xl font-bold text-sm transition-all group">
+          <button 
+            onClick={() => onTabChange?.("guide")}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+              activeTab === "guide" 
+                ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                : "text-white/60 hover:text-primary hover:bg-primary/10"
+            )}
+          >
             <HelpCircle className="w-4.5 h-4.5" /> 
             User Guide
           </button>
