@@ -5,6 +5,9 @@ import { SimulationPageLayout, TabType } from "@/components/simulations/Simulati
 import { InertiaDemo } from "@/components/simulations/newtons-laws/InertiaDemo";
 import { ForceAccelerationDemo } from "@/components/simulations/newtons-laws/ForceAccelerationDemo";
 import { ActionReactionDemo } from "@/components/simulations/newtons-laws/ActionReactionDemo";
+import { EnvironmentConfig } from "@/components/simulations/newtons-laws/EnvironmentConfig";
+import { TheoreticalBasis } from "@/components/simulations/newtons-laws/TheoreticalBasis";
+import { UserGuide } from "@/components/simulations/newtons-laws/UserGuide";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, Gauge, Rocket, Info, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -163,89 +166,9 @@ export default function NewtonsLawsPage() {
     </div>
   );
 
-  const renderConfig = () => (
-    <div className="p-12 max-w-4xl space-y-12 animate-in fade-in slide-in-from-bottom-4">
-      <div className="space-y-4">
-        <h2 className="text-4xl font-bold tracking-tight">Environmental Config</h2>
-        <p className="text-white/40 text-lg">Simulation Engine: Newton-III (v2.0)</p>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white/5 p-8 rounded-[32px] border border-white/10 space-y-4">
-          <h4 className="text-sm font-bold text-primary uppercase tracking-widest">Global Constants</h4>
-          <ul className="space-y-3 text-sm text-white/60 font-mono">
-            <li>g = 9.8 m/s² (Earth Standard)</li>
-            <li>Thrust = 800 N (Peak)</li>
-            <li>Mass Range = 5kg - 50kg</li>
-          </ul>
-        </div>
-        <div className="bg-white/5 p-8 rounded-[32px] border border-white/10 space-y-4">
-          <h4 className="text-sm font-bold text-primary uppercase tracking-widest">Engine Pipeline</h4>
-          <ul className="space-y-3 text-sm text-white/60">
-            <li>Solver: Semi-implicit Euler @ 60Hz</li>
-            <li>Rendering: GPU CSS3 + HTML5 Canvas</li>
-            <li>Telemetry: Zero-Render Direct DOM</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderTheory = () => (
-    <div className="p-12 max-w-4xl space-y-12 animate-in fade-in slide-in-from-bottom-4">
-      <div className="space-y-4">
-        <h2 className="text-4xl font-bold tracking-tight">Theoretical Basis</h2>
-        <p className="text-white/40 text-lg">Foundation of Classical Mechanics</p>
-      </div>
-
-      <div className="space-y-8 text-white/70 leading-relaxed">
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white">1. The Third Law of Motion</h3>
-          <p>
-            "For every action, there is an equal and opposite reaction." In this laboratory session, we examine the reactive properties of mass when subjected to directional force vectors.
-          </p>
-        </section>
-
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white">2. The Momentum Principal</h3>
-          <p>
-            The simulation demonstrates that even after thrust cutoff (F{"_{thrust}"} = 0), objects preserve their inertial state. The rocket's momentum (p = mv) must be overcome by external forces (Gravity) over time to reach a state of rest.
-          </p>
-        </section>
-
-        <div className="p-8 bg-primary/5 rounded-[32px] border border-primary/20">
-          <p className="text-primary font-bold text-lg mb-2">Equation of Motion</p>
-          <code className="text-2xl font-mono text-white">a = (F_thrust - mg) / m</code>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderGuide = () => (
-    <div className="p-12 max-w-4xl space-y-12 animate-in fade-in slide-in-from-bottom-4">
-      <div className="space-y-4">
-        <h2 className="text-4xl font-bold tracking-tight">User Guide</h2>
-        <p className="text-white/40 text-lg">Interactive Training Protocol</p>
-      </div>
-
-      <div className="grid gap-6">
-        {[
-          { step: "01", title: "Parameter Calibration", desc: "Adjust the mass slider to observe how inertia scales with payload weight." },
-          { step: "02", title: "Ignition Control", desc: "Click and hold the primary thruster button to apply reaction force vectors." },
-          { step: "03", title: "Trajectory Analysis", desc: "Monitor the altitude and velocity meters during the coasting phase to understand momentum." },
-          { step: "04", title: "Telemetry Audit", desc: "Review the Net Force Analysis panel to see how gravity and thrust interact in real-time." },
-        ].map((item) => (
-          <div key={item.step} className="flex gap-6 items-start p-6 bg-white/5 rounded-2xl border border-white/5 hover:border-white/20 transition-all">
-            <span className="text-2xl font-black text-primary/20">{item.step}</span>
-            <div className="space-y-1">
-              <h4 className="font-bold text-white">{item.title}</h4>
-              <p className="text-sm text-white/40">{item.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  const renderConfig = () => <EnvironmentConfig />;
+  const renderTheory = () => <TheoreticalBasis />;
+  const renderGuide = () => <UserGuide />;
 
   return (
     <SimulationPageLayout 

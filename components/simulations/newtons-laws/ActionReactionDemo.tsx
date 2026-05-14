@@ -15,6 +15,7 @@ export const ActionReactionDemo: React.FC = () => {
   // Refs for high-performance updates
   const containerRef = useRef<HTMLDivElement>(null);
   const skyRef = useRef<HTMLDivElement>(null);
+  const groundRef = useRef<HTMLDivElement>(null);
   const altRef = useRef<HTMLSpanElement>(null);
   const velRef = useRef<HTMLSpanElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
@@ -24,6 +25,8 @@ export const ActionReactionDemo: React.FC = () => {
   // High-performance DOM refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const visualizerRef = useRef<HTMLDivElement>(null);
+  const flameRef = useRef<HTMLDivElement>(null);
+  const flameCoreRef = useRef<HTMLDivElement>(null);
   const motionVectorRef = useRef<HTMLDivElement>(null);
 
   // Physics State Refs
@@ -129,13 +132,20 @@ export const ActionReactionDemo: React.FC = () => {
 
       // Parallax Stars
       if (skyRef.current) {
-        skyRef.current.style.transform = `translate3d(0, ${(alt * 10) % 1000}px, 0)`;
+        skyRef.current.style.transform = `translate3d(0, ${(alt * 15) % 1000}px, 0)`;
       }
 
       // Rocket Movement
-      if (rocketRef.current) {
+      if (rocketRef.current && visualizerRef.current?.parentElement) {
         const vShake = isIgnitedRef.current ? (Math.random() - 0.5) * 4 : 0;
-        const visualY = alt > 200 ? 0 : -Math.min(alt * 1.5, 300);
+        
+        // Calculate max allowed height based on container
+        const viewportHeight = visualizerRef.current.parentElement.clientHeight;
+        const rocketHeight = rocketRef.current.clientHeight;
+        const safeMargin = 100; // Keep 100px from the top
+        const maxClampedY = viewportHeight - rocketHeight - safeMargin;
+        
+        const visualY = -Math.min(alt * 2, Math.max(0, maxClampedY)); 
         rocketRef.current.style.transform = `translate3d(${vShake}px, ${visualY + vShake}px, 0)`;
         
         const vanesUp = rocketRef.current.querySelectorAll('.vane-up');
@@ -146,6 +156,18 @@ export const ActionReactionDemo: React.FC = () => {
 
         vanesUp.forEach(v => (v as HTMLElement).style.opacity = isAscending ? "1" : "0.05");
         vanesDown.forEach(v => (v as HTMLElement).style.opacity = isDescending ? "1" : "0.05");
+
+        // Flame Animation
+        if (flameRef.current && flameCoreRef.current) {
+          if (isIgnitedRef.current) {
+            const flicker = 0.8 + Math.random() * 0.4;
+            flameRef.current.style.opacity = "1";
+            flameRef.current.style.transform = `scale(${flicker})`;
+            flameCoreRef.current.style.transform = `scaleY(${1.2 + Math.random() * 0.5})`;
+          } else {
+            flameRef.current.style.opacity = "0";
+          }
+        }
       }
 
       // Camera Shake
@@ -299,6 +321,8 @@ export const ActionReactionDemo: React.FC = () => {
                 <ArrowDown className="vane-down w-8 h-8 text-[#ff85a2] opacity-10 transition-opacity" />
              </div>
           </div>
+          
+          {/* Grid Overlay */}
 
           {/* The Rocket */}
           <div ref={rocketRef} className="relative z-10 w-24 h-48 flex flex-col items-center will-change-transform">
@@ -314,11 +338,15 @@ export const ActionReactionDemo: React.FC = () => {
                 {/* Engine Nozzle */}
                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-10 h-4 bg-zinc-700 rounded-full" />
                 
-                {/* Engine Glow */}
-                <div className={cn(
-                  "absolute -bottom-12 left-1/2 -translate-x-1/2 w-20 h-20 bg-orange-500 blur-3xl transition-opacity duration-300 pointer-events-none",
-                  isPressed ? "opacity-100" : "opacity-0"
-                )} />
+                {/* Engine Flame */}
+                <div ref={flameRef} className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-12 h-32 flex flex-col items-center opacity-0 pointer-events-none will-change-transform z-0">
+                   {/* Outer Glow */}
+                   <div className="absolute inset-0 bg-gradient-to-t from-transparent via-orange-500/40 to-orange-400 rounded-full blur-2xl" />
+                   {/* Mid Flame */}
+                   <div className="absolute top-0 w-8 h-24 bg-gradient-to-t from-transparent via-orange-500 to-yellow-300 rounded-full blur-md" />
+                   {/* Core Flame */}
+                   <div ref={flameCoreRef} className="absolute top-0 w-4 h-16 bg-white rounded-full blur-[2px] origin-top" />
+                </div>
              </div>
              
              {/* Canvas Particles */}
@@ -377,9 +405,9 @@ export const ActionReactionDemo: React.FC = () => {
               )}
             >
                <div className="relative z-10 flex items-center justify-center gap-4 pointer-events-none">
-                  <Flame className={cn("w-6 h-6", isPressed && "animate-bounce text-orange-300")} />
                   {isPressed ? "THRUST ACTIVE" : "HOLD TO IGNITE"}
                </div>
+               
                {isPressed && (
                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
                )}
