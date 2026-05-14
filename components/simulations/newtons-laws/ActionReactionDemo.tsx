@@ -2,43 +2,84 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowDown, ArrowUp, Flame, Rocket as RocketIcon, TrendingUp, RefreshCcw } from "lucide-react";
+import { ArrowDown, ArrowUp, Flame, Rocket as RocketIcon, TrendingUp, RefreshCcw, Activity, Info, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ClickableValue } from "./shared";
+
+// --- Types & Constants ---
+type FlightState = "LANDED" | "POWERED ASCENT" | "COASTING UPWARD" | "APEX" | "DESCENDING";
+
+const G = 9.8;
+const MAX_DATA_POINTS = 100;
+
+// --- Helper Components ---
+
+const LiveGraph = ({ data, label, color, min, max, unit }: { data: number[], label: string, color: string, min: number, max: number, unit: string }) => {
+  const points = data.map((v, i) => {
+    const x = (i / (MAX_DATA_POINTS - 1)) * 100;
+    const y = 100 - ((v - min) / (max - min)) * 100;
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col gap-2 flex-1 min-w-[120px]">
+      <div className="flex justify-between items-center">
+        <span className="text-[8px] font-black uppercase tracking-widest text-white/40">{label}</span>
+        <span className="text-[10px] font-mono text-white/60">{data[data.length - 1]?.toFixed(1)}{unit}</span>
+      </div>
+      <div className="h-12 w-full relative overflow-hidden">
+        <svg viewBox="0 0 100 100" className="w-full h-full preserve-3d" preserveAspectRatio="none">
+          <polyline
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            points={points}
+            className="transition-all duration-100"
+          />
+        </svg>
+      </div>
+    </div>
+  );
+};
 
 export const ActionReactionDemo: React.FC = () => {
   // User Inputs
   const [mass, setMass] = useState(15);
-  // Interaction State
-  const [isPressed, setIsPressed] = useState(false); // Only for button UI
+  const [isPressed, setIsPressed] = useState(false);
 
   // Refs for high-performance updates
   const containerRef = useRef<HTMLDivElement>(null);
   const skyRef = useRef<HTMLDivElement>(null);
-  const groundRef = useRef<HTMLDivElement>(null);
   const altRef = useRef<HTMLSpanElement>(null);
   const velRef = useRef<HTMLSpanElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const rocketRef = useRef<HTMLDivElement>(null);
   const netForceRef = useRef<HTMLDivElement>(null);
+  const interpretRef = useRef<HTMLDivElement>(null);
   
-  // High-performance DOM refs
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Visual Refs
   const visualizerRef = useRef<HTMLDivElement>(null);
   const flameRef = useRef<HTMLDivElement>(null);
   const flameCoreRef = useRef<HTMLDivElement>(null);
-  const motionVectorRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Physics State Refs
   const altitudeRef = useRef(0);
   const velocityRef = useRef(0);
   const lastTimeRef = useRef(0);
-  const currentThrustRef = useRef(0);
   const isIgnitedRef = useRef(false);
-  const thrustPowerRef = useRef(800);
+  const thrustPowerRef = useRef(250); // Improved scaling
+
+  // Graph Data States (React states for graph re-renders, but throttled)
+  const [graphs, setGraphs] = useState({
+    alt: [] as number[],
+    vel: [] as number[],
+    acc: [] as number[]
+  });
 
   useEffect(() => {
     let animationFrame: number;
+    let lastGraphUpdate = 0;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     const particles: { x: number; y: number; vy: number; vx: number; life: number; color: string }[] = [];
@@ -48,153 +89,138 @@ export const ActionReactionDemo: React.FC = () => {
       const dt = Math.min((time - lastTimeRef.current) / 1000, 0.016);
       lastTimeRef.current = time;
 
-      const g = 9.8;
-      const weight = mass * g;
+      // --- Physics Core ---
+      const weight = mass * G;
       const thrust = isIgnitedRef.current ? thrustPowerRef.current : 0;
-      currentThrustRef.current += (thrust - currentThrustRef.current) * 0.2;
-      
       const netForce = thrust - weight;
       const acceleration = netForce / mass;
 
+      // Update Motion
       velocityRef.current += acceleration * dt;
       altitudeRef.current += velocityRef.current * dt;
       
+      // Ground Collision
       if (altitudeRef.current <= 0) {
         altitudeRef.current = 0;
         if (velocityRef.current < 0) velocityRef.current = 0;
       }
 
-      // Update Telemetry (Direct DOM)
-      const vel = velocityRef.current;
-      const alt = altitudeRef.current;
-      if (altRef.current) altRef.current.innerText = `${alt.toFixed(1)}m`;
-      if (velRef.current) {
-        velRef.current.innerText = `${Math.abs(vel).toFixed(1)}m/s`;
-        velRef.current.style.color = vel > 0.1 ? "#34d399" : vel < -0.1 ? "#ff85a2" : "#ffffff";
-      }
-      
-      if (statusRef.current) {
-        let status = "LANDED";
-        let color = "rgba(255,255,255,0.2)";
+      // --- State Logic ---
+      let status: FlightState = "LANDED";
+      let interpretation = "Rocket is stationary on the launch pad. Forces are balanced by ground support.";
+      let statusColor = "rgba(255,255,255,0.2)";
 
-        if (alt > 0.1) {
-          if (isIgnitedRef.current && netForce > 0) {
-            status = "POWERED ASCENT";
-            color = "#3b82f6";
-          } else if (vel > 0.1) {
-            status = "COASTING UPWARD";
-            color = "#34d399";
-          } else if (Math.abs(vel) <= 0.1) {
-            status = "APEX";
-            color = "#fbbf24";
-          } else {
-            status = "DESCENDING";
-            color = "#ff85a2";
-          }
-        } else if (isIgnitedRef.current && netForce <= 0) {
-          status = "THRUST ACTIVE (STATIC)";
-          color = "#3b82f6";
+      if (altitudeRef.current > 0.1) {
+        if (isIgnitedRef.current) {
+          status = "POWERED ASCENT";
+          interpretation = "ENGINE ACTIVE: Rocket pushes gas down (Action). Gas pushes rocket up (Reaction). Result: Positive Acceleration.";
+          statusColor = "#3b82f6";
+        } else if (velocityRef.current > 0.1) {
+          status = "COASTING UPWARD";
+          interpretation = "THRUST OFF: Engine stopped. Rocket continues rising due to INERTIA. Gravity is decelerating the rocket.";
+          statusColor = "#a855f7";
+        } else if (Math.abs(velocityRef.current) <= 0.1) {
+          status = "APEX";
+          interpretation = "VELOCITY ZERO: Gravity has canceled out upward momentum. Rocket is at maximum altitude.";
+          statusColor = "#fbbf24";
+        } else {
+          status = "DESCENDING";
+          interpretation = "GRAVITY DOMINANT: Rocket is falling. Acceleration is constant -9.8m/s² downward.";
+          statusColor = "#ff85a2";
         }
+      } else if (isIgnitedRef.current && netForce <= 0) {
+        status = "POWERED ASCENT"; // Though it might not move if mass is too high
+        interpretation = "THRUST ACTIVE: Insufficient force to overcome weight. Static equilibrium.";
+      }
 
+      // --- Telemetry Updates (Direct DOM) ---
+      if (altRef.current) altRef.current.innerText = `${altitudeRef.current.toFixed(1)}m`;
+      if (velRef.current) {
+        velRef.current.innerText = `${velocityRef.current.toFixed(1)}m/s`;
+        velRef.current.style.color = velocityRef.current > 0.1 ? "#3b82f6" : velocityRef.current < -0.1 ? "#ff85a2" : "#ffffff";
+      }
+      if (statusRef.current) {
         statusRef.current.innerText = status;
-        statusRef.current.style.color = color;
+        statusRef.current.style.color = statusColor;
+      }
+      if (interpretRef.current) {
+        interpretRef.current.innerText = interpretation;
       }
 
+      // Net Force Analysis Panel
       if (netForceRef.current) {
-         netForceRef.current.innerHTML = `
-            <div class="flex flex-col items-end gap-1">
-               <div class="flex gap-4 text-[10px] font-mono">
-                  <span class="text-[#3b82f6]">F<sub>t</sub>: ${thrust.toFixed(0)}N</span>
-                  <span class="text-[#ff85a2]">W: ${weight.toFixed(1)}N</span>
-               </div>
-               <div class="text-emerald-400 font-bold">${netForce.toFixed(1)}N</div>
-               <div class="text-[9px] text-white/40">a: ${acceleration.toFixed(2)}m/s²</div>
+        netForceRef.current.innerHTML = `
+          <div class="flex flex-col items-end gap-2">
+            <div class="flex gap-4 text-[10px] font-mono">
+              <span class="text-[#3b82f6] ${thrust === 0 ? 'opacity-20' : 'opacity-100'} transition-opacity">F<sub>thrust</sub>: ${thrust.toFixed(0)}N</span>
+              <span class="text-[#ff85a2]">W (mg): ${weight.toFixed(1)}N</span>
             </div>
-         `;
+            <div class="text-white font-black text-xl tracking-tighter">F<sub>net</sub>: <span class="${netForce > 0 ? 'text-[#3b82f6]' : 'text-[#ff85a2]'}">${netForce.toFixed(1)}N</span></div>
+            <div class="text-[10px] font-mono text-white/40">a: ${acceleration.toFixed(2)}m/s²</div>
+          </div>
+        `;
       }
 
-      // Visualizer Visibility (Direct DOM)
+      // --- Visual Logic ---
+      
+      // Action/Reaction Visualizer - ONLY visible during thrust
       if (visualizerRef.current) {
         const targetOpacity = isIgnitedRef.current ? 1 : 0;
         const currentOpacity = parseFloat(visualizerRef.current.style.opacity || "0");
-        visualizerRef.current.style.opacity = (currentOpacity + (targetOpacity - currentOpacity) * 0.1).toString();
+        visualizerRef.current.style.opacity = (currentOpacity + (targetOpacity - currentOpacity) * 0.15).toString();
         visualizerRef.current.style.transform = `translate(-50%, ${isIgnitedRef.current ? 0 : -20}px)`;
-        
-        const eq = visualizerRef.current.querySelector('.equation');
-        if (eq) eq.innerHTML = `F<sub>exhaust</sub> (${thrust.toFixed(0)}N) = -F<sub>thrust</sub>`;
       }
 
-      // Motion Vector (Direct DOM)
-      if (motionVectorRef.current) {
-         motionVectorRef.current.style.height = `${(currentThrustRef.current / thrustPowerRef.current) * 100}%`;
-         motionVectorRef.current.style.backgroundColor = isIgnitedRef.current ? "#3b82f6" : "#4ade80";
+      // Flame & Exhaust - ONLY during thrust
+      if (flameRef.current && flameCoreRef.current) {
+        if (isIgnitedRef.current) {
+          const flicker = 0.8 + Math.random() * 0.4;
+          flameRef.current.style.opacity = "1";
+          flameRef.current.style.transform = `scale(${flicker})`;
+          flameCoreRef.current.style.transform = `scaleY(${1.2 + Math.random() * 0.5})`;
+        } else {
+          flameRef.current.style.opacity = "0";
+        }
       }
 
-      // Parallax Stars
+      // Parallax Background
       if (skyRef.current) {
-        skyRef.current.style.transform = `translate3d(0, ${(alt * 15) % 1000}px, 0)`;
+        skyRef.current.style.transform = `translate3d(0, ${(altitudeRef.current * 2) % 1000}px, 0)`;
       }
 
       // Rocket Movement
-      if (rocketRef.current && visualizerRef.current?.parentElement) {
+      if (rocketRef.current) {
         const vShake = isIgnitedRef.current ? (Math.random() - 0.5) * 4 : 0;
-        
-        // Calculate max allowed height based on container
-        const viewportHeight = visualizerRef.current.parentElement.clientHeight;
-        const rocketHeight = rocketRef.current.clientHeight;
-        const safeMargin = 100; // Keep 100px from the top
-        const maxClampedY = viewportHeight - rocketHeight - safeMargin;
-        
-        const visualY = -Math.min(alt * 2, Math.max(0, maxClampedY)); 
+        const viewportHeight = 400; // estimated
+        const visualY = -Math.min(altitudeRef.current * 0.8, 300); // Scaled for visual clarity
         rocketRef.current.style.transform = `translate3d(${vShake}px, ${visualY + vShake}px, 0)`;
-        
-        const vanesUp = rocketRef.current.querySelectorAll('.vane-up');
-        const vanesDown = rocketRef.current.querySelectorAll('.vane-down');
-        
-        const isAscending = vel > 0.5;
-        const isDescending = vel < -0.5 && alt > 0.1;
-
-        vanesUp.forEach(v => (v as HTMLElement).style.opacity = isAscending ? "1" : "0.05");
-        vanesDown.forEach(v => (v as HTMLElement).style.opacity = isDescending ? "1" : "0.05");
-
-        // Flame Animation
-        if (flameRef.current && flameCoreRef.current) {
-          if (isIgnitedRef.current) {
-            const flicker = 0.8 + Math.random() * 0.4;
-            flameRef.current.style.opacity = "1";
-            flameRef.current.style.transform = `scale(${flicker})`;
-            flameCoreRef.current.style.transform = `scaleY(${1.2 + Math.random() * 0.5})`;
-          } else {
-            flameRef.current.style.opacity = "0";
-          }
-        }
       }
 
       // Camera Shake
       if (containerRef.current) {
-        const cShake = (Math.random() - 0.5) * (thrust / 150);
+        const cShake = isIgnitedRef.current ? (Math.random() - 0.5) * (thrust / 100) : 0;
         containerRef.current.style.transform = `translate3d(0, ${cShake}px, 0)`;
       }
 
-      // Canvas Particles
+      // --- Particle System ---
       if (ctx && canvas) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (thrust > 50) {
-          for (let i = 0; i < Math.floor(thrust / 150); i++) {
+        if (isIgnitedRef.current) {
+          for (let i = 0; i < 3; i++) {
             particles.push({
-              x: canvas.width / 2 + (Math.random() - 0.5) * 30,
+              x: canvas.width / 2 + (Math.random() - 0.5) * 20,
               y: 0,
-              vy: 5 + Math.random() * 10,
-              vx: (Math.random() - 0.5) * 4,
+              vy: 8 + Math.random() * 12,
+              vx: (Math.random() - 0.5) * 6,
               life: 1,
-              color: Math.random() > 0.5 ? "#ff85a2" : "#fbbf24"
+              color: Math.random() > 0.5 ? "#3b82f6" : "#ffffff"
             });
           }
         }
 
         for (let i = particles.length - 1; i >= 0; i--) {
           const p = particles[i];
-          p.life -= 0.03;
+          p.life -= 0.025;
           if (p.life <= 0) {
             particles.splice(i, 1);
             continue;
@@ -204,9 +230,19 @@ export const ActionReactionDemo: React.FC = () => {
           ctx.globalAlpha = p.life;
           ctx.fillStyle = p.color;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.life * 8, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.life * 6, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+
+      // --- Graph Throttled Update ---
+      if (time - lastGraphUpdate > 100) {
+        setGraphs(prev => ({
+          alt: [...prev.alt.slice(-(MAX_DATA_POINTS - 1)), altitudeRef.current],
+          vel: [...prev.vel.slice(-(MAX_DATA_POINTS - 1)), velocityRef.current],
+          acc: [...prev.acc.slice(-(MAX_DATA_POINTS - 1)), acceleration]
+        }));
+        lastGraphUpdate = time;
       }
 
       animationFrame = requestAnimationFrame(update);
@@ -225,9 +261,9 @@ export const ActionReactionDemo: React.FC = () => {
     altitudeRef.current = 0;
     velocityRef.current = 0;
     lastTimeRef.current = 0;
-    currentThrustRef.current = 0;
     isIgnitedRef.current = false;
     setIsPressed(false);
+    setGraphs({ alt: [], vel: [], acc: [] });
   };
 
   return (
@@ -239,9 +275,9 @@ export const ActionReactionDemo: React.FC = () => {
          </div>
       </div>
 
-      <div className="flex-1 flex flex-col p-6 gap-4 z-10">
+      <div className="flex-1 flex flex-col p-4 gap-3 z-10 overflow-y-auto custom-scrollbar">
         {/* Main Viewport */}
-        <div className="flex-1 relative rounded-[30px] bg-gradient-to-b from-[#0a1118] to-[#1a2a3a] border-2 border-white/10 overflow-hidden flex flex-col items-center justify-end pb-24 shadow-inner">
+        <div className="h-[320px] relative rounded-[30px] bg-gradient-to-b from-[#0a1118] to-[#1a2a3a] border-2 border-white/10 overflow-hidden flex flex-col items-center justify-end pb-16 shadow-inner shrink-0">
           <div 
             ref={skyRef}
             className="absolute inset-0 opacity-40 will-change-transform" 
@@ -253,144 +289,134 @@ export const ActionReactionDemo: React.FC = () => {
             }} 
           />
 
-          {/* HUD: Motion Vector */}
-          <div className="absolute top-1/2 left-12 -translate-y-1/2 flex flex-col items-center gap-8 opacity-20">
-             <div className="w-1.5 h-32 bg-white/10 rounded-full relative overflow-hidden">
-                <div ref={motionVectorRef} className="absolute bottom-0 left-0 w-full bg-emerald-400 transition-all duration-75" style={{ height: '0%' }} />
-             </div>
-             <p className="rotate-[-90deg] text-[8px] font-black tracking-widest text-white/40">THRUST VECTOR</p>
-          </div>
-
-          {/* Action-Reaction Visualizer (Zero-Render) */}
-          <div ref={visualizerRef} className="absolute left-1/2 -translate-x-1/2 top-1/4 w-full max-w-md pointer-events-none transition-all duration-300 opacity-0 flex flex-col items-center gap-12">
+          {/* Action-Reaction Visualizer (ONLY during thrust) */}
+          <div ref={visualizerRef} className="absolute left-1/2 -translate-x-1/2 top-1/6 w-full max-w-md pointer-events-none transition-all duration-300 opacity-0 flex flex-col items-center gap-4 z-30">
             <div className="flex items-center gap-24">
-               <div className="flex flex-col items-center">
-                  <ArrowUp className="w-10 h-10 text-[#3b82f6] animate-bounce" />
-                  <span className="text-[9px] font-black text-[#3b82f6] uppercase tracking-[0.3em] bg-black/60 px-3 py-1 rounded-full border border-[#3b82f6]/20">Reaction Force</span>
+               <div className="flex flex-col items-center gap-1">
+                  <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 1 }}>
+                    <ArrowUp className="w-8 h-8 text-[#3b82f6] drop-shadow-[0_0_10px_#3b82f6]" />
+                  </motion.div>
+                  <span className="text-[8px] font-black text-[#3b82f6] uppercase tracking-[0.2em] bg-black/80 px-3 py-1 rounded-full border border-[#3b82f6]/40 shadow-xl">REACTION</span>
                </div>
-               <div className="flex flex-col items-center">
-                  <ArrowDown className="w-10 h-10 text-[#ff85a2] animate-bounce" />
-                  <span className="text-[9px] font-black text-[#ff85a2] uppercase tracking-[0.3em] bg-black/60 px-3 py-1 rounded-full border border-[#ff85a2]/20">Action Force</span>
+               <div className="flex flex-col items-center gap-1">
+                  <motion.div animate={{ y: [0, 5, 0] }} transition={{ repeat: Infinity, duration: 1 }}>
+                    <ArrowDown className="w-8 h-8 text-[#ff85a2] drop-shadow-[0_0_10px_#ff85a2]" />
+                  </motion.div>
+                  <span className="text-[8px] font-black text-[#ff85a2] uppercase tracking-[0.2em] bg-black/80 px-3 py-1 rounded-full border border-[#ff85a2]/40 shadow-xl">ACTION</span>
                </div>
             </div>
-            <div className="equation text-lg font-black text-white/60 tracking-widest uppercase">
-               F<sub>exhaust</sub> = -F<sub>thrust</sub>
-            </div>
-            <div className="text-[10px] text-white/40 uppercase tracking-[0.2em] bg-black/40 px-4 py-2 rounded-full border border-white/5 text-center max-w-xs leading-relaxed">
-               As the rocket pushes exhaust gases downward (Action), the gases push the rocket upward (Reaction) with equal force.
+            <div className="bg-black/80 border border-white/10 px-6 py-2 rounded-full backdrop-blur-xl">
+               <p className="text-sm font-mono font-black text-white tracking-widest uppercase">
+                  F<sub>exhaust</sub> = -F<sub>thrust</sub>
+               </p>
             </div>
           </div>
 
-          {/* Meters */}
-          <div className="absolute top-6 left-6 flex flex-col gap-3">
-            <div className="bg-black/80 backdrop-blur-xl p-4 rounded-2xl border border-white/10 shadow-2xl min-w-[150px]">
-               <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.2em] mb-1">ALTITUDE METER</p>
-               <span ref={altRef} className="text-3xl font-mono font-bold text-emerald-400">0.0m</span>
+          {/* Telemetry HUD */}
+          <div className="absolute top-4 left-4 flex flex-col gap-2 z-30">
+            <div className="bg-black/60 backdrop-blur-md p-3 rounded-xl border border-white/10 min-w-[120px]">
+               <p className="text-[7px] font-black text-white/30 uppercase tracking-[0.2em] mb-0.5">ALTITUDE</p>
+               <span ref={altRef} className="text-2xl font-mono font-bold text-white">0.0m</span>
             </div>
-            <div className="bg-black/80 backdrop-blur-xl p-4 rounded-2xl border border-white/10 shadow-2xl min-w-[150px]">
-               <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.2em] mb-1">VELOCITY VECTOR</p>
-               <span ref={velRef} className="text-3xl font-mono font-bold text-white tracking-tighter">0.0m/s</span>
+            <div className="bg-black/60 backdrop-blur-md p-3 rounded-xl border border-white/10 min-w-[120px]">
+               <p className="text-[7px] font-black text-white/30 uppercase tracking-[0.2em] mb-0.5">VELOCITY</p>
+               <span ref={velRef} className="text-2xl font-mono font-bold text-white">0.0m/s</span>
             </div>
           </div>
 
-          {/* Flight Status */}
-          <div className="absolute top-6 right-6 flex flex-col gap-3">
-            <div className="bg-black/80 backdrop-blur-xl px-6 py-4 rounded-2xl border border-white/10 flex flex-col items-end shadow-2xl">
-               <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em] mb-1">FLIGHT STATUS</p>
-               <span ref={statusRef} className="text-[11px] font-black text-white/20 uppercase tracking-widest">IDLE</span>
+          {/* Flight State HUD */}
+          <div className="absolute top-4 right-4 flex flex-col gap-2 items-end z-30">
+            <div className="bg-black/60 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10 flex flex-col items-end">
+               <p className="text-[7px] font-black text-white/30 uppercase tracking-[0.2em] mb-0.5">SIM STATE</p>
+               <span ref={statusRef} className="text-[10px] font-black uppercase tracking-widest text-white/40">LANDED</span>
             </div>
             <div className={cn(
-              "bg-black/80 backdrop-blur-xl px-4 py-2 rounded-xl border flex items-center gap-3 transition-all duration-300",
-              isPressed ? "border-[#3b82f6]/50 shadow-[0_0_20px_rgba(59,130,246,0.2)]" : "border-white/5 opacity-50"
+              "px-4 py-2 rounded-xl border flex items-center gap-3 transition-all duration-300 backdrop-blur-md",
+              isPressed ? "bg-[#3b82f6]/20 border-[#3b82f6]/50 shadow-lg" : "bg-black/60 border-white/5 opacity-50"
             )}>
-               <div className={cn("w-2 h-2 rounded-full", isPressed ? "bg-[#3b82f6] animate-pulse" : "bg-white/20")} />
-               <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">
-                 THRUST: {isPressed ? "ON" : "OFF"}
+               <Activity className={cn("w-3 h-3", isPressed ? "text-[#3b82f6] animate-pulse" : "text-white/20")} />
+               <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">
+                 THRUST: {isPressed ? "ACTIVE" : "OFF"}
                </span>
             </div>
           </div>
 
-          {/* Directional Vanes */}
-          <div className="absolute left-1/2 -translate-x-1/2 bottom-1/2 w-48 h-64 pointer-events-none flex justify-between items-center z-0">
-             <div className="flex flex-col gap-4 items-center">
-                <ArrowUp className="vane-up w-8 h-8 text-emerald-400 opacity-10 transition-opacity" />
-                <ArrowDown className="vane-down w-8 h-8 text-[#ff85a2] opacity-10 transition-opacity" />
-             </div>
-             <div className="flex flex-col gap-4 items-center">
-                <ArrowUp className="vane-up w-8 h-8 text-emerald-400 opacity-10 transition-opacity" />
-                <ArrowDown className="vane-down w-8 h-8 text-[#ff85a2] opacity-10 transition-opacity" />
-             </div>
-          </div>
-          
-          {/* Grid Overlay */}
-
           {/* The Rocket */}
-          <div ref={rocketRef} className="relative z-10 w-24 h-48 flex flex-col items-center will-change-transform">
-             <div className="w-16 h-40 bg-gradient-to-b from-[#3b82f6] to-[#1e40af] rounded-t-[50px] rounded-b-[20px] relative shadow-2xl border-b-8 border-black/20">
-                <div className="absolute top-12 left-1/2 -translate-x-1/2 flex flex-col gap-4">
-                   <div className="w-6 h-6 rounded-full bg-[#050a10] border-2 border-white/20 flex items-center justify-center">
+          <div ref={rocketRef} className="relative z-10 w-20 h-32 flex flex-col items-center will-change-transform">
+             <div className="w-12 h-32 bg-gradient-to-b from-[#3b82f6] to-[#1e40af] rounded-t-[40px] rounded-b-[15px] relative shadow-2xl border-b-4 border-black/20">
+                <div className="absolute top-8 left-1/2 -translate-x-1/2 flex flex-col gap-3">
+                   <div className="w-4 h-4 rounded-full bg-[#050a10] border border-white/20 flex items-center justify-center">
                       <div className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
                    </div>
                 </div>
-                <div className="absolute -left-6 bottom-2 w-8 h-20 bg-[#ff85a2] rounded-l-full rounded-tr-[15px] border-r-4 border-black/10 shadow-lg" />
-                <div className="absolute -right-6 bottom-2 w-8 h-20 bg-[#ff85a2] rounded-r-full rounded-tl-[15px] border-l-4 border-black/10 shadow-lg" />
+                <div className="absolute -left-4 bottom-2 w-6 h-16 bg-[#3b82f6] rounded-l-full rounded-tr-[10px] border-r-2 border-black/10 shadow-lg" />
+                <div className="absolute -right-4 bottom-2 w-6 h-16 bg-[#3b82f6] rounded-r-full rounded-tl-[10px] border-l-2 border-black/10 shadow-lg" />
                 
                 {/* Engine Nozzle */}
-                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-10 h-4 bg-zinc-700 rounded-full" />
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-3 bg-zinc-800 rounded-full" />
                 
-                {/* Engine Flame */}
+                {/* Engine Flame (ONLY during thrust) */}
                 <div ref={flameRef} className="absolute -bottom-24 left-1/2 -translate-x-1/2 w-12 h-32 flex flex-col items-center opacity-0 pointer-events-none will-change-transform z-0">
-                   {/* Outer Glow */}
-                   <div className="absolute inset-0 bg-gradient-to-t from-transparent via-orange-500/40 to-orange-400 rounded-full blur-2xl" />
-                   {/* Mid Flame */}
-                   <div className="absolute top-0 w-8 h-24 bg-gradient-to-t from-transparent via-orange-500 to-yellow-300 rounded-full blur-md" />
-                   {/* Core Flame */}
+                   <div className="absolute inset-0 bg-gradient-to-t from-transparent via-blue-500/40 to-blue-300 rounded-full blur-2xl" />
+                   <div className="absolute top-0 w-8 h-24 bg-gradient-to-t from-transparent via-blue-500 to-cyan-300 rounded-full blur-md" />
                    <div ref={flameCoreRef} className="absolute top-0 w-4 h-16 bg-white rounded-full blur-[2px] origin-top" />
                 </div>
              </div>
              
-             {/* Canvas Particles */}
+             {/* Exhaust Particles (ONLY during thrust) */}
              <canvas 
                ref={canvasRef} 
-               width={400} 
-               height={600} 
+               width={300} 
+               height={500} 
                className="absolute top-[85%] left-1/2 -translate-x-1/2 pointer-events-none" 
              />
           </div>
         </div>
 
-        {/* Physics Analysis Panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="bg-white/5 p-5 rounded-3xl border border-white/5 flex flex-col gap-4">
-             <p className="text-[10px] text-white/20 uppercase tracking-widest font-black">Net Force Analysis (F = ma)</p>
+        {/* Live Metrics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+          <LiveGraph data={graphs.alt} label="Altitude Profile" color="#3b82f6" min={0} max={500} unit="m" />
+          <LiveGraph data={graphs.vel} label="Velocity Vector" color="#a855f7" min={-50} max={80} unit="m/s" />
+          <LiveGraph data={graphs.acc} label="Acceleration G" color="#ff85a2" min={-15} max={15} unit="m/s²" />
+        </div>
+
+        {/* Analysis & Interpretation */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 shrink-0">
+          <div className="bg-white/5 p-3 rounded-2xl border border-white/5 flex flex-col gap-2">
+             <div className="flex items-center gap-2">
+                <Gauge className="w-3 h-3 text-white/40" />
+                <p className="text-[8px] text-white/40 uppercase tracking-widest font-black">Force Analysis</p>
+             </div>
              <div ref={netForceRef} className="flex-1 flex items-center justify-end">
-                {/* Dynamically updated */}
-                <div className="text-white/20 font-mono italic text-xs text-right">Calculating vectors...</div>
+                <div className="text-white/20 font-mono italic text-[9px]">Waiting...</div>
              </div>
           </div>
 
-          <div className="bg-white/5 p-5 rounded-3xl border border-white/5 flex flex-col gap-2">
-             <p className="text-[10px] text-white/20 uppercase tracking-widest font-black">Conservation of Momentum</p>
-             <p className="text-[11px] text-white/50 leading-relaxed italic">
-               The rocket continues upward even after thrust cutoff due to its momentum ($p = mv$). Gravity must work to decelerate this velocity to zero before the rocket falls.
+          <div className="bg-primary/5 p-3 rounded-2xl border border-primary/20 flex flex-col gap-1.5">
+             <div className="flex items-center gap-2">
+                <Info className="w-3 h-3 text-primary" />
+                <p className="text-[8px] text-primary uppercase tracking-widest font-black">Interpretation</p>
+             </div>
+             <p ref={interpretRef} className="text-[10px] text-white/60 leading-tight font-medium">
+               Select mass and hold trigger to begin.
              </p>
           </div>
 
-          <div className="bg-white/5 p-5 rounded-3xl border border-white/5 flex flex-col justify-center">
+          <div className="bg-white/5 p-3 rounded-2xl border border-white/5 flex flex-col justify-center">
             <ClickableValue 
-                label="Rocket Mass (m)"
+                label="Mass (m)"
                 value={mass}
                 unit="kg"
                 min={5}
                 max={50}
                 onChange={setMass}
-                colorClass="text-emerald-400"
+                colorClass="text-[#3b82f6]"
               />
           </div>
         </div>
 
-        {/* Master Control */}
-        <div className="flex items-center gap-4 mt-2">
+        {/* Control Interface */}
+        <div className="flex items-center gap-3 shrink-0">
             <button 
               onMouseDown={() => toggleIgnition(true)}
               onMouseUp={() => toggleIgnition(false)}
@@ -398,24 +424,29 @@ export const ActionReactionDemo: React.FC = () => {
               onTouchStart={() => toggleIgnition(true)}
               onTouchEnd={() => toggleIgnition(false)}
               className={cn(
-                "flex-1 py-8 rounded-[30px] font-black text-lg uppercase tracking-[0.3em] transition-all duration-300 relative overflow-hidden group select-none active:scale-[0.95]",
+                "flex-1 py-5 rounded-[20px] font-black text-base uppercase tracking-[0.3em] transition-all duration-300 relative overflow-hidden group select-none active:scale-[0.98]",
                 isPressed 
-                  ? "bg-[#3b82f6] text-white shadow-[0_0_80px_rgba(59,130,246,0.4)]" 
-                  : "bg-white/5 text-white/30 border-2 border-white/5 hover:border-white/20 hover:bg-white/10"
+                  ? "bg-[#3b82f6] text-white shadow-[0_0_100px_rgba(59,130,246,0.3)]" 
+                  : "bg-white/5 text-white/20 border border-white/5 hover:border-white/10 hover:text-white/40"
               )}
             >
-               <div className="relative z-10 flex items-center justify-center gap-4 pointer-events-none">
+               <div className="relative z-10 flex items-center justify-center gap-3">
+                  <Flame className={cn("w-4 h-4", isPressed && "animate-pulse")} />
                   {isPressed ? "THRUST ACTIVE" : "HOLD TO IGNITE"}
                </div>
                
                {isPressed && (
-                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+                 <motion.div 
+                   className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                   animate={{ x: ['-100%', '200%'] }}
+                   transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                 />
                )}
             </button>
             
             <button 
               onClick={handleReset}
-              className="w-24 py-8 rounded-[30px] bg-white/5 text-white/20 hover:text-white flex items-center justify-center border border-white/5 transition-all"
+              className="w-20 py-6 rounded-[25px] bg-white/5 text-white/10 hover:text-white/40 hover:bg-white/10 flex items-center justify-center border border-white/5 transition-all"
             >
                <RefreshCcw className="w-6 h-6" />
             </button>

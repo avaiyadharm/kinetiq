@@ -30,7 +30,7 @@ export default function NewtonsLawsPage() {
       <div className="absolute inset-0 bg-gradient-to-br from-[#0d2b33] via-[#1a3a4a] to-[#0d2b33] opacity-20 pointer-events-none" />
       
       {/* Sub-navigation Tabs */}
-      <div className="p-8 pb-0 flex gap-4 z-10">
+      <div className="p-6 pb-0 flex gap-3 z-10">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeLaw === tab.id;
@@ -79,7 +79,7 @@ export default function NewtonsLawsPage() {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 p-8 pt-6 relative flex flex-col lg:flex-row gap-8 overflow-hidden">
+      <div className="flex-1 p-6 pt-4 relative flex flex-col lg:flex-row gap-6 overflow-hidden">
         {/* Main Simulation View */}
         <div className="flex-1 min-h-[400px] z-10">
           <AnimatePresence mode="wait">
