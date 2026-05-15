@@ -62,14 +62,24 @@ const MiniGraph: React.FC<MiniGraphProps> = ({ label, data, color, min, max, uni
     ctx.shadowBlur = 0;
 
     // Label and Current Value
-    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-    ctx.font = "bold 9px Inter";
-    ctx.fillText(label.toUpperCase(), 5, 12);
-    
     const lastValue = data[data.length - 1].value;
+    
+    // Header background for better contrast
+    ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+    ctx.fillRect(0, 0, width, 20);
+
+    // Main Label (Symbol/Short name)
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.font = "bold 10px Inter";
+    ctx.textAlign = "left";
+    ctx.fillText(label.split(" (")[1]?.replace(")", "") || label, 8, 14);
+    
+    // Descriptive Value (Name = Value + Unit)
     ctx.fillStyle = color;
+    ctx.font = "bold 10px Inter";
     ctx.textAlign = "right";
-    ctx.fillText(`${lastValue.toFixed(2)}${unit}`, width - 5, 12);
+    const name = label.split(" (")[0];
+    ctx.fillText(`${name} = ${lastValue.toFixed(2)}${unit}`, width - 8, 14);
 
   }, [data, color, min, max, label, unit]);
 
@@ -103,7 +113,7 @@ export const CircularMotionGraphs: React.FC<CircularMotionGraphsProps> = ({
       
       <div className="grid grid-cols-2 gap-2">
         <MiniGraph 
-          label="Ang Position (θ)" 
+          label="Angular Position (θ)" 
           data={thetaData} 
           color="#6366f1" 
           min={-Math.PI * 2} 
@@ -111,7 +121,7 @@ export const CircularMotionGraphs: React.FC<CircularMotionGraphsProps> = ({
           unit=" rad" 
         />
         <MiniGraph 
-          label="Ang Velocity (ω)" 
+          label="Angular Velocity (ω)" 
           data={omegaData} 
           color="#06b6d4" 
           min={-15} 
@@ -127,7 +137,7 @@ export const CircularMotionGraphs: React.FC<CircularMotionGraphsProps> = ({
           unit=" m/s" 
         />
         <MiniGraph 
-          label="Centripetal (a꜀)" 
+          label="Centripetal Acc (a꜀)" 
           data={acData} 
           color="#ec4899" 
           min={0} 
@@ -135,7 +145,7 @@ export const CircularMotionGraphs: React.FC<CircularMotionGraphsProps> = ({
           unit=" m/s²" 
         />
         <MiniGraph 
-          label="Tangential (aₜ)" 
+          label="Tangential Acc (aₜ)" 
           data={atData} 
           color="#f59e0b" 
           min={-10} 

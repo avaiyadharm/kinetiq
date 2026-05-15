@@ -128,7 +128,7 @@ export const CircularMotionControls: React.FC<CircularMotionControlsProps> = ({
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <Label className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
-                <RotateCcw className="w-3 h-3 text-cyan-400" /> Angular Velocity (ω)
+                <RotateCcw className="w-3 h-3 text-cyan-400" /> Angular Velocity <span className="normal-case">(ω)</span>
               </Label>
               <span className="text-xs font-mono text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded">{initialOmega.toFixed(2)} rad/s</span>
             </div>

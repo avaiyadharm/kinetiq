@@ -22,7 +22,7 @@ interface StateRef {
 
 interface ClickableValueProps {
   value: number;
-  label: string;
+  label: React.ReactNode;
   unit: string;
   min: number;
   max: number;
@@ -89,10 +89,10 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
               <span className={cn("text-2xl font-mono font-black tracking-tight transition-colors", colorClass)}>
                 {value.toFixed(2)}
               </span>
-              <span className="text-xs font-bold text-white/20 uppercase">{unit}</span>
+              <span className="text-xs font-bold text-white/20">{unit}</span>
             </div>
-            <div className="p-1.5 rounded-lg bg-white/5 text-white/20 group-hover:text-white/40 transition-colors">
-               <Maximize2 className="w-3 h-3" />
+            <div className="p-1.5 rounded-lg bg-white/5 text-white/20 group-hover:text-primary transition-colors">
+               <Calculator className="w-3.5 h-3.5" />
             </div>
           </>
         )}
@@ -161,15 +161,16 @@ export default function CircularMotionSimulator() {
   }, [omega]);
 
   // --- Derived Physics Object (Reactive Engine) ---
+  const currentOmega = isPlaying ? physicsOmega : omega;
   const physics = {
-    omega: physicsOmega,
+    omega: currentOmega,
     targetOmega: omega,
-    frequency: physicsOmega / (2 * Math.PI),
+    frequency: currentOmega / (2 * Math.PI),
     radius,
     mass,
-    v: radius * physicsOmega,
-    ac: physicsOmega * physicsOmega * radius,
-    Fc: mass * (physicsOmega * physicsOmega * radius),
+    v: radius * currentOmega,
+    ac: currentOmega * currentOmega * radius,
+    Fc: mass * (currentOmega * currentOmega * radius),
     I: mass * radius * radius,
     at: isUCM ? 0 : (tangentialForce / mass), // tangential acceleration component
     alpha: isUCM ? 0 : tangentialForce / (mass * radius),
@@ -242,6 +243,7 @@ export default function CircularMotionSimulator() {
     setTangentialForce(0);
     setIsUCM(true);
     setPhysicsOmega(2.5);
+    setTheta(0);
     stateRef.current = { theta: 0, omega: 2.5, smoothOmega: 2.5 };
     setGraphs({ omega: [], theta: [], ac: [], at: [], v: [], aTotal: [] });
   }, []);
@@ -325,9 +327,9 @@ export default function CircularMotionSimulator() {
                   />
                   {isUCM || !isPlaying ? (
                       <ClickableValue 
-                        label={isUCM ? "Angular Vel (ω)" : "Init Angular Vel (ω)"}
+                        label={isUCM ? <span>Angular Velocity <span className="normal-case">(ω)</span></span> : <span>Init Angular Velocity <span className="normal-case">(ω)</span></span>}
                         value={physics.targetOmega}
-                        unit="r/s"
+                        unit="rad/s"
                         min={0}
                         max={10}
                         step={0.1}
@@ -342,7 +344,7 @@ export default function CircularMotionSimulator() {
                       />
                   ) : (
                       <ClickableValue 
-                        label="Tang Force (Fₜ)"
+                        label="Tangential Force (Fₜ)"
                         value={tangentialForce}
                         unit="N"
                         min={-10}
@@ -454,17 +456,15 @@ export default function CircularMotionSimulator() {
           >
             <ControlCard title="Radial Geometry" icon={Target} color="#6366f1">
               <div className="space-y-6">
-                  <div className="flex justify-between items-end">
-                      <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Radius (r)</span>
-                          <p className="text-3xl font-mono font-black text-white">{physics.radius.toFixed(2)} <span className="text-sm text-white/20">m</span></p>
-                      </div>
-                      <div className="text-right text-[10px] font-bold text-indigo-400 font-mono">r = {physics.radius.toFixed(1)}m</div>
-                  </div>
-                  <input 
-                      type="range" min="0.5" max="1.8" step="0.01" value={physics.radius} 
-                      onChange={(e) => setRadius(parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-indigo-500 transition-all hover:accent-indigo-400"
+                  <ClickableValue 
+                    label="Manifold Radius (r)"
+                    value={physics.radius}
+                    unit="m"
+                    min={0.5}
+                    max={1.8}
+                    step={0.01}
+                    onChange={setRadius}
+                    colorClass="text-indigo-400"
                   />
               </div>
             </ControlCard>
@@ -477,17 +477,15 @@ export default function CircularMotionSimulator() {
           >
             <ControlCard title="Inertial Mass" icon={Zap} color="#10b981">
               <div className="space-y-6">
-                  <div className="flex justify-between items-end">
-                      <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Object Mass (m)</span>
-                          <p className="text-3xl font-mono font-black text-white">{physics.mass.toFixed(2)} <span className="text-sm text-white/20">kg</span></p>
-                      </div>
-                      <div className="text-right text-[10px] font-bold text-emerald-400 font-mono">m = {physics.mass.toFixed(2)}kg</div>
-                  </div>
-                  <input 
-                      type="range" min="0.1" max="5" step="0.05" value={physics.mass} 
-                      onChange={(e) => setMass(parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-emerald-500 transition-all hover:accent-emerald-400"
+                  <ClickableValue 
+                    label="System Mass (m)"
+                    value={physics.mass}
+                    unit="kg"
+                    min={0.1}
+                    max={5}
+                    step={0.05}
+                    onChange={setMass}
+                    colorClass="text-emerald-400"
                   />
               </div>
             </ControlCard>
@@ -502,7 +500,9 @@ export default function CircularMotionSimulator() {
               <div className="space-y-6">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Angular Vel (ω)</span>
+                           <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">
+                             Angular Velocity <span className="normal-case">(ω)</span>
+                           </span>
                           <ClickableValue 
                             label=""
                             value={physics.targetOmega}
@@ -714,6 +714,7 @@ export default function CircularMotionSimulator() {
       title="Circular Motion Dynamics"
       activeTab={activeTab}
       onTabChange={setActiveTab}
+      onReset={handleReset}
     >
       <AnimatePresence mode="wait">
           <motion.div

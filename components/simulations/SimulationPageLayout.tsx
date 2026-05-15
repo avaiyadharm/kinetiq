@@ -13,13 +13,15 @@ interface SimulationPageLayoutProps {
   children: React.ReactNode;
   activeTab?: TabType;
   onTabChange?: (tab: TabType) => void;
+  onReset?: () => void;
 }
 
 export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>> = ({ 
   title, 
   children,
   activeTab = "canvas",
-  onTabChange
+  onTabChange,
+  onReset
 }) => {
   return (
     <div className="flex h-screen w-full bg-[#09090b] overflow-hidden text-white font-sans antialiased selection:bg-primary/30">
@@ -90,7 +92,10 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
         </nav>
 
         <div className="p-8 border-t border-border bg-black/20">
-          <button className="w-full py-4 bg-[#18181b] border border-border text-white hover:bg-white/5 font-bold rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm">
+          <button 
+            onClick={onReset}
+            className="w-full py-4 bg-[#18181b] border border-border text-white hover:bg-white/5 font-bold rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm"
+          >
             <RotateCcw className="w-4 h-4" />
             Reset Laboratory
           </button>
