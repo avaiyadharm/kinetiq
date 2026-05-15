@@ -41,6 +41,7 @@ export const CircularMotionCanvas: React.FC<CircularMotionCanvasProps> = ({
   isUCM,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const smoothRadiusRef = useRef(radius);
   const trailRef = useRef<{ x: number; y: number; alpha: number }[]>([]);
   const lastThetaRef = useRef(theta);
 
@@ -58,15 +59,19 @@ export const CircularMotionCanvas: React.FC<CircularMotionCanvasProps> = ({
     let animationFrameId: number;
 
     const render = () => {
+      // Smooth Radius Interpolation
+      smoothRadiusRef.current += (radius - smoothRadiusRef.current) * 0.15;
+      const currentR = smoothRadiusRef.current;
+      const rPixels = currentR * SCALE;
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // --- 1. COORDINATE SYSTEM MAPPING (Physics CCW) ---
       // Standard Physics: y up, screen: y down.
       // x_s = CENTER_X + x_p
       // y_s = CENTER_Y - y_p
-      const rPixels = radius * SCALE;
-      const x_phys = radius * Math.cos(theta);
-      const y_phys = radius * Math.sin(theta);
+      const x_phys = currentR * Math.cos(theta);
+      const y_phys = currentR * Math.sin(theta);
       
       const x = CENTER_X + x_phys * SCALE;
       const y = CENTER_Y - y_phys * SCALE;
@@ -81,8 +86,8 @@ export const CircularMotionCanvas: React.FC<CircularMotionCanvasProps> = ({
       ctx.strokeStyle = "rgba(99, 102, 241, 0.2)";
       ctx.moveTo(CENTER_X, CENTER_Y);
       // Extend radial line through particle
-      const radialLineX = CENTER_X + (radius * 1.5) * Math.cos(theta) * SCALE;
-      const radialLineY = CENTER_Y - (radius * 1.5) * Math.sin(theta) * SCALE;
+      const radialLineX = CENTER_X + (currentR * 1.5) * Math.cos(theta) * SCALE;
+      const radialLineY = CENTER_Y - (currentR * 1.5) * Math.sin(theta) * SCALE;
       ctx.lineTo(radialLineX, radialLineY);
       ctx.stroke();
 

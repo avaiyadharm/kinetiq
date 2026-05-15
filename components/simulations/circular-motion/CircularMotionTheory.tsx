@@ -1,48 +1,75 @@
 "use client";
 
 import React from "react";
-import { motion } from "framer-motion";
-import { Info, BookOpen, Calculator, Globe, HelpCircle, Maximize2 } from "lucide-react";
+import { motion, Variants } from "framer-motion";
+import { Info, BookOpen, Calculator, Globe, Maximize2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { type: "spring", damping: 25, stiffness: 120 }
+  }
+};
+
 export const CircularMotionTheory: React.FC = () => {
   return (
-    <div className="flex flex-col gap-8 pb-12">
+    <motion.div 
+      className="flex flex-col gap-12 pb-24 max-w-5xl mx-auto"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
       {/* Introduction */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 text-primary">
-                <Globe className="w-5 h-5" />
+      <motion.div variants={itemVariants} className="space-y-6">
+        <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary shadow-[0_0_20px_rgba(6,182,212,0.15)]">
+                <Globe className="w-6 h-6" />
             </div>
-            <h2 className="text-2xl font-bold tracking-tight text-white">The Nature of Circular Motion</h2>
+            <div className="space-y-1">
+                <h2 className="text-3xl font-black tracking-tight text-white uppercase">The Radial <span className="text-primary">Manifold</span></h2>
+                <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.3em]">Fundamental Dynamics</p>
+            </div>
         </div>
-        <p className="text-white/60 leading-relaxed">
+        <p className="text-white/60 leading-relaxed text-lg font-medium">
             Circular motion is a movement of an object along the circumference of a circle or rotation along a circular path. 
             It can be <span className="text-primary font-bold">Uniform</span> (constant angular rate of rotation and constant speed) 
             or <span className="text-primary font-bold">Non-Uniform</span> (changing rate of rotation).
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="bg-white/5 border-white/10 text-white">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="bg-white/[0.03] border-white/5 text-white backdrop-blur-xl hover:bg-white/[0.05] transition-colors group">
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-primary">Uniform Circular Motion (UCM)</CardTitle>
+                    <CardTitle className="text-xs font-black uppercase tracking-[0.2em] text-primary group-hover:text-cyan-300 transition-colors">Uniform Circular Motion (UCM)</CardTitle>
                 </CardHeader>
-                <CardContent className="text-xs text-white/40 leading-relaxed">
+                <CardContent className="text-sm text-white/40 leading-relaxed">
                     In UCM, the speed is constant, but the velocity is constantly changing direction. This requires a 
                     centripetal acceleration pointing toward the center.
                 </CardContent>
             </Card>
-            <Card className="bg-white/5 border-white/10 text-white">
+            <Card className="bg-white/[0.03] border-white/5 text-white backdrop-blur-xl hover:bg-white/[0.05] transition-colors group">
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-orange-400">Non-Uniform Circular Motion</CardTitle>
+                    <CardTitle className="text-xs font-black uppercase tracking-[0.2em] text-orange-400 group-hover:text-orange-300 transition-colors">Non-Uniform Circular Motion</CardTitle>
                 </CardHeader>
-                <CardContent className="text-xs text-white/40 leading-relaxed">
+                <CardContent className="text-sm text-white/40 leading-relaxed">
                     In this mode, both the speed and the direction of velocity change. This results in two types of acceleration: 
                     centripetal (radial) and tangential.
                 </CardContent>
             </Card>
         </div>
-      </section>
+      </motion.div>
 
       {/* Mathematical Framework */}
       <section className="space-y-6">
@@ -156,18 +183,18 @@ export const CircularMotionTheory: React.FC = () => {
         <div className="grid grid-cols-1 gap-6">
             <Card className="bg-white/[0.02] border-white/10 text-white">
                 <CardHeader>
-                    <CardTitle className="text-lg">Centripetal Acceleration ($a_c$)</CardTitle>
+                    <CardTitle className="text-lg">Centripetal Acceleration (a꜀)</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm text-white/60">
                     <p>
-                        Consider an object moving from point A to B in a small time interval $dt$. The velocity vector $\vec{}$ changes direction by an angle $d\theta$.
+                        Consider an object moving from point A to B in a small time interval dt. The velocity vector v changes direction by an angle dθ.
                         By similar triangles between the position vector triangle and the velocity vector triangle:
                     </p>
                     <div className="p-4 bg-black/40 rounded-lg font-mono text-center text-primary italic">
                         |Δv| / v = |Δr| / r  {"=>"}  Δv = (v/r) * Δr
                     </div>
                     <p>
-                        Dividing by $dt$ and taking the limit as $dt \to 0$:
+                        Dividing by dt and taking the limit as dt → 0:
                     </p>
                     <div className="p-4 bg-black/40 rounded-lg font-mono text-center text-primary italic">
                         a꜀ = lim(Δv/Δt) = (v/r) * lim(Δr/Δt) = v²/r
@@ -176,7 +203,7 @@ export const CircularMotionTheory: React.FC = () => {
                         <p className="text-[10px] uppercase font-bold text-white/40">Assumptions</p>
                         <ul className="list-disc list-inside text-[10px] space-y-1">
                             <li>Rigid body motion (constant radius).</li>
-                            <li>Instantaneous measurement in the limit of small $dt$.</li>
+                            <li>Instantaneous measurement in the limit of small dt.</li>
                             <li>Force is strictly directed toward the center (no radial work).</li>
                         </ul>
                     </div>
@@ -189,7 +216,7 @@ export const CircularMotionTheory: React.FC = () => {
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm text-white/60">
                     <p>
-                        In Uniform Circular Motion, the centripetal force is always perpendicular to the displacement ($F \perp ds$). 
+                        In Uniform Circular Motion, the centripetal force is always perpendicular to the displacement (F ⊥ ds). 
                         Therefore, the work done by centripetal force is:
                     </p>
                     <div className="p-4 bg-black/40 rounded-lg font-mono text-center text-orange-400 italic">
@@ -235,7 +262,7 @@ export const CircularMotionTheory: React.FC = () => {
             ))}
         </div>
       </section>
-    </div>
+    </motion.div>
   );
 };
 

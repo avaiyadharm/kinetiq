@@ -7,9 +7,16 @@ import { CircularMotionGraphs } from "./CircularMotionGraphs";
 import { CircularMotionTheory } from "./CircularMotionTheory";
 import { SimulationPageLayout, TabType } from "@/components/simulations/SimulationPageLayout";
 import { motion, AnimatePresence } from "framer-motion";
-import { Info, Calculator, Activity, ArrowUpRight, Maximize2, BookOpen, Gauge, Target, Zap, RotateCcw, Play, Pause } from "lucide-react";
+import { Info, BookOpen, Activity, Maximize2, Gauge, Target, Zap, RotateCcw, Play, Pause } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+// --- Types ---
+interface StateRef {
+  theta: number;
+  omega: number;
+  smoothOmega: number;
+}
 
 // --- Sub-components ---
 
@@ -53,31 +60,43 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
 
   return (
     <div className="flex flex-col gap-2 w-full">
-      <div className="flex justify-between items-center">
-        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{label}</label>
-        <div 
-          onClick={() => setIsEditing(true)}
-          className={cn(
-            "cursor-pointer hover:bg-white/5 px-2 py-0.5 rounded transition-colors font-mono font-bold text-xs",
-            colorClass
-          )}
-        >
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              autoFocus
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onBlur={handleBlur}
-              onKeyDown={handleKeyDown}
-              className="bg-transparent border-none outline-none w-16 text-right"
-            />
-          ) : (
-            <span>{value.toFixed(2)} {unit}</span>
-          )}
-        </div>
+      <div className="flex justify-between items-center px-1">
+        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{label}</label>
       </div>
+      <motion.div 
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={() => setIsEditing(true)}
+        className={cn(
+          "group relative flex items-center justify-between gap-2 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 cursor-pointer transition-all hover:bg-white/[0.08] hover:border-white/20 shadow-lg",
+          isEditing && "ring-2 ring-primary/50 bg-white/10 border-primary/50"
+        )}
+      >
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="number"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            className="w-full bg-transparent border-none focus:ring-0 text-xl font-mono font-black text-white p-0"
+            autoFocus
+          />
+        ) : (
+          <>
+            <div className="flex items-baseline gap-1">
+              <span className={cn("text-2xl font-mono font-black tracking-tight transition-colors", colorClass)}>
+                {value.toFixed(2)}
+              </span>
+              <span className="text-xs font-bold text-white/20 uppercase">{unit}</span>
+            </div>
+            <div className="p-1.5 rounded-lg bg-white/5 text-white/20 group-hover:text-white/40 transition-colors">
+               <Maximize2 className="w-3 h-3" />
+            </div>
+          </>
+        )}
+      </motion.div>
       <input 
         type="range" min={min} max={max} step={step} value={value} 
         onChange={(e) => onChange(parseFloat(e.target.value))}
@@ -125,7 +144,11 @@ export default function CircularMotionSimulator() {
   });
 
   const lastTimeRef = useRef<number | null>(null);
-  const stateRef = useRef({ theta: 0, omega: 2.0 });
+  const stateRef = useRef<StateRef>({ 
+    theta: 0, 
+    omega: 2.0, 
+    smoothOmega: 2.0 
+  });
 
   // Physics Update Loop
   useEffect(() => {
@@ -143,14 +166,19 @@ export default function CircularMotionSimulator() {
         return;
       }
 
-      const dt = Math.min((time - lastTimeRef.current) / 1000, 0.05); // Cap dt to avoid jumps
+      const dt = Math.min((time - lastTimeRef.current) / 1000, 0.05);
       lastTimeRef.current = time;
 
+      // Smooth Angular Velocity Interpolation
+      stateRef.current.smoothOmega += (omega - stateRef.current.smoothOmega) * 0.1;
+      
       // Physics Logic
       let alpha = 0;
       if (!isUCM) {
         alpha = tangentialForce / (mass * radius);
         stateRef.current.omega += alpha * dt;
+      } else {
+        stateRef.current.omega = stateRef.current.smoothOmega;
       }
 
       stateRef.current.theta += stateRef.current.omega * dt;
@@ -188,7 +216,12 @@ export default function CircularMotionSimulator() {
   }, [omega, isUCM]);
 
   const handleReset = useCallback(() => {
-    stateRef.current = { theta: 0, omega: isUCM ? omega : 0 };
+    const defaultOmega = isUCM ? omega : 0;
+    stateRef.current = { 
+      theta: 0, 
+      omega: defaultOmega, 
+      smoothOmega: defaultOmega 
+    };
     setTheta(0);
     if (!isUCM) setOmega(0);
     setGraphs({ omega: [], theta: [], ac: [], at: [], v: [], aTotal: [] });
@@ -203,19 +236,19 @@ export default function CircularMotionSimulator() {
       <div className="flex-1 p-6 relative flex flex-col lg:flex-row gap-6 overflow-hidden">
         {/* Simulation View */}
         <div className="flex-1 z-10 flex flex-col gap-6">
-          <div className="flex-1 relative min-h-0">
-             <CircularMotionCanvas 
-                radius={radius}
-                mass={mass}
-                omega={omega}
-                alpha={isUCM ? 0 : tangentialForce / (mass * radius)}
-                theta={theta}
-                isPlaying={isPlaying}
-                showVectors={showVectors}
-                showTrail={showTrail}
-                isUCM={isUCM}
-              />
-          </div>
+             <div className="flex-1 relative min-h-0">
+                <CircularMotionCanvas 
+                    radius={radius}
+                    mass={mass}
+                    omega={omega}
+                    alpha={isUCM ? 0 : tangentialForce / (mass * radius)}
+                    theta={theta}
+                    isPlaying={isPlaying}
+                    showVectors={showVectors}
+                    showTrail={showTrail}
+                    isUCM={isUCM}
+                />
+             </div>
           
           {/* Legend Horizontal */}
           <div className="bg-[#18181b] border border-white/5 rounded-[24px] p-4 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar shrink-0">
@@ -398,39 +431,51 @@ export default function CircularMotionSimulator() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ControlCard title="Radial Geometry" icon={Target} color="#6366f1">
-            <div className="space-y-6">
-                <div className="flex justify-between items-end">
-                    <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Radius (r)</span>
-                        <p className="text-3xl font-mono font-black text-white">{radius.toFixed(2)} <span className="text-sm text-white/20">m</span></p>
-                    </div>
-                    <div className="text-right text-[10px] font-bold text-indigo-400 font-mono">r = {radius.toFixed(1)}m</div>
-                </div>
-                <input 
-                    type="range" min="0.5" max="1.8" step="0.05" value={radius} 
-                    onChange={(e) => setRadius(parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-indigo-500"
-                />
-            </div>
-          </ControlCard>
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <ControlCard title="Radial Geometry" icon={Target} color="#6366f1">
+              <div className="space-y-6">
+                  <div className="flex justify-between items-end">
+                      <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Radius (r)</span>
+                          <p className="text-3xl font-mono font-black text-white">{radius.toFixed(2)} <span className="text-sm text-white/20">m</span></p>
+                      </div>
+                      <div className="text-right text-[10px] font-bold text-indigo-400 font-mono">r = {radius.toFixed(1)}m</div>
+                  </div>
+                  <input 
+                      type="range" min="0.5" max="1.8" step="0.01" value={radius} 
+                      onChange={(e) => setRadius(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-indigo-500 transition-all hover:accent-indigo-400"
+                  />
+              </div>
+            </ControlCard>
+          </motion.div>
 
-          <ControlCard title="Mass Inertia" icon={Zap} color="#10b981">
-            <div className="space-y-6">
-                <div className="flex justify-between items-end">
-                    <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">System Mass (m)</span>
-                        <p className="text-3xl font-mono font-black text-white">{mass.toFixed(1)} <span className="text-sm text-white/20">kg</span></p>
-                    </div>
-                    <div className="text-right text-[10px] font-bold text-emerald-400 font-mono">m = {mass.toFixed(1)}kg</div>
-                </div>
-                <input 
-                    type="range" min="0.1" max="5" step="0.1" value={mass} 
-                    onChange={(e) => setMass(parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-emerald-500"
-                />
-            </div>
-          </ControlCard>
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <ControlCard title="Mass Inertia" icon={Zap} color="#10b981">
+              <div className="space-y-6">
+                  <div className="flex justify-between items-end">
+                      <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">System Mass (m)</span>
+                          <p className="text-3xl font-mono font-black text-white">{mass.toFixed(1)} <span className="text-sm text-white/20">kg</span></p>
+                      </div>
+                      <div className="text-right text-[10px] font-bold text-emerald-400 font-mono">m = {mass.toFixed(1)}kg</div>
+                  </div>
+                  <input 
+                      type="range" min="0.1" max="5" step="0.05" value={mass} 
+                      onChange={(e) => setMass(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-emerald-500 transition-all hover:accent-emerald-400"
+                  />
+              </div>
+            </ControlCard>
+          </motion.div>
 
           <ControlCard title="Force Dynamics" icon={Gauge} color="#f59e0b">
             <div className="space-y-6">
