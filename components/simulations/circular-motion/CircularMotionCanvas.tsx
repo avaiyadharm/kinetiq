@@ -187,11 +187,8 @@ export const CircularMotionCanvas: React.FC<CircularMotionCanvasProps> = ({
 
       // 2. Centripetal Acceleration (Radial Inward)
       if (showVectors.centripetal) {
-        // a_c = ω²r (-cosθ, -sinθ) -> screen y is inverted -> acy_s = ω²r sinθ
-        // Points FROM object TO center
         const acx_s = -a_c * Math.cos(theta) * aScale;
         const acy_s = a_c * Math.sin(theta) * aScale;
-        // Enforce exact origin at particle center
         drawVector(ctx, x, y, x + acx_s, y + acy_s, "a꜀", "#ec4899");
       }
 
