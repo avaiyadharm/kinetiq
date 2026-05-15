@@ -112,19 +112,28 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
   );
 };
 
+const RelationBox = ({ formula, calc, result }: { formula: string; calc: string; result: string }) => (
+    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5 group hover:border-primary/30 transition-all">
+        <div className="flex justify-between items-baseline">
+            <span className="text-xs font-mono font-bold text-primary">{formula}</span>
+            <span className="text-sm font-mono font-black text-white">{result}</span>
+        </div>
+        <p className="text-[9px] font-mono text-white/20 group-hover:text-white/40 transition-colors">Substitution: {calc}</p>
+    </div>
+);
+
 export default function CircularMotionSimulator() {
-  // Physics State
+  // --- Master State ---
   const [radius, setRadius] = useState(1.2);
   const [mass, setMass] = useState(1.0);
-  const [omega, setOmega] = useState(2.0); // Control/Target rad/s
-  const [physicsOmega, setPhysicsOmega] = useState(2.0); // Actual instantaneous rad/s
-  const [theta, setTheta] = useState(0); // rad
-  const [tangentialForce, setTangentialForce] = useState(0); // N
+  const [omega, setOmega] = useState(2.0); // Target speed
+  const [physicsOmega, setPhysicsOmega] = useState(2.0); // Live telemetry speed
+  const [theta, setTheta] = useState(0);
+  const [tangentialForce, setTangentialForce] = useState(0);
   const [isUCM, setIsUCM] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("canvas");
 
-  // Visualization State
   const [showVectors, setShowVectors] = useState({
     velocity: true,
     centripetal: true,
@@ -134,30 +143,39 @@ export default function CircularMotionSimulator() {
   });
   const [showTrail, setShowTrail] = useState(true);
 
-  // Data for Graphs
   const [graphs, setGraphs] = useState({
-    omega: [] as { time: number; value: number }[],
-    theta: [] as { time: number; value: number }[],
-    ac: [] as { time: number; value: number }[],
-    at: [] as { time: number; value: number }[],
-    v: [] as { time: number; value: number }[],
-    aTotal: [] as { time: number; value: number }[],
+    omega: [] as any[],
+    theta: [] as any[],
+    ac: [] as any[],
+    at: [] as any[],
+    v: [] as any[],
+    aTotal: [] as any[],
   });
 
   const lastTimeRef = useRef<number | null>(null);
-  const stateRef = useRef<StateRef>({ 
-    theta: 0, 
-    omega: 2.0, 
-    smoothOmega: 2.0 
-  });
-  
-  // Ref to track the control value for the physics loop to avoid closure staleness
+  const stateRef = useRef<StateRef>({ theta: 0, omega: 2.0, smoothOmega: 2.0 });
   const controlOmegaRef = useRef(omega);
+
   useEffect(() => {
     controlOmegaRef.current = omega;
   }, [omega]);
 
-  // Physics Update Loop
+  // --- Derived Physics Object (Reactive Engine) ---
+  const physics = {
+    omega: physicsOmega,
+    targetOmega: omega,
+    frequency: physicsOmega / (2 * Math.PI),
+    radius,
+    mass,
+    v: radius * physicsOmega,
+    ac: physicsOmega * physicsOmega * radius,
+    Fc: mass * (physicsOmega * physicsOmega * radius),
+    I: mass * radius * radius,
+    at: isUCM ? 0 : (tangentialForce / mass), // tangential acceleration component
+    alpha: isUCM ? 0 : tangentialForce / (mass * radius),
+  };
+
+  // --- Physics Loop ---
   useEffect(() => {
     if (!isPlaying) {
       lastTimeRef.current = null;
@@ -165,7 +183,6 @@ export default function CircularMotionSimulator() {
     }
 
     let animationFrameId: number;
-
     const update = (time: number) => {
       if (lastTimeRef.current === null) {
         lastTimeRef.current = time;
@@ -176,10 +193,9 @@ export default function CircularMotionSimulator() {
       const dt = Math.min((time - lastTimeRef.current) / 1000, 0.05);
       lastTimeRef.current = time;
 
-      // Smooth Angular Velocity Interpolation (Targeting the value from controls)
+      // Smooth interpolation for target speed
       stateRef.current.smoothOmega += (controlOmegaRef.current - stateRef.current.smoothOmega) * 0.15;
       
-      // Physics Logic
       let alpha = 0;
       if (!isUCM) {
         alpha = tangentialForce / (mass * radius);
@@ -190,26 +206,26 @@ export default function CircularMotionSimulator() {
 
       stateRef.current.theta += stateRef.current.omega * dt;
       
+      // Keep theta in bounds
       if (stateRef.current.theta > Math.PI * 2) stateRef.current.theta -= Math.PI * 2;
       if (stateRef.current.theta < -Math.PI * 2) stateRef.current.theta += Math.PI * 2;
 
       setTheta(stateRef.current.theta);
       setPhysicsOmega(stateRef.current.omega);
 
+      // Graphing
       const v = radius * stateRef.current.omega;
-      const ac = Math.abs((v * v) / radius);
-      const at = Math.abs(radius * alpha);
-      const aTotal = Math.sqrt(ac * ac + at * at);
+      const ac = (v * v) / radius;
+      const at = radius * alpha;
 
-      setGraphs(prev => {
-        const newOmega = [...prev.omega, { time, value: stateRef.current.omega }].slice(-50);
-        const newTheta = [...prev.theta, { time, value: stateRef.current.theta }].slice(-50);
-        const newAc = [...prev.ac, { time, value: ac }].slice(-50);
-        const newAt = [...prev.at, { time, value: at }].slice(-50);
-        const newV = [...prev.v, { time, value: v }].slice(-50);
-        const newATotal = [...prev.aTotal, { time, value: aTotal }].slice(-50);
-        return { omega: newOmega, theta: newTheta, ac: newAc, at: newAt, v: newV, aTotal: newATotal };
-      });
+      setGraphs(prev => ({
+        omega: [...prev.omega, { time, value: stateRef.current.omega }].slice(-50),
+        theta: [...prev.theta, { time, value: stateRef.current.theta }].slice(-50),
+        ac: [...prev.ac, { time, value: ac }].slice(-50),
+        at: [...prev.at, { time, value: at }].slice(-50),
+        v: [...prev.v, { time, value: v }].slice(-50),
+        aTotal: [...prev.aTotal, { time, value: Math.sqrt(ac*ac + at*at) }].slice(-50),
+      }));
 
       animationFrameId = requestAnimationFrame(update);
     };
@@ -218,37 +234,30 @@ export default function CircularMotionSimulator() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying, isUCM, tangentialForce, mass, radius, omega]);
 
-  useEffect(() => {
-    if (isUCM) stateRef.current.omega = omega;
-  }, [omega, isUCM]);
-
   const handleReset = useCallback(() => {
-    const defaultOmega = isUCM ? omega : 0;
-    stateRef.current = { 
-      theta: 0, 
-      omega: defaultOmega, 
-      smoothOmega: defaultOmega 
-    };
-    setTheta(0);
-    if (!isUCM) setOmega(0);
-    setGraphs({ omega: [], theta: [], ac: [], at: [], v: [], aTotal: [] });
     setIsPlaying(false);
-  }, [isUCM, omega]);
+    setOmega(2.5);
+    setRadius(1.5);
+    setMass(1.0);
+    setTangentialForce(0);
+    setIsUCM(true);
+    setPhysicsOmega(2.5);
+    stateRef.current = { theta: 0, omega: 2.5, smoothOmega: 2.5 };
+    setGraphs({ omega: [], theta: [], ac: [], at: [], v: [], aTotal: [] });
+  }, []);
 
   const renderCanvas = () => (
     <div className="flex-1 flex flex-col bg-[#09090b] relative overflow-hidden">
-      {/* Background Aesthetic */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#06b6d4]/5 via-transparent to-[#6366f1]/5 pointer-events-none" />
       
       <div className="flex-1 p-6 relative flex flex-col lg:flex-row gap-6 overflow-hidden">
-        {/* Simulation View */}
         <div className="flex-1 z-10 flex flex-col gap-6">
              <div className="flex-1 relative min-h-0">
                 <CircularMotionCanvas 
-                    radius={radius}
-                    mass={mass}
-                    omega={physicsOmega}
-                    alpha={isUCM ? 0 : tangentialForce / (mass * radius)}
+                    radius={physics.radius}
+                    mass={physics.mass}
+                    omega={physics.omega}
+                    alpha={physics.alpha}
                     theta={theta}
                     isPlaying={isPlaying}
                     showVectors={showVectors}
@@ -257,7 +266,6 @@ export default function CircularMotionSimulator() {
                 />
              </div>
           
-          {/* Legend Horizontal */}
           <div className="bg-[#18181b] border border-white/5 rounded-[24px] p-4 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar shrink-0">
             {[
                 { id: 'velocity', label: 'Velocity (v)', color: 'bg-cyan-500' },
@@ -273,7 +281,6 @@ export default function CircularMotionSimulator() {
             ))}
           </div>
 
-          {/* Interactive Control Bar */}
           <div className="bg-[#18181b]/80 backdrop-blur-xl border border-white/10 rounded-[32px] p-6 flex flex-col md:flex-row items-center gap-8 shadow-2xl shrink-0">
               <div className="flex items-center gap-4">
                   <button 
@@ -298,7 +305,7 @@ export default function CircularMotionSimulator() {
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-8 w-full">
                   <ClickableValue 
                     label="Radius (r)"
-                    value={radius}
+                    value={physics.radius}
                     unit="m"
                     min={0.5}
                     max={1.8}
@@ -308,7 +315,7 @@ export default function CircularMotionSimulator() {
                   />
                   <ClickableValue 
                     label="Mass (m)"
-                    value={mass}
+                    value={physics.mass}
                     unit="kg"
                     min={0.1}
                     max={5}
@@ -319,7 +326,7 @@ export default function CircularMotionSimulator() {
                   {isUCM || !isPlaying ? (
                       <ClickableValue 
                         label={isUCM ? "Angular Vel (ω)" : "Init Angular Vel (ω)"}
-                        value={omega}
+                        value={physics.targetOmega}
                         unit="r/s"
                         min={0}
                         max={10}
@@ -349,9 +356,7 @@ export default function CircularMotionSimulator() {
           </div>
         </div>
 
-        {/* Live Telemetry Sidebar */}
         <div className="w-full lg:w-[420px] flex flex-col gap-6 z-10 overflow-y-auto custom-scrollbar pr-1">
-          {/* Summary Insight Card */}
           <div className="bg-[#18181b] rounded-[32px] p-8 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                <BookOpen className="w-24 h-24 text-primary" />
@@ -371,16 +376,15 @@ export default function CircularMotionSimulator() {
             <div className="grid grid-cols-2 gap-4 relative z-10">
                 <div className="p-4 rounded-2xl bg-black/40 border border-cyan-500/10">
                     <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest block mb-1">Centripetal</span>
-                    <p className="text-xl font-mono font-bold text-white">{(mass * radius * physicsOmega * physicsOmega).toFixed(1)} <span className="text-[10px] text-white/20">N</span></p>
+                    <p className="text-xl font-mono font-bold text-white">{physics.Fc.toFixed(1)} <span className="text-[10px] text-white/20">N</span></p>
                 </div>
                 <div className="p-4 rounded-2xl bg-black/40 border border-orange-500/10">
                     <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest block mb-1">Tangential</span>
-                    <p className="text-xl font-mono font-bold text-white">{(isUCM ? 0 : tangentialForce).toFixed(1)} <span className="text-[10px] text-white/20">N</span></p>
+                    <p className="text-xl font-mono font-bold text-white">{(physics.at * physics.mass).toFixed(1)} <span className="text-[10px] text-white/20">N</span></p>
                 </div>
             </div>
           </div>
 
-          {/* Real-time Graphs Section */}
           <div className="space-y-4">
               <div className="flex items-center justify-between px-2">
                   <span className="text-[10px] font-bold text-white/20 uppercase tracking-[0.3em]">Telemetry Pipeline</span>
@@ -399,7 +403,6 @@ export default function CircularMotionSimulator() {
               />
           </div>
           
-          {/* Quick Controls Section */}
           <div className="mt-auto bg-gradient-to-br from-primary/10 to-transparent rounded-[32px] p-6 border border-white/5 flex items-center justify-between">
               <div className="space-y-1">
                   <p className="text-xs font-bold text-white tracking-tight">Interactive Lab</p>
@@ -454,12 +457,12 @@ export default function CircularMotionSimulator() {
                   <div className="flex justify-between items-end">
                       <div className="space-y-1">
                           <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Radius (r)</span>
-                          <p className="text-3xl font-mono font-black text-white">{radius.toFixed(2)} <span className="text-sm text-white/20">m</span></p>
+                          <p className="text-3xl font-mono font-black text-white">{physics.radius.toFixed(2)} <span className="text-sm text-white/20">m</span></p>
                       </div>
-                      <div className="text-right text-[10px] font-bold text-indigo-400 font-mono">r = {radius.toFixed(1)}m</div>
+                      <div className="text-right text-[10px] font-bold text-indigo-400 font-mono">r = {physics.radius.toFixed(1)}m</div>
                   </div>
                   <input 
-                      type="range" min="0.5" max="1.8" step="0.01" value={radius} 
+                      type="range" min="0.5" max="1.8" step="0.01" value={physics.radius} 
                       onChange={(e) => setRadius(parseFloat(e.target.value))}
                       className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-indigo-500 transition-all hover:accent-indigo-400"
                   />
@@ -477,12 +480,12 @@ export default function CircularMotionSimulator() {
                   <div className="flex justify-between items-end">
                       <div className="space-y-1">
                           <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Object Mass (m)</span>
-                          <p className="text-3xl font-mono font-black text-white">{mass.toFixed(2)} <span className="text-sm text-white/20">kg</span></p>
+                          <p className="text-3xl font-mono font-black text-white">{physics.mass.toFixed(2)} <span className="text-sm text-white/20">kg</span></p>
                       </div>
-                      <div className="text-right text-[10px] font-bold text-emerald-400 font-mono">m = {mass.toFixed(2)}kg</div>
+                      <div className="text-right text-[10px] font-bold text-emerald-400 font-mono">m = {physics.mass.toFixed(2)}kg</div>
                   </div>
                   <input 
-                      type="range" min="0.1" max="5" step="0.05" value={mass} 
+                      type="range" min="0.1" max="5" step="0.05" value={physics.mass} 
                       onChange={(e) => setMass(parseFloat(e.target.value))}
                       className="w-full h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-emerald-500 transition-all hover:accent-emerald-400"
                   />
@@ -495,22 +498,56 @@ export default function CircularMotionSimulator() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            <ControlCard title="Velocity Dynamics" icon={ArrowUpRight} color="#06b6d4">
+            <ControlCard title="Angular Dynamics" icon={RotateCcw} color="#06b6d4">
               <div className="space-y-6">
-                  <div className="flex justify-between items-end">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Tangential Speed (v)</span>
-                          <p className="text-3xl font-mono font-black text-white">{(radius * physicsOmega).toFixed(2)} <span className="text-sm text-white/20">m/s</span></p>
+                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Angular Vel (ω)</span>
+                          <ClickableValue 
+                            label=""
+                            value={physics.targetOmega}
+                            unit="rad/s"
+                            min={0}
+                            max={15}
+                            step={0.1}
+                            onChange={(val) => {
+                                setOmega(val);
+                                if (!isPlaying) {
+                                    stateRef.current.omega = val;
+                                    stateRef.current.smoothOmega = val;
+                                }
+                            }}
+                            colorClass="text-cyan-400"
+                          />
                       </div>
-                      <div className="text-right text-[10px] font-bold text-cyan-400 font-mono italic">Direction: Tangential</div>
+                      <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest block mb-1">Frequency (f)</span>
+                          <ClickableValue 
+                            label=""
+                            value={physics.frequency}
+                            unit="Hz"
+                            min={0}
+                            max={3}
+                            step={0.01}
+                            onChange={(newF) => {
+                                const newOmega = newF * 2 * Math.PI;
+                                setOmega(newOmega);
+                                if (!isPlaying) {
+                                    stateRef.current.omega = newOmega;
+                                    stateRef.current.smoothOmega = newOmega;
+                                }
+                            }}
+                            colorClass="text-indigo-400"
+                          />
+                      </div>
                   </div>
                   <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
                       <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest block">Vector Mapping</span>
-                        <span className="text-[10px] font-mono text-cyan-500 font-bold">v = rω</span>
+                        <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest block">Rotational Relation</span>
+                        <span className="text-[10px] font-mono text-cyan-500 font-bold italic">ω = 2πf</span>
                       </div>
                       <div className="flex items-center gap-3">
-                          <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest">Toggle Vector</span>
+                          <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest">Show Velocity Vector</span>
                           <button 
                             onClick={() => setShowVectors({...showVectors, velocity: !showVectors.velocity})}
                             className={cn(
@@ -593,7 +630,6 @@ export default function CircularMotionSimulator() {
         </div>
       </div>
 
-      {/* Config Analysis Sidebar */}
       <div className="w-full lg:w-80 space-y-6">
         <div className="bg-[#18181b] rounded-[32px] border border-white/5 p-8 space-y-8 shadow-2xl relative overflow-hidden h-full">
            <div className="space-y-1">
@@ -603,28 +639,22 @@ export default function CircularMotionSimulator() {
            
            <div className="space-y-6">
                {[
-                   { label: "Centripetal Force", val: (mass * radius * physicsOmega * physicsOmega).toFixed(1) + " N", percent: Math.min(100, (mass * radius * physicsOmega * physicsOmega)), color: "bg-pink-500" },
-                   { label: "Angular Velocity", val: physicsOmega.toFixed(2) + " rad/s", percent: Math.min(100, physicsOmega * 10), color: "bg-cyan-500" },
-                   { label: "Rotational Frequency", val: (physicsOmega / (2 * Math.PI)).toFixed(2) + " Hz", percent: Math.min(100, (physicsOmega / (2 * Math.PI)) * 50), color: "bg-indigo-500" },
-                   { label: "Tangential Force", val: (isUCM ? 0 : tangentialForce).toFixed(1) + " N", percent: Math.min(100, Math.abs(tangentialForce) * 10), color: "bg-orange-500" },
+                   { label: "Force", val: physics.Fc.toFixed(1), unit: "N" },
+                   { label: "Velocity", val: physics.v.toFixed(2), unit: "m/s" },
+                   { label: "Frequency", val: physics.frequency.toFixed(2), unit: "Hz" },
+                   { label: "Radius", val: physics.radius.toFixed(2), unit: "m" },
                ].map(stat => (
-                   <div key={stat.label} className="space-y-2">
+                   <div key={stat.label} className="space-y-2 group">
                        <div className="flex justify-between items-end">
-                           <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{stat.label}</span>
-                           <span className="text-xs font-mono font-bold text-white">{stat.val}</span>
-                       </div>
-                       <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                           <motion.div 
-                               initial={{ width: 0 }}
-                               animate={{ width: `${stat.percent}%` }}
-                               className={cn("h-full", stat.color)}
-                           />
+                           <div className="space-y-0.5">
+                               <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{stat.label}</span>
+                           </div>
+                           <span className="text-xs font-mono font-bold text-white">{stat.val} <span className="text-[10px] text-white/20">{stat.unit}</span></span>
                        </div>
                    </div>
                ))}
            </div>
 
-           {/* Kinematic Relations Panel */}
            <div className="pt-6 border-t border-white/5 space-y-4">
                 <div className="flex items-center justify-between">
                     <h4 className="text-[10px] font-bold text-primary uppercase tracking-[0.2em]">Kinematic Relations</h4>
@@ -633,23 +663,22 @@ export default function CircularMotionSimulator() {
                 <div className="space-y-3">
                     <RelationBox 
                         formula="v = rω" 
-                        calc={`${radius.toFixed(2)} × ${physicsOmega.toFixed(2)}`}
-                        result={`${(radius * physicsOmega).toFixed(2)} m/s`} 
+                        calc={`${physics.radius.toFixed(2)} × ${physics.omega.toFixed(2)}`}
+                        result={`${physics.v.toFixed(2)} m/s`} 
                     />
                     <RelationBox 
                         formula="ac = v²/r" 
-                        calc={`${(radius * physicsOmega).toFixed(2)}² / ${radius.toFixed(2)}`}
-                        result={`${(radius * physicsOmega * physicsOmega).toFixed(2)} m/s²`} 
+                        calc={`${physics.v.toFixed(2)}² / ${physics.radius.toFixed(2)}`}
+                        result={`${physics.ac.toFixed(2)} m/s²`} 
                     />
                     <RelationBox 
                         formula="Fc = mac" 
-                        calc={`${mass.toFixed(2)} × ${(radius * physicsOmega * physicsOmega).toFixed(2)}`}
-                        result={`${(mass * radius * physicsOmega * physicsOmega).toFixed(1)} N`} 
+                        calc={`${physics.mass.toFixed(2)} × ${physics.ac.toFixed(2)}`}
+                        result={`${physics.Fc.toFixed(1)} N`} 
                     />
                 </div>
            </div>
 
-           {/* Vector Direction Atlas */}
            <div className="pt-6 border-t border-white/5 space-y-4">
                 <h4 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">Vector Direction Atlas</h4>
                 <div className="grid grid-cols-1 gap-2">
@@ -738,13 +767,3 @@ export default function CircularMotionSimulator() {
     </SimulationPageLayout>
   );
 }
-
-const RelationBox = ({ formula, calc, result }: { formula: string; calc: string; result: string }) => (
-    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5 group hover:border-primary/30 transition-all">
-        <div className="flex justify-between items-baseline">
-            <span className="text-xs font-mono font-bold text-primary">{formula}</span>
-            <span className="text-sm font-mono font-black text-white">{result}</span>
-        </div>
-        <p className="text-[9px] font-mono text-white/20 group-hover:text-white/40 transition-colors">Substitution: {calc}</p>
-    </div>
-);
