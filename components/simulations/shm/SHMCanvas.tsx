@@ -75,7 +75,6 @@ export const SHMCanvas: React.FC<SHMCanvasProps> = ({
       animId = requestAnimationFrame(draw);
     };
 
-    // ── Spring drawing ────────────────────────────────────────
     function drawSpring(
       ctx: CanvasRenderingContext2D,
       CX: number, Y_ANC: number, Y_EQ: number, SCALE: number, A: number,
