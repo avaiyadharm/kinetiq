@@ -210,6 +210,31 @@ export const GravitationCanvas: React.FC<GravitationCanvasProps> = ({
     ctx.textAlign = "center";
     ctx.fillText("r", midX + 10, midY - 6);
 
+    // ── Orbit Equilibrium Condition (below orbit) ──
+    const eqBoxX = CX - 110, eqBoxY = CY + SCALE + 30;
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    roundRect(ctx, eqBoxX, eqBoxY, 220, 52, 10);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(236,72,153,0.2)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Title
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "bold 8px Inter";
+    ctx.textAlign = "left";
+    ctx.fillText("ORBIT EQUILIBRIUM CONDITION", eqBoxX + 10, eqBoxY + 14);
+    // Formula
+    ctx.fillStyle = COLORS.gravity;
+    ctx.font = "bold 12px 'JetBrains Mono', monospace";
+    ctx.fillText("Fg = Fc", eqBoxX + 10, eqBoxY + 32);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "bold 10px 'JetBrains Mono', monospace";
+    ctx.fillText("→  GMm/r² = mv²/r", eqBoxX + 75, eqBoxY + 32);
+    // Verified checkmark
+    ctx.fillStyle = "#34d399";
+    ctx.font = "bold 9px Inter";
+    ctx.fillText("✓ Balanced", eqBoxX + 155, eqBoxY + 46);
+
     // ── Legend (top-right) ──
     const lx = W - 185, ly = 35;
     ctx.fillStyle = "rgba(0,0,0,0.45)";

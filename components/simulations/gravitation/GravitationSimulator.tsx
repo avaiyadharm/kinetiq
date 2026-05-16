@@ -156,24 +156,27 @@ export default function GravitationSimulator() {
         </div>
         {/* Sidebar */}
         <div className="w-full lg:w-[420px] flex flex-col gap-6 z-10 overflow-y-auto custom-scrollbar pr-1">
-          <div className="bg-[#18181b] rounded-[32px] p-8 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity"><Globe className="w-24 h-24 text-primary" /></div>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10 text-primary"><Info className="w-5 h-5" /></div>
-              <h3 className="text-xl font-bold uppercase tracking-tight">Orbital Pulse</h3>
+          <div className="bg-[#18181b] rounded-[24px] p-5 border border-white/5 shadow-xl relative overflow-hidden group shrink-0">
+            <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity"><Globe className="w-16 h-16 text-primary" /></div>
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary"><Info className="w-4 h-4" /></div>
+              <h3 className="text-base font-bold uppercase tracking-tight">Orbital Pulse</h3>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed italic relative z-10">
-              Gravitational force provides the centripetal acceleration for stable circular orbits. The orbit velocity is independent of the orbiter mass.
+            <p className="text-white/50 text-xs leading-relaxed mb-4 relative z-10">
+              Fg provides centripetal acceleration for stable orbits. Orbital velocity is independent of orbiter mass.
             </p>
-            <div className="grid grid-cols-2 gap-4 relative z-10">
-              <div className="p-4 rounded-2xl bg-black/40 border border-orange-500/10">
-                <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest block mb-1">Period</span>
-                <p className="text-xl font-mono font-bold text-white">{period.toFixed(0)} <span className="text-[10px] text-white/20">s</span></p>
+            <div className="grid grid-cols-2 gap-3 relative z-10">
+              <div className="p-3 rounded-xl bg-black/40 border border-orange-500/10">
+                <span className="text-[9px] font-bold text-orange-400 uppercase tracking-widest block mb-1">Period (T)</span>
+                <p className="text-lg font-mono font-bold text-white leading-tight">{period.toFixed(0)} <span className="text-[9px] text-white/20">s</span></p>
               </div>
-              <div className="p-4 rounded-2xl bg-black/40 border border-cyan-500/10">
-                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest block mb-1">Escape Vel</span>
-                <p className="text-xl font-mono font-bold text-white">{sci(escapeV)} <span className="text-[10px] text-white/20">m/s</span></p>
+              <div className="p-3 rounded-xl bg-black/40 border border-cyan-500/10">
+                <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-widest block mb-1">Escape Vel</span>
+                <p className="text-lg font-mono font-bold text-white leading-tight">{sci(escapeV)} <span className="text-[9px] text-white/20">m/s</span></p>
               </div>
+            </div>
+            <div className="mt-3 p-2.5 rounded-xl bg-pink-500/5 border border-pink-500/10 text-center">
+              <p className="text-[10px] font-mono font-bold text-pink-400">Fg = Fc → GMm/r² = mv²/r</p>
             </div>
           </div>
           <div className="space-y-4">
