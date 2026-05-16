@@ -231,6 +231,7 @@ export default function SHMSimulator() {
                     isPlaying={isPlaying}
                     mode={mode}
                     mass={mass}
+                    kConstant={kConstant}
                     showVectors={showVectors}
                     showTrail={showTrail}
                 />
