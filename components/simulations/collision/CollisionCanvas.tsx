@@ -12,7 +12,14 @@ interface CollisionCanvasProps {
   showTrail: boolean; time: number;
   keBefore: number; keAfter: number;
   coeffRestitution: number;
+  collisionCount?: number;
   showCoM?: boolean; showForceVectors?: boolean; showGridOverlays?: boolean;
+  inContact?: boolean;
+  contactForce?: number;
+  sq1?: number;
+  sq2?: number;
+  comReferenceFrame?: boolean;
+  scientificMode?: boolean;
 }
 
 const C = {
@@ -24,22 +31,33 @@ const C = {
   grid: "rgba(39,39,42,0.25)",
 };
 
+const VISUAL_SPEED_SCALE = 0.08;
+
+
 export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
   const {
     mass1, mass2, v1, v2, v1Post, v2Post, pos1, pos2,
     isPlaying, hasCollided, coeffRestitution,
     showVectors, showTrail, time, keBefore, keAfter,
+    collisionCount = 0,
     showCoM = true, showForceVectors = true, showGridOverlays = true,
+    inContact = false,
+    contactForce = 0,
+    sq1 = 1,
+    sq2 = 1,
+    comReferenceFrame = false,
+    scientificMode = false,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const lastCollidedRef = useRef(false);
+  const lastCollisionCountRef = useRef(-1);  // detects every new ball-ball collision
   const collisionTimeRef = useRef<number | null>(null);
   const lastTimeRef = useRef(0);
+
   const sparksRef = useRef<{ x: number; y: number; vx: number; vy: number; age: number; max: number; col: string }[]>([]);
   const swRef = useRef<{ x: number; y: number; r: number; maxR: number; op: number; active: boolean } | null>(null);
-  const trail1Ref = useRef<{ x: number; y: number; a: number }[]>([]);
-  const trail2Ref = useRef<{ x: number; y: number; a: number }[]>([]);
+  const trail1Ref = useRef<{ pos: number; a: number }[]>([]);
+  const trail2Ref = useRef<{ pos: number; a: number }[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -53,17 +71,28 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     }
     ctx.resetTransform(); ctx.scale(dpr, dpr);
 
-    const TY = H * 0.52;
+    const TY = H * 0.44; // Raised slightly to make room for full scientific statistics underneath
     const RW = W - 160;
     const r1 = Math.max(18, Math.min(42, 16 + mass1 * 2.5));
     const r2 = Math.max(18, Math.min(42, 16 + mass2 * 2.5));
-    const x1 = 80 + pos1 * RW;
-    const x2 = 80 + pos2 * RW;
 
-    // --- spawn effects on collision ---
-    if (hasCollided && !lastCollidedRef.current) {
+    const effectiveSq1 = scientificMode ? 1.0 : sq1;
+    const effectiveSq2 = scientificMode ? 1.0 : sq2;
+
+    // Calculate center of mass position (0 to 1 normalized)
+    const posC = (mass1 * pos1 + mass2 * pos2) / (mass1 + mass2);
+
+    // Apply Center of Mass Frame conversion if enabled
+    const pos1Render = comReferenceFrame ? (pos1 - posC + 0.5) : pos1;
+    const pos2Render = comReferenceFrame ? (pos2 - posC + 0.5) : pos2;
+
+    const x1 = 80 + pos1Render * RW;
+    const x2 = 80 + pos2Render * RW;
+
+    // --- spawn effects on every new collision event ---
+    if (collisionCount > lastCollisionCountRef.current) {
+      lastCollisionCountRef.current = collisionCount;
       collisionTimeRef.current = time;
-      lastCollidedRef.current = true;
       const mid = (x1 + x2) / 2;
       swRef.current = { x: mid, y: TY, r: 0, maxR: 130, op: 1, active: true };
       const col = coeffRestitution > 0.5 ? C.elastic : C.inelastic;
@@ -73,8 +102,8 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
         return { x: mid, y: TY, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, max: 0.3 + Math.random() * 0.3, col };
       });
     }
-    if (!hasCollided) {
-      lastCollidedRef.current = false;
+    if (!hasCollided && !inContact) {
+      lastCollisionCountRef.current = -1;
       collisionTimeRef.current = null;
       sparksRef.current = []; swRef.current = null;
     }
@@ -89,20 +118,6 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
         .filter(p => p.age < p.max);
     }
 
-    // squish
-    let sq1 = 1, sq2 = 1;
-    let deforming = false;
-    if (collisionTimeRef.current !== null) {
-      const ts = time - collisionTimeRef.current;
-      if (ts >= 0 && ts < 0.3) {
-        deforming = true;
-        const f = Math.min(0.18, Math.abs(v1 - v2) * 0.032) * Math.exp(-ts * 11) * Math.sin(ts * Math.PI * 2 / 0.3);
-        const M = mass1 + mass2;
-        sq1 = 1 - f * (mass2 / M) * coeffRestitution;
-        sq2 = 1 + f * (mass1 / M) * coeffRestitution;
-      }
-    }
-
     ctx.clearRect(0, 0, W, H);
 
     // --- grid ---
@@ -115,37 +130,56 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
       ctx.font = "8px 'JetBrains Mono',monospace";
       ctx.textAlign = "center";
       for (let i = 0; i <= 10; i++) {
-        const mx = 80 + (i / 10) * RW;
-        ctx.fillRect(mx - 0.5, TY - 6, 1, 12);
-        ctx.fillText(`${i.toFixed(0)}m`, mx, TY + 20);
+        const rawPos = i / 10;
+        const renderPos = comReferenceFrame ? (rawPos - posC + 0.5) : rawPos;
+        if (renderPos >= -0.05 && renderPos <= 1.05) {
+          const mx = 80 + renderPos * RW;
+          ctx.fillRect(mx - 0.5, TY - 6, 1, 12);
+          ctx.fillText(`${i.toFixed(0)}m`, mx, TY + 20);
+        }
       }
     }
 
     // --- track ---
+    const leftTrackLimit = comReferenceFrame ? 80 + (0.0 - posC + 0.5) * RW : 80;
+    const rightTrackLimit = comReferenceFrame ? 80 + (1.0 - posC + 0.5) * RW : 80 + RW;
     const gt = ctx.createLinearGradient(0, TY - 2, 0, TY + 6);
     gt.addColorStop(0, "#27272a"); gt.addColorStop(0.5, "#3f3f46"); gt.addColorStop(1, "#18181b");
     ctx.fillStyle = gt;
-    ctx.fillRect(40, TY - 2, W - 80, 4);
+    ctx.fillRect(leftTrackLimit, TY - 2, rightTrackLimit - leftTrackLimit, 4);
 
     // bumpers
-    [[48, "L"], [W - 48, "R"]].forEach(([bx, side]) => {
-      const bxn = bx as number;
-      ctx.fillStyle = "rgba(63,63,70,0.9)"; ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      if (side === "L") ctx.rect(bxn - 18, TY - 22, 18, 32); else ctx.rect(bxn, TY - 22, 18, 32);
-      ctx.fill(); ctx.stroke();
-    });
+    const leftWallX = comReferenceFrame ? 80 + (0.0 - posC + 0.5) * RW : 80;
+    const rightWallX = comReferenceFrame ? 80 + (1.0 - posC + 0.5) * RW : 80 + RW;
+    
+    // Draw Left Bumper
+    ctx.fillStyle = "rgba(63,63,70,0.9)"; ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(leftWallX - 32, TY - 22, 32, 44);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.vel;
+    ctx.fillRect(leftWallX - 4, TY - 22, 4, 44);
+
+    // Draw Right Bumper
+    ctx.fillStyle = "rgba(63,63,70,0.9)"; ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(rightWallX, TY - 22, 32, 44);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.vel;
+    ctx.fillRect(rightWallX, TY - 22, 4, 44);
 
     // --- anticipation predictor ---
-    const cV1 = hasCollided ? v1Post : v1;
-    const cV2 = hasCollided ? v2Post : v2;
+    const vCM = (mass1 * v1 + mass2 * v2) / (mass1 + mass2);
+    const cV1 = v1 - (comReferenceFrame ? vCM : 0);
+    const cV2 = v2 - (comReferenceFrame ? vCM : 0);
     const relV = cV1 - cV2;
-    if (!hasCollided && relV > 0) {
+
+    if (!hasCollided && !inContact && relV > 0 && !comReferenceFrame) {
       const lDist = (r1 + r2) / RW;
       const remN = pos2 - pos1 - lDist;
       if (remN > 0) {
-        const ttc = remN / relV;
-        const xi = 80 + (pos1 + cV1 * ttc + r1 / RW) * RW;
+        const ttc = remN / (relV * VISUAL_SPEED_SCALE);
+        const xi = 80 + (pos1 + (cV1 * VISUAL_SPEED_SCALE) * ttc + r1 / RW) * RW;
         ctx.fillStyle = `rgba(245,158,11,${0.025 + Math.abs(Math.sin(time * 4)) * 0.04})`;
         ctx.fillRect(xi - 25, 0, 50, H);
         ctx.strokeStyle = "rgba(245,158,11,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
@@ -159,17 +193,21 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     // --- trails ---
     if (showTrail) {
       if (isPlaying) {
-        trail1Ref.current.push({ x: x1, y: TY, a: 1 });
-        trail2Ref.current.push({ x: x2, y: TY, a: 1 });
+        trail1Ref.current.push({ pos: pos1, a: 1 });
+        trail2Ref.current.push({ pos: pos2, a: 1 });
       }
       if (trail1Ref.current.length > 60) trail1Ref.current.shift();
       if (trail2Ref.current.length > 60) trail2Ref.current.shift();
       [[trail1Ref.current, C.obj1], [trail2Ref.current, C.obj2]].forEach(([trail, col]) => {
-        (trail as { x: number; y: number; a: number }[]).forEach(p => {
+        (trail as { pos: number; a: number }[]).forEach(p => {
           if (isPlaying) p.a -= 0.012;
           if (p.a <= 0) return;
           const [r, g, b] = hexRGB(col as string);
-          ctx.beginPath(); ctx.arc(p.x, p.y, 1.5 + p.a * 2.5, 0, Math.PI * 2);
+          
+          const renderPos = comReferenceFrame ? (p.pos - posC + 0.5) : p.pos;
+          const tx = 80 + renderPos * RW;
+          
+          ctx.beginPath(); ctx.arc(tx, TY, 1.5 + p.a * 2.5, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(${r},${g},${b},${p.a * 0.22})`; ctx.fill();
         });
       });
@@ -184,7 +222,6 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
         ctx.lineWidth = 2.5; ctx.shadowBlur = 16; ctx.shadowColor = coeffRestitution > 0.5 ? C.elastic : C.inelastic;
         ctx.beginPath(); ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2); ctx.stroke();
         ctx.shadowBlur = 0;
-        // inner ring
         if (sw.r > 20) {
           ctx.strokeStyle = coeffRestitution > 0.5 ? `rgba(16,185,129,${sw.op * 0.3})` : `rgba(249,115,22,${sw.op * 0.3})`;
           ctx.lineWidth = 1;
@@ -215,39 +252,72 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     }
 
     // --- Newton 3rd Law forces ---
-    if (showForceVectors && deforming && collisionTimeRef.current !== null) {
-      const ts = time - collisionTimeRef.current;
-      const fMag = Math.abs(v1 - v2) * 200 * Math.sin(ts * Math.PI / 0.3);
-      if (fMag > 2) {
-        arrow(ctx, x1, TY, x1 - fMag * 0.3, TY, `F₂₁`, C.force, 4);
-        arrow(ctx, x2, TY, x2 + fMag * 0.3, TY, `F₁₂`, C.force, 4);
-        ctx.fillStyle = C.force; ctx.font = "bold 8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
-        ctx.fillText("F₁₂ = −F₂₁  (Newton 3rd)", (x1 + x2) / 2, TY - 52);
-      }
+    if (showForceVectors && inContact && contactForce > 0.01) {
+      const contactX = (x1 + r1 + x2 - r2) / 2;
+      const fMag = Math.min(120, 15 + contactForce * 0.8);
+      
+      arrow(ctx, contactX, TY, contactX - fMag, TY, `F₂₁ = -${contactForce.toFixed(1)} N`, C.force, 3.5);
+      arrow(ctx, contactX, TY, contactX + fMag, TY, `F₁₂ = +${contactForce.toFixed(1)} N`, C.force, 3.5);
+      
+      ctx.fillStyle = C.force; ctx.font = "bold 8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+      ctx.fillText("F₁₂ = −F₂₁  (Newton's Third Law)", (x1 + x2) / 2, TY - 52);
     }
 
     // --- object 1 ---
-    drawSphere(ctx, x1, TY, r1, sq1, 1 / sq1, mass1, cV1, C.obj1, C.obj1g, "#c4b5fd", 1);
+    drawSphere(ctx, x1, TY, r1, effectiveSq1, 1 / effectiveSq1, mass1, cV1, C.obj1, C.obj1g, "#c4b5fd", 1);
     ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
     ctx.fillText(`m₁=${mass1.toFixed(1)}kg`, x1, TY + r1 + 34);
     const ke1 = 0.5 * mass1 * cV1 * cV1;
     ctx.fillText(`KE=${ke1.toFixed(1)}J`, x1, TY + r1 + 44);
 
     // --- object 2 ---
-    drawSphere(ctx, x2, TY, r2, sq2, 1 / sq2, mass2, cV2, C.obj2, C.obj2g, "#99f6e4", 2);
+    drawSphere(ctx, x2, TY, r2, effectiveSq2, 1 / effectiveSq2, mass2, cV2, C.obj2, C.obj2g, "#99f6e4", 2);
     ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.textAlign = "center";
     ctx.fillText(`m₂=${mass2.toFixed(1)}kg`, x2, TY + r2 + 34);
     const ke2 = 0.5 * mass2 * cV2 * cV2;
     ctx.fillText(`KE=${ke2.toFixed(1)}J`, x2, TY + r2 + 44);
 
+    // --- Scientific Accuracy Calibration Stats & Dimension lines ---
+    if (scientificMode) {
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "bold 8.5px 'JetBrains Mono',monospace";
+      ctx.textAlign = "center";
+
+      // Precise 4-digit parameters
+      ctx.fillText(`x₁ = ${pos1.toFixed(4)} m`, x1, TY + r1 + 56);
+      ctx.fillText(`x₂ = ${pos2.toFixed(4)} m`, x2, TY + r2 + 56);
+
+      ctx.fillText(`v₁ = ${cV1.toFixed(4)} m/s`, x1, TY + r1 + 66);
+      ctx.fillText(`v₂ = ${cV2.toFixed(4)} m/s`, x2, TY + r2 + 66);
+
+      const p1_val = mass1 * cV1;
+      const p2_val = mass2 * cV2;
+      ctx.fillText(`p₁ = ${p1_val.toFixed(4)} kg·m/s`, x1, TY + r1 + 76);
+      ctx.fillText(`p₂ = ${p2_val.toFixed(4)} kg·m/s`, x2, TY + r2 + 76);
+
+      // System wide details
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = "bold 7px 'JetBrains Mono',monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`SYSTEM SOLVER ACCURACY BOUNDS: ±0.01% (TOLERANCE = 10⁻⁵) | dt = 0.0001s`, 24, H - 20);
+
+      // Coordinate alignment indicator lines
+      ctx.strokeStyle = "rgba(245,158,11,0.25)"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1, TY);
+      ctx.lineTo(x1, TY + r1 + 50);
+      ctx.moveTo(x2, TY);
+      ctx.lineTo(x2, TY + r2 + 50);
+      ctx.stroke();
+    }
+
     // --- CoM ---
     if (showCoM) {
-      const posC = (mass1 * pos1 + mass2 * pos2) / (mass1 + mass2);
-      const xC = 80 + posC * RW;
-      const vCM = (mass1 * cV1 + mass2 * cV2) / (mass1 + mass2);
+      const renderPosC = comReferenceFrame ? 0.5 : posC;
+      const xC = 80 + renderPosC * RW;
       ctx.strokeStyle = "rgba(234,179,8,0.2)"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(xC, TY - 55); ctx.lineTo(xC, TY + 55); ctx.stroke(); ctx.setLineDash([]);
-      // dial
+      
       ctx.save(); ctx.translate(xC, TY);
       ctx.fillStyle = C.com;
       for (const [s, e] of [[0, Math.PI / 2], [Math.PI, Math.PI * 1.5]]) {
@@ -256,9 +326,15 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
       ctx.strokeStyle = C.com; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
+      
       ctx.fillStyle = C.com; ctx.font = "bold 7px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
       ctx.fillText("CoM", xC, TY - 12);
-      if (Math.abs(vCM) > 0.01) arrow(ctx, xC, TY - 34, xC + vCM * VS, TY - 34, `v_cm=${vCM.toFixed(2)}`, C.com, 2);
+      
+      if (comReferenceFrame) {
+        ctx.fillText("STATIONARY REF FRAME", xC, TY - 44);
+      } else if (Math.abs(vCM) > 0.01) {
+        arrow(ctx, xC, TY - 34, xC + vCM * VS, TY - 34, `v_cm=${vCM.toFixed(2)} m/s`, C.com, 2);
+      }
     }
 
     // --- relative velocity meter (top-right HUD) ---
@@ -292,8 +368,8 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     }
 
   }, [mass1, mass2, v1, v2, v1Post, v2Post, pos1, pos2, isPlaying, hasCollided,
-    showVectors, showTrail, time, keBefore, keAfter, coeffRestitution,
-    showCoM, showForceVectors, showGridOverlays]);
+    showVectors, showTrail, time, keBefore, keAfter, coeffRestitution, collisionCount,
+    showCoM, showForceVectors, showGridOverlays, inContact, contactForce, sq1, sq2, comReferenceFrame, scientificMode]);
 
   return (
     <div className="relative w-full h-full min-h-[460px] rounded-[32px] bg-[#09090b] border border-white/5 overflow-hidden shadow-2xl">
@@ -305,7 +381,7 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${isPlaying ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-zinc-600"} animate-pulse`} />
           <span className="text-white/60 font-mono text-[10px] font-bold">
-            {isPlaying ? (hasCollided ? "POST-IMPACT" : "APPROACHING") : "ARMED"}
+            {isPlaying ? (inContact ? "IN IMPACT" : hasCollided ? "POST-IMPACT" : "APPROACHING") : "ARMED"}
           </span>
         </div>
       </div>
@@ -325,21 +401,16 @@ function drawSphere(
 ) {
   const ke = 0.5 * mass * vel * vel;
   ctx.save(); ctx.translate(cx, cy); ctx.scale(sx, sy);
-  // aura
   const ga = ctx.createRadialGradient(0, 0, r - 2, 0, 0, r + 8 + Math.min(16, ke * 0.5));
   ga.addColorStop(0, glow); ga.addColorStop(1, "transparent");
   ctx.fillStyle = ga; ctx.beginPath(); ctx.arc(0, 0, r + 8 + Math.min(16, ke * 0.5), 0, Math.PI * 2); ctx.fill();
-  // body
   ctx.fillStyle = "rgba(14,14,18,0.9)"; ctx.strokeStyle = stroke; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  // inner ring
   ctx.strokeStyle = stroke + "55"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(0, 0, r * 0.7, 0, Math.PI * 2); ctx.stroke();
   if (mass > 4) { ctx.strokeStyle = stroke + "30"; ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2); ctx.stroke(); }
-  // sheen
   ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(0, 0, r - 3, -Math.PI / 3.2, -Math.PI * 2 / 3.2, true); ctx.stroke();
-  // core
   const cs = Math.max(4, Math.min(r * 0.38, 2.5 + ke * 0.45));
   const gc = ctx.createRadialGradient(0, 0, 0, 0, 0, cs);
   gc.addColorStop(0, "#fff"); gc.addColorStop(0.35, coreCol); gc.addColorStop(1, "transparent");

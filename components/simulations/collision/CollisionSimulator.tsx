@@ -134,6 +134,80 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
   );
 };
 
+const VISUAL_SPEED_SCALE = 0.08;
+
+interface InlineEditableValueProps {
+  value: number;
+  min: number;
+  max: number;
+  unit: string;
+  color: string;
+  disabled?: boolean;
+  onChange: (val: number) => void;
+}
+
+const InlineEditableValue: React.FC<InlineEditableValueProps> = ({
+  value, min, max, unit, color, disabled, onChange
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(value.toString());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setInputValue(value.toString());
+  }, [value]);
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    let val = parseFloat(inputValue);
+    if (isNaN(val)) val = value;
+    val = Math.max(min, Math.min(max, val));
+    onChange(val);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleBlur();
+    if (e.key === "Escape") {
+      setIsEditing(false);
+      setInputValue(value.toString());
+    }
+  };
+
+  if (disabled) {
+    return (
+      <span className={cn("font-mono font-bold select-none", color)}>
+        {value.toFixed(1)} <span className="text-[8px] text-white/20 uppercase">{unit}</span>
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative inline-block">
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          type="number"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          className="w-16 bg-white/10 border border-white/20 focus:ring-1 focus:ring-primary focus:outline-none rounded px-1 text-center font-mono font-bold text-white text-[11px]"
+          autoFocus
+          step="any"
+        />
+      ) : (
+        <span 
+          onClick={() => setIsEditing(true)}
+          className={cn("font-mono font-bold cursor-pointer hover:bg-white/5 px-1.5 py-0.5 rounded transition-all select-none border border-transparent hover:border-white/10", color)}
+          title="Click to type"
+        >
+          {value.toFixed(1)} <span className="text-[8px] text-white/20 uppercase">{unit}</span>
+        </span>
+      )}
+    </div>
+  );
+};
+
 // --- Dynamic Equation Substituting Component ---
 const ScientificPipeline = ({ 
   m1, m2, v1Pre, v2Pre, v1Post, v2Post, hasCollided 
@@ -275,6 +349,157 @@ const EnergyWidget = ({
   );
 };
 
+// --- Real-Time Equations & Derivations Panel ---
+const EquationsDerivationsPanel = ({ 
+  m1, m2, v1, v2, u1, u2, pos1, pos2, e, inContact, contactForce 
+}: {
+  m1: number; m2: number; v1: number; v2: number; u1: number; u2: number; pos1: number; pos2: number; e: number; inContact: boolean; contactForce: number;
+}) => {
+  const p1 = m1 * v1;
+  const p2 = m2 * v2;
+  const pTotal = p1 + p2;
+
+  const ke1 = 0.5 * m1 * v1 * v1;
+  const ke2 = 0.5 * m2 * v2 * v2;
+  const keTotal = ke1 + ke2;
+
+  const pBefore = m1 * u1 + m2 * u2;
+  const deltaP = pTotal - pBefore;
+
+  const J1 = m1 * (v1 - u1);
+  const J2 = m2 * (v2 - u2);
+
+  const track1 = pos1 * 10;
+  const track2 = pos2 * 10;
+  const xCom = (m1 * track1 + m2 * track2) / (m1 + m2);
+  const vCom = (m1 * v1 + m2 * v2) / (m1 + m2);
+
+  const relVelocityPre = Math.abs(u1 - u2);
+  const relVelocityPost = Math.abs(v1 - v2);
+  const eMeasured = relVelocityPre > 0.01 ? relVelocityPost / relVelocityPre : 0;
+
+  return (
+    <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-3.5 font-mono">
+      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+        <div className="flex items-center gap-2">
+          <Calculator className="w-3.5 h-3.5 text-amber-500" />
+          <span className="text-[9px] font-bold text-white/90 uppercase tracking-wider">Real-Time Derivations</span>
+        </div>
+        <Badge variant="outline" className="text-[8px] font-bold border-amber-500/25 text-amber-400 bg-amber-500/5 h-4 px-1.5 uppercase">
+          Live Equations
+        </Badge>
+      </div>
+
+      <div className="space-y-3 text-[10px] leading-relaxed">
+        {/* Momentum Section */}
+        <div className="space-y-1 bg-white/[0.01] border border-white/[0.03] p-2.5 rounded-xl hover:border-violet-500/25 transition-all">
+          <div className="flex justify-between items-baseline">
+            <span className="text-[8px] font-black text-violet-400 uppercase tracking-wider">1. Momentum (p = mv)</span>
+            <span className="text-white/30 text-[8px] font-bold">p_total = p₁ + p₂</span>
+          </div>
+          <div className="text-white/60 space-y-0.5">
+            <div>
+              p₁ = ({m1.toFixed(2)} kg)·({v1 >= 0 ? "+" : ""}{v1.toFixed(2)} m/s) = <strong className="text-white font-bold">{p1.toFixed(3)}</strong> kg·m/s
+            </div>
+            <div>
+              p₂ = ({m2.toFixed(2)} kg)·({v2 >= 0 ? "+" : ""}{v2.toFixed(2)} m/s) = <strong className="text-white font-bold">{p2.toFixed(3)}</strong> kg·m/s
+            </div>
+            <div className="pt-1.5 border-t border-white/[0.05] text-violet-300 font-bold flex justify-between">
+              <span>Σp = {p1.toFixed(2)} + ({p2 >= 0 ? "+" : ""}{p2.toFixed(2)}) =</span>
+              <span className="text-white">{pTotal.toFixed(3)} kg·m/s</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Kinetic Energy Section */}
+        <div className="space-y-1 bg-white/[0.01] border border-white/[0.03] p-2.5 rounded-xl hover:border-cyan-500/25 transition-all">
+          <div className="flex justify-between items-baseline">
+            <span className="text-[8px] font-black text-cyan-400 uppercase tracking-wider">2. Kinetic Energy (KE = ½mv²)</span>
+            <span className="text-white/30 text-[8px] font-bold">KE_total = KE₁ + KE₂</span>
+          </div>
+          <div className="text-white/60 space-y-0.5">
+            <div>
+              KE₁ = 0.5·({m1.toFixed(2)} kg)·({v1.toFixed(2)} m/s)² = <strong className="text-white font-bold">{ke1.toFixed(3)}</strong> J
+            </div>
+            <div>
+              KE₂ = 0.5·({m2.toFixed(2)} kg)·({v2.toFixed(2)} m/s)² = <strong className="text-white font-bold">{ke2.toFixed(3)}</strong> J
+            </div>
+            <div className="pt-1.5 border-t border-white/[0.05] text-cyan-300 font-bold flex justify-between">
+              <span>ΣKE = {ke1.toFixed(2)} + {ke2.toFixed(2)} =</span>
+              <span className="text-white">{keTotal.toFixed(3)} J</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Conservation & Restitution Section */}
+        <div className="space-y-1 bg-white/[0.01] border border-white/[0.03] p-2.5 rounded-xl hover:border-emerald-500/25 transition-all">
+          <div className="flex justify-between items-baseline">
+            <span className="text-[8px] font-black text-emerald-400 uppercase tracking-wider">3. Conservation & Elasticity</span>
+            <span className="text-white/30 text-[8px] font-bold">e = |v₂&apos;-v₁&apos;| / |u₁-u₂|</span>
+          </div>
+          <div className="text-white/60 space-y-1">
+            <div className="flex justify-between">
+              <span>Momentum Error (Δp):</span>
+              <span className={Math.abs(deltaP) < 0.001 ? "text-emerald-400" : "text-amber-400 font-bold"}>
+                {deltaP >= 0 ? "+" : ""}{deltaP.toFixed(5)} kg·m/s
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Restitution (Config / Live):</span>
+              <span className="text-emerald-300 font-bold">
+                e_cfg = {e.toFixed(2)} | e_live = {eMeasured.toFixed(3)}
+              </span>
+            </div>
+            {inContact && (
+              <div className="flex justify-between pt-1 border-t border-white/[0.05] text-red-400 font-bold">
+                <span>Reaction Force (F_c):</span>
+                <span>{contactForce.toFixed(2)} N</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Center of Mass Section */}
+        <div className="space-y-1 bg-white/[0.01] border border-white/[0.03] p-2.5 rounded-xl hover:border-yellow-500/25 transition-all">
+          <div className="flex justify-between items-baseline">
+            <span className="text-[8px] font-black text-yellow-500 uppercase tracking-wider">4. Center of Mass Dynamics</span>
+            <span className="text-white/30 text-[8px] font-bold">x_com = Σmx / Σm</span>
+          </div>
+          <div className="text-white/60 space-y-0.5">
+            <div>
+              x_com = [({m1.toFixed(1)}·{track1.toFixed(2)}) + ({m2.toFixed(1)}·{track2.toFixed(2)})] / {(m1 + m2).toFixed(1)} = <strong className="text-white font-bold">{xCom.toFixed(3)}</strong> m
+            </div>
+            <div className="pt-1.5 border-t border-white/[0.05] text-yellow-300 font-bold flex justify-between">
+              <span>V_com = [({m1.toFixed(1)}·{v1.toFixed(1)}) + ({m2.toFixed(1)}·{v2.toFixed(1)})] / {(m1 + m2).toFixed(1)} =</span>
+              <span className="text-white">{vCom.toFixed(3)} m/s</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Impulse and Action-Reaction */}
+        <div className="space-y-1 bg-white/[0.01] border border-white/[0.03] p-2.5 rounded-xl hover:border-pink-500/25 transition-all">
+          <div className="flex justify-between items-baseline">
+            <span className="text-[8px] font-black text-pink-400 uppercase tracking-wider">5. Impulse & Action-Reaction</span>
+            <span className="text-white/30 text-[8px] font-bold">J = Δp = m(v - u)</span>
+          </div>
+          <div className="text-white/60 space-y-0.5">
+            <div>
+              J₁ = ({m1.toFixed(2)} kg)·[({v1.toFixed(2)}) - ({u1.toFixed(2)})] = <strong className="text-white font-bold">{J1 >= 0 ? "+" : ""}{J1.toFixed(3)}</strong> N·s
+            </div>
+            <div>
+              J₂ = ({m2.toFixed(2)} kg)·[({v2.toFixed(2)}) - ({u2.toFixed(2)})] = <strong className="text-white font-bold">{J2 >= 0 ? "+" : ""}{J2.toFixed(3)}</strong> N·s
+            </div>
+            <div className="pt-1.5 border-t border-white/[0.05] text-pink-300 font-bold flex justify-between">
+              <span>Net Impulse (ΣJ = J₁ + J₂):</span>
+              <span className="text-white">{(J1 + J2).toFixed(3)} N·s</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- EnvironmentConfig Card wrapper ---
 const ControlCard = ({ title, icon: Icon, children, color }: any) => (
   <div className="bg-[#18181b] rounded-[32px] p-6 md:p-8 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group">
@@ -299,6 +524,7 @@ export default function CollisionSimulator() {
   const [v2, setV2] = useState(-2.0);      // m/s (Initial velocity slider)
   const [coeffRestitution, setCoeffRestitution] = useState(1.0); // e = 1 for elastic
   const [collisionType, setCollisionType] = useState<"elastic" | "inelastic">("elastic");
+  const [scientificMode, setScientificMode] = useState(true);
 
   // --- Advanced Playback & Controls state ---
   const [isPlaying, setIsPlaying] = useState(false);
@@ -311,10 +537,13 @@ export default function CollisionSimulator() {
   const [showCoM, setShowCoM] = useState(true);
   const [showForceVectors, setShowForceVectors] = useState(true);
   const [showGridOverlays, setShowGridOverlays] = useState(true);
+  const [comReferenceFrame, setComReferenceFrame] = useState(false);
   
   const [time, setTime] = useState(0);
   const [pos1, setPos1] = useState(0.2); // normalised pos of ball 1
   const [pos2, setPos2] = useState(0.6); // normalised pos of ball 2
+  const [dynV1, setDynV1] = useState(v1);
+  const [dynV2, setDynV2] = useState(v2);
   const [hasCollided, setHasCollided] = useState(false);
   const [collisionTime, setCollisionTime] = useState<number | null>(null);
 
@@ -323,6 +552,18 @@ export default function CollisionSimulator() {
     momentum: true,
   });
   const [showTrail, setShowTrail] = useState(true);
+
+  // --- Contact lifecycle state and refs ---
+  const [inContact, setInContact] = useState(false);
+  const [contactForce, setContactForce] = useState(0);
+  const [sq1, setSq1] = useState(1);
+  const [sq2, setSq2] = useState(1);
+
+  const inContactRef = useRef(false);
+  const contactStartTimeRef = useRef(0);
+  const contactPreV1Ref = useRef(0);
+  const contactPreV2Ref = useRef(0);
+  const contactXcmStartRef = useRef(0);
 
   // Analytical record of velocities at impact moment
   const [collisionData, setCollisionData] = useState<{
@@ -352,7 +593,10 @@ export default function CollisionSimulator() {
   const pos2Ref = useRef(0.6);
   const v1Ref = useRef(4.0);
   const v2Ref = useRef(-2.0);
-  const collidedRef = useRef(false);
+  // lastBallCollisionTimeRef: stores sim-time of the most recent ball-ball collision.
+  // A cooldown period prevents the same collision from firing multiple frames in a row.
+  const lastBallCollisionTimeRef = useRef(-999);
+  const [collisionCount, setCollisionCount] = useState(0);
   const timeRef = useRef(0);
   const prevP1Ref = useRef(mass1 * v1); // for impulse = Δp
   
@@ -404,19 +648,18 @@ export default function CollisionSimulator() {
 
       // ── Physical Dilation & Time Scale Multiplier ──
       let activeTimeScale = timeScale;
-      
-      // Cinematic slow-mo around impact
-      if (autoSlowMo && !collidedRef.current) {
-        const r1 = Math.max(18, Math.min(42, 16 + mass1 * 2.5));
-        const r2 = Math.max(18, Math.min(42, 16 + mass2 * 2.5));
-        const limitCollisionDist = (r1 + r2) / 640;
-        
+
+      // Cinematic slow-mo: activate when balls are close and approaching
+      if (autoSlowMo) {
+        const r1s = Math.max(18, Math.min(42, 16 + mass1 * 2.5));
+        const r2s = Math.max(18, Math.min(42, 16 + mass2 * 2.5));
+        const limitS = (r1s + r2s) / 640;
         const dist = pos2Ref.current - pos1Ref.current;
-        const criticalDist = limitCollisionDist * 2.2;
-        
-        if (dist < criticalDist) {
+        const criticalDist = limitS * 2.5;
+        const approaching = v1Ref.current > v2Ref.current; // closing gap
+        if (dist < criticalDist && approaching) {
           const factor = Math.max(0, dist / criticalDist);
-          activeTimeScale = 0.15 + 0.85 * factor; // drops smoothly to 15% speed!
+          activeTimeScale = 0.15 + 0.85 * factor;
         }
       }
 
@@ -432,51 +675,126 @@ export default function CollisionSimulator() {
       const rn1 = r1 / 640;
       const rn2 = r2 / 640;
 
-      let nextPos1 = pos1Ref.current + v1Ref.current * dt;
-      let nextPos2 = pos2Ref.current + v2Ref.current * dt;
+      let nextPos1 = pos1Ref.current;
+      let nextPos2 = pos2Ref.current;
 
-      // Detect and resolve collision
-      if (!collidedRef.current && (nextPos2 - nextPos1 <= limitCollisionDist)) {
-        // Resolve overlap
-        const overlap = limitCollisionDist - (nextPos2 - nextPos1);
-        nextPos1 -= overlap / 2;
-        nextPos2 += overlap / 2;
-
-        const preV1 = v1Ref.current;
-        const preV2 = v2Ref.current;
-
-        // Apply dynamic formulas
-        const finalV1 = ((mass1 - e * mass2) * preV1 + (1 + e) * mass2 * preV2) / (mass1 + mass2);
-        const finalV2 = ((mass2 - e * mass1) * preV2 + (1 + e) * mass1 * preV1) / (mass1 + mass2);
-
-        v1Ref.current = finalV1;
-        v2Ref.current = finalV2;
-        collidedRef.current = true;
-        setHasCollided(true);
-        setCollisionTime(currentTime);
-
-        setCollisionData({
-          v1Pre: preV1,
-          v2Pre: preV2,
-          v1Post: finalV1,
-          v2Post: finalV2,
-        });
-
-        // Freeze simulation at impact trigger
-        if (freezeAtImpact) {
-          setIsPlaying(false);
-          lastTimeRef.current = null;
+      // ── Ball-ball continuous contact lifecycle ────────────────────────────
+      if (inContactRef.current) {
+        const contactElapsed = currentTime - contactStartTimeRef.current;
+        const Tc = 0.20; // 200ms duration for perfect visual capture
+        
+        if (contactElapsed < Tc) {
+          const theta = (contactElapsed / Tc) * Math.PI;
+          const u1 = contactPreV1Ref.current;
+          const u2 = contactPreV2Ref.current;
+          const uRel = u1 - u2;
+          
+          // d(t) = R_sum - uRel * [ (1+e)/2 * (Tc/pi) * sin(theta) ]
+          // This ensures dVal perfectly returns to limitCollisionDist at t = Tc with no overlap or pop.
+          const dVal = limitCollisionDist - (uRel * VISUAL_SPEED_SCALE) * (
+            ((1 + e) / 2) * (Tc / Math.PI) * Math.sin(theta)
+          );
+          
+          const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
+          const xCM = contactXcmStartRef.current + (vCM * VISUAL_SPEED_SCALE) * contactElapsed;
+          
+          nextPos1 = xCM - (mass2 / (mass1 + mass2)) * dVal;
+          nextPos2 = xCM + (mass1 / (mass1 + mass2)) * dVal;
+          
+          const dDot = uRel * (((1 - e) / 2) + ((1 + e) / 2) * Math.cos(theta));
+          v1Ref.current = vCM + (mass2 / (mass1 + mass2)) * dDot;
+          v2Ref.current = vCM - (mass1 / (mass1 + mass2)) * dDot;
+          
+          // Action-reaction force
+          const mu = (mass1 * mass2) / (mass1 + mass2);
+          const J = mu * uRel * (1 + e);
+          const Fmax = (Math.PI / 2) * (J / Tc);
+          const fVal = Fmax * Math.sin(theta);
+          setContactForce(fVal);
+          
+          // Squish coefficients
+          const fc = Math.max(0, (limitCollisionDist - dVal) / limitCollisionDist);
+          setSq1(Math.max(0.72, 1 - 0.28 * (mass2 / (mass1 + mass2)) * fc));
+          setSq2(Math.max(0.72, 1 - 0.28 * (mass1 / (mass1 + mass2)) * fc));
+        } else {
+          // Separation complete
+          inContactRef.current = false;
+          setInContact(false);
+          setContactForce(0);
+          setSq1(1);
+          setSq2(1);
+          
+          const u1 = contactPreV1Ref.current;
+          const u2 = contactPreV2Ref.current;
+          const uRel = u1 - u2;
+          
+          const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
+          v1Ref.current = vCM - e * (mass2 / (mass1 + mass2)) * uRel;
+          v2Ref.current = vCM + e * (mass1 / (mass1 + mass2)) * uRel;
+          
+          const dVal = limitCollisionDist;
+          const xCM = contactXcmStartRef.current + (vCM * VISUAL_SPEED_SCALE) * Tc;
+          nextPos1 = xCM - (mass2 / (mass1 + mass2)) * dVal;
+          nextPos2 = xCM + (mass1 / (mass1 + mass2)) * dVal;
+        }
+      } else {
+        nextPos1 = pos1Ref.current + (v1Ref.current * VISUAL_SPEED_SCALE) * dt;
+        nextPos2 = pos2Ref.current + (v2Ref.current * VISUAL_SPEED_SCALE) * dt;
+        
+        const dist = nextPos2 - nextPos1;
+        const approaching = v1Ref.current > v2Ref.current;
+        
+        if (dist <= limitCollisionDist && approaching) {
+          // Initialize contact phase
+          inContactRef.current = true;
+          setInContact(true);
+          contactStartTimeRef.current = currentTime;
+          contactPreV1Ref.current = v1Ref.current;
+          contactPreV2Ref.current = v2Ref.current;
+          contactXcmStartRef.current = (mass1 * pos1Ref.current + mass2 * pos2Ref.current) / (mass1 + mass2);
+          
+          const u1 = v1Ref.current;
+          const u2 = v2Ref.current;
+          const uRel = u1 - u2;
+          
+          lastBallCollisionTimeRef.current = currentTime;
+          setHasCollided(true);
+          setCollisionTime(currentTime);
+          setCollisionCount(c => c + 1);
+          
+          const finalV1 = ((mass1 - e * mass2) * u1 + (1 + e) * mass2 * u2) / (mass1 + mass2);
+          const finalV2 = ((mass2 - e * mass1) * u2 + (1 + e) * mass1 * u1) / (mass1 + mass2);
+          setCollisionData({ v1Pre: u1, v2Pre: u2, v1Post: finalV1, v2Post: finalV2 });
+          
+          // Instant contact dynamics
+          const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
+          v1Ref.current = vCM + (mass2 / (mass1 + mass2)) * uRel;
+          v2Ref.current = vCM - (mass1 / (mass1 + mass2)) * uRel;
+          
+          setContactForce(0);
+          setSq1(1);
+          setSq2(1);
+          
+          if (freezeAtImpact) {
+            setIsPlaying(false);
+            lastTimeRef.current = null;
+          }
         }
       }
 
-      // Wall bumper rebound collision (elastic walls)
-      if (nextPos1 < rn1) {
-        nextPos1 = rn1;
-        v1Ref.current = -v1Ref.current;
-      }
-      if (nextPos2 > 1.0 - rn2) {
-        nextPos2 = 1.0 - rn2;
-        v2Ref.current = -v2Ref.current;
+      // ── Elastic wall bounces — all 4 cases ─────────────────────────────────
+      let wallBounce = false;
+      // Left wall → ball 1
+      if (nextPos1 < rn1) { nextPos1 = rn1; v1Ref.current = Math.abs(v1Ref.current); wallBounce = true; }
+      // Right wall → ball 1
+      if (nextPos1 > 1.0 - rn1) { nextPos1 = 1.0 - rn1; v1Ref.current = -Math.abs(v1Ref.current); wallBounce = true; }
+      // Left wall → ball 2
+      if (nextPos2 < rn2) { nextPos2 = rn2; v2Ref.current = Math.abs(v2Ref.current); wallBounce = true; }
+      // Right wall → ball 2
+      if (nextPos2 > 1.0 - rn2) { nextPos2 = 1.0 - rn2; v2Ref.current = -Math.abs(v2Ref.current); wallBounce = true; }
+
+      if (wallBounce) {
+        initialMomentumRef.current = null;
       }
 
       pos1Ref.current = nextPos1;
@@ -485,6 +803,8 @@ export default function CollisionSimulator() {
       setTime(currentTime);
       setPos1(nextPos1);
       setPos2(nextPos2);
+      setDynV1(v1Ref.current);
+      setDynV2(v2Ref.current);
 
       // Record telemetry graphs
       const currentV1 = v1Ref.current;
@@ -525,21 +845,45 @@ export default function CollisionSimulator() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying, mass1, mass2, e, v1, v2, timeScale, autoSlowMo, freezeAtImpact]);
 
-  // Synchronise state parameters
+  const prevParamsRef = useRef({ v1, v2, mass1, mass2, e });
+
+  // Synchronise state parameters when not playing
   useEffect(() => {
+    const paramsChanged = prevParamsRef.current.v1 !== v1 ||
+                          prevParamsRef.current.v2 !== v2 ||
+                          prevParamsRef.current.mass1 !== mass1 ||
+                          prevParamsRef.current.mass2 !== mass2 ||
+                          prevParamsRef.current.e !== e;
+                          
+    prevParamsRef.current = { v1, v2, mass1, mass2, e };
+
     if (!isPlaying) {
+      // If paused mid-flight (time > 0) and initial configuration parameters have not changed,
+      // FREEZE the visual state completely so the user can take notes of values!
+      if (timeRef.current > 0 && !paramsChanged) {
+        return;
+      }
+
       v1Ref.current = v1;
       v2Ref.current = v2;
+      setDynV1(v1);
+      setDynV2(v2);
       pos1Ref.current = 0.2;
       pos2Ref.current = 0.6;
       timeRef.current = 0;
-      collidedRef.current = false;
+      lastBallCollisionTimeRef.current = -999;
       prevP1Ref.current = mass1 * v1;
       initialMomentumRef.current = null;
 
+      setInContact(false);
+      inContactRef.current = false;
+      setContactForce(0);
+      setSq1(1);
+      setSq2(1);
+
       setPos1(0.2); setPos2(0.6); setTime(0);
       setHasCollided(false); setCollisionTime(null);
-      setConservationError(0);
+      setConservationError(0); setCollisionCount(0);
       setCollisionData({ v1Pre: v1, v2Pre: v2, v1Post: 0, v2Post: 0 });
       const empty = { v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [] };
       graphsRef.current = empty;
@@ -553,12 +897,18 @@ export default function CollisionSimulator() {
     pos1Ref.current = 0.2; pos2Ref.current = 0.6;
     timeRef.current = 0;
     v1Ref.current = v1; v2Ref.current = v2;
-    collidedRef.current = false;
+    setDynV1(v1); setDynV2(v2);
+    lastBallCollisionTimeRef.current = -999;
     prevP1Ref.current = mass1 * v1;
     initialMomentumRef.current = null;
     setHasCollided(false); setCollisionTime(null);
-    setConservationError(0);
+    setConservationError(0); setCollisionCount(0);
     setCollisionData({ v1Pre: v1, v2Pre: v2, v1Post: 0, v2Post: 0 });
+    setInContact(false);
+    inContactRef.current = false;
+    setContactForce(0);
+    setSq1(1);
+    setSq2(1);
     const empty = { v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [] };
     graphsRef.current = empty;
     setGraphs(empty);
@@ -578,41 +928,112 @@ export default function CollisionSimulator() {
     const rn1 = r1 / 640;
     const rn2 = r2 / 640;
 
-    let nextPos1 = pos1Ref.current + v1Ref.current * dt;
-    let nextPos2 = pos2Ref.current + v2Ref.current * dt;
+    let nextPos1 = pos1Ref.current;
+    let nextPos2 = pos2Ref.current;
 
-    if (!collidedRef.current && (nextPos2 - nextPos1 <= limitCollisionDist)) {
-      const overlap = limitCollisionDist - (nextPos2 - nextPos1);
-      nextPos1 -= overlap / 2;
-      nextPos2 += overlap / 2;
-
-      const preV1 = v1Ref.current;
-      const preV2 = v2Ref.current;
-
-      const finalV1 = ((mass1 - e * mass2) * preV1 + (1 + e) * mass2 * preV2) / (mass1 + mass2);
-      const finalV2 = ((mass2 - e * mass1) * preV2 + (1 + e) * mass1 * preV1) / (mass1 + mass2);
-
-      v1Ref.current = finalV1;
-      v2Ref.current = finalV2;
-      collidedRef.current = true;
-      setHasCollided(true);
-      setCollisionTime(currentTime);
-
-      setCollisionData({
-        v1Pre: preV1,
-        v2Pre: preV2,
-        v1Post: finalV1,
-        v2Post: finalV2,
-      });
+    // ── Ball-ball continuous contact lifecycle (Stepper Sync) ─────────────
+    if (inContactRef.current) {
+      const contactElapsed = currentTime - contactStartTimeRef.current;
+      const Tc = 0.20;
+      
+      if (contactElapsed < Tc) {
+        const theta = (contactElapsed / Tc) * Math.PI;
+        const u1 = contactPreV1Ref.current;
+        const u2 = contactPreV2Ref.current;
+        const uRel = u1 - u2;
+        
+        // d(t) = R_sum - uRel * [ (1+e)/2 * (Tc/pi) * sin(theta) ]
+        // This ensures dVal perfectly returns to limitCollisionDist at t = Tc with no overlap or pop.
+        const dVal = limitCollisionDist - (uRel * VISUAL_SPEED_SCALE) * (
+          ((1 + e) / 2) * (Tc / Math.PI) * Math.sin(theta)
+        );
+        
+        const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
+        const xCM = contactXcmStartRef.current + (vCM * VISUAL_SPEED_SCALE) * contactElapsed;
+        
+        nextPos1 = xCM - (mass2 / (mass1 + mass2)) * dVal;
+        nextPos2 = xCM + (mass1 / (mass1 + mass2)) * dVal;
+        
+        const dDot = uRel * (((1 - e) / 2) + ((1 + e) / 2) * Math.cos(theta));
+        v1Ref.current = vCM + (mass2 / (mass1 + mass2)) * dDot;
+        v2Ref.current = vCM - (mass1 / (mass1 + mass2)) * dDot;
+        
+        const mu = (mass1 * mass2) / (mass1 + mass2);
+        const J = mu * uRel * (1 + e);
+        const Fmax = (Math.PI / 2) * (J / Tc);
+        const fVal = Fmax * Math.sin(theta);
+        setContactForce(fVal);
+        
+        const fc = Math.max(0, (limitCollisionDist - dVal) / limitCollisionDist);
+        setSq1(Math.max(0.72, 1 - 0.28 * (mass2 / (mass1 + mass2)) * fc));
+        setSq2(Math.max(0.72, 1 - 0.28 * (mass1 / (mass1 + mass2)) * fc));
+      } else {
+        inContactRef.current = false;
+        setInContact(false);
+        setContactForce(0);
+        setSq1(1);
+        setSq2(1);
+        
+        const u1 = contactPreV1Ref.current;
+        const u2 = contactPreV2Ref.current;
+        const uRel = u1 - u2;
+        
+        const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
+        v1Ref.current = vCM - e * (mass2 / (mass1 + mass2)) * uRel;
+        v2Ref.current = vCM + e * (mass1 / (mass1 + mass2)) * uRel;
+        
+        const dVal = limitCollisionDist;
+        const xCM = contactXcmStartRef.current + (vCM * VISUAL_SPEED_SCALE) * Tc;
+        nextPos1 = xCM - (mass2 / (mass1 + mass2)) * dVal;
+        nextPos2 = xCM + (mass1 / (mass1 + mass2)) * dVal;
+      }
+    } else {
+      nextPos1 = pos1Ref.current + (v1Ref.current * VISUAL_SPEED_SCALE) * dt;
+      nextPos2 = pos2Ref.current + (v2Ref.current * VISUAL_SPEED_SCALE) * dt;
+      
+      const dist = nextPos2 - nextPos1;
+      const approaching = v1Ref.current > v2Ref.current;
+      
+      if (dist <= limitCollisionDist && approaching) {
+        inContactRef.current = true;
+        setInContact(true);
+        contactStartTimeRef.current = currentTime;
+        contactPreV1Ref.current = v1Ref.current;
+        contactPreV2Ref.current = v2Ref.current;
+        contactXcmStartRef.current = (mass1 * pos1Ref.current + mass2 * pos2Ref.current) / (mass1 + mass2);
+        
+        const u1 = v1Ref.current;
+        const u2 = v2Ref.current;
+        const uRel = u1 - u2;
+        
+        lastBallCollisionTimeRef.current = currentTime;
+        setHasCollided(true);
+        setCollisionTime(currentTime);
+        setCollisionCount(c => c + 1);
+        
+        const finalV1 = ((mass1 - e * mass2) * u1 + (1 + e) * mass2 * u2) / (mass1 + mass2);
+        const finalV2 = ((mass2 - e * mass1) * u2 + (1 + e) * mass1 * u1) / (mass1 + mass2);
+        setCollisionData({ v1Pre: u1, v2Pre: u2, v1Post: finalV1, v2Post: finalV2 });
+        
+        const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
+        v1Ref.current = vCM + (mass2 / (mass1 + mass2)) * uRel;
+        v2Ref.current = vCM - (mass1 / (mass1 + mass2)) * uRel;
+        
+        setContactForce(0);
+        setSq1(1);
+        setSq2(1);
+      }
     }
 
-    if (nextPos1 < rn1) {
-      nextPos1 = rn1;
-      v1Ref.current = -v1Ref.current;
-    }
-    if (nextPos2 > 1.0 - rn2) {
-      nextPos2 = 1.0 - rn2;
-      v2Ref.current = -v2Ref.current;
+    // All 4 wall bounces
+    let wallBounce = false;
+    if (nextPos1 < rn1) { nextPos1 = rn1; v1Ref.current = Math.abs(v1Ref.current); wallBounce = true; }
+    if (nextPos1 > 1.0 - rn1) { nextPos1 = 1.0 - rn1; v1Ref.current = -Math.abs(v1Ref.current); wallBounce = true; }
+    if (nextPos2 < rn2) { nextPos2 = rn2; v2Ref.current = Math.abs(v2Ref.current); wallBounce = true; }
+    if (nextPos2 > 1.0 - rn2) { nextPos2 = 1.0 - rn2; v2Ref.current = -Math.abs(v2Ref.current); wallBounce = true; }
+
+    if (wallBounce) {
+      initialMomentumRef.current = null;
     }
 
     pos1Ref.current = nextPos1;
@@ -621,6 +1042,8 @@ export default function CollisionSimulator() {
     setTime(currentTime);
     setPos1(nextPos1);
     setPos2(nextPos2);
+    setDynV1(v1Ref.current);
+    setDynV2(v2Ref.current);
 
     const currentV1 = v1Ref.current;
     const currentV2 = v2Ref.current;
@@ -632,6 +1055,12 @@ export default function CollisionSimulator() {
     const currentP1 = mass1 * currentV1;
     const impulseVal = currentP1 - prevP1Ref.current;
     prevP1Ref.current = currentP1;
+
+    // Conservation error
+    if (initialMomentumRef.current === null) initialMomentumRef.current = pTotalVal;
+    const p0 = initialMomentumRef.current;
+    const err = p0 !== 0 ? Math.abs((pTotalVal - p0) / p0) : 0;
+    setConservationError(err);
 
     graphsRef.current = {
       v1: [...graphsRef.current.v1, { time: currentTime, value: currentV1 }].slice(-100),
@@ -759,11 +1188,11 @@ export default function CollisionSimulator() {
           
           {/* Main Telemetry Canvas */}
           <div className="flex-1 relative min-h-[360px]">
-             <CollisionCanvas 
+             <CollisionCanvas
                  mass1={mass1}
                  mass2={mass2}
-                 v1={v1}
-                 v2={v2}
+                 v1={dynV1}
+                 v2={dynV2}
                  v1Post={collisionData.v1Post}
                  v2Post={collisionData.v2Post}
                  pos1={pos1}
@@ -777,10 +1206,16 @@ export default function CollisionSimulator() {
                  keBefore={keBeforeTotal}
                  keAfter={keAfterTotal}
                  coeffRestitution={e}
-                 
+                 collisionCount={collisionCount}
                  showCoM={showCoM}
                  showForceVectors={showForceVectors}
                  showGridOverlays={showGridOverlays}
+                 inContact={inContact}
+                 contactForce={contactForce}
+                 sq1={sq1}
+                 sq2={sq2}
+                 comReferenceFrame={comReferenceFrame}
+                  scientificMode={scientificMode}
              />
           </div>
           
@@ -793,7 +1228,9 @@ export default function CollisionSimulator() {
                 { id: 'momentum', label: 'Momentum Vector (p)', color: 'bg-pink-500', active: showVectors.momentum, toggle: () => setShowVectors({...showVectors, momentum: !showVectors.momentum}) },
                 { id: 'forces', label: 'Reaction Force (F)', color: 'bg-red-500', active: showForceVectors, toggle: () => setShowForceVectors(!showForceVectors) },
                 { id: 'com', label: 'Center of Mass (CoM)', color: 'bg-yellow-500', active: showCoM, toggle: () => setShowCoM(!showCoM) },
-                { id: 'grid', label: 'Metric Grid', color: 'bg-blue-400', active: showGridOverlays, toggle: () => setShowGridOverlays(!showGridOverlays) }
+                { id: 'comFrame', label: 'CoM Reference Frame', color: 'bg-indigo-500', active: comReferenceFrame, toggle: () => setComReferenceFrame(!comReferenceFrame) },
+                { id: 'grid', label: 'Metric Grid', color: 'bg-blue-400', active: showGridOverlays, toggle: () => setShowGridOverlays(!showGridOverlays) },
+                { id: 'scientific', label: 'Scientific Mode', color: 'bg-amber-400', active: scientificMode, toggle: () => setScientificMode(!scientificMode) }
             ].map(v => (
                 <button 
                   key={v.id} 
@@ -916,7 +1353,15 @@ export default function CollisionSimulator() {
                   <div key={param.l} className="flex flex-col gap-1 bg-white/[0.02] border border-white/[0.03] px-3 py-2 rounded-xl">
                     <div className="flex justify-between items-center">
                       <span className="text-[9px] font-black text-white/30 uppercase">{param.l}</span>
-                      <span className={cn("font-mono font-bold", param.color)}>{param.val.toFixed(1)} <span className="text-[8px] text-white/20 uppercase">{param.unit}</span></span>
+                      <InlineEditableValue
+                        value={param.val}
+                        min={param.min}
+                        max={param.max}
+                        unit={param.unit}
+                        color={param.color}
+                        disabled={isPlaying}
+                        onChange={param.onChange}
+                      />
                     </div>
                     <input 
                       type="range" min={param.min} max={param.max} step={param.step} value={param.val}
@@ -962,22 +1407,38 @@ export default function CollisionSimulator() {
             </p>
 
             {/* Live mathematical conservation Substitution grid */}
-            <ScientificPipeline 
-              m1={mass1}
-              m2={mass2}
-              v1Pre={collisionData.v1Pre}
-              v2Pre={collisionData.v2Pre}
-              v1Post={collisionData.v1Post}
-              v2Post={collisionData.v2Post}
-              hasCollided={hasCollided}
-            />
+            {scientificMode ? (
+              <EquationsDerivationsPanel
+                m1={mass1}
+                m2={mass2}
+                v1={dynV1}
+                v2={dynV2}
+                u1={v1}
+                u2={v2}
+                pos1={pos1}
+                pos2={pos2}
+                e={e}
+                inContact={inContact}
+                contactForce={contactForce}
+              />
+            ) : (
+              <ScientificPipeline 
+                m1={mass1}
+                m2={mass2}
+                v1Pre={collisionData.v1Pre}
+                v2Pre={collisionData.v2Pre}
+                v1Post={collisionData.v1Post}
+                v2Post={collisionData.v2Post}
+                hasCollided={hasCollided}
+              />
+            )}
 
             {/* Live Combined Energy Allocation Widget */}
             <EnergyWidget 
               m1={mass1}
               m2={mass2}
-              v1={v1}
-              v2={v2}
+              v1={dynV1}
+              v2={dynV2}
               v1Post={collisionData.v1Post}
               v2Post={collisionData.v2Post}
               hasCollided={hasCollided}
@@ -988,16 +1449,11 @@ export default function CollisionSimulator() {
           {/* Real-time Telemetry Graphs grid */}
           <div className="space-y-4">
               <CollisionGraphs
-                v1Data={graphs.v1}
-                v2Data={graphs.v2}
-                pTotalData={graphs.pTotal}
-                keTotalData={graphs.keTotal}
-                ke1Data={graphs.ke1}
-                ke2Data={graphs.ke2}
-                impulseData={graphs.impulse}
-                relVelData={graphs.relVel}
+                samples={samples}
                 collisionTime={collisionTime}
                 conservationError={conservationError}
+                time={time}
+                scientificMode={scientificMode}
               />
           </div>
           
@@ -1132,6 +1588,7 @@ export default function CollisionSimulator() {
                   { label: "Friction Trails", active: showTrail, toggle: () => setShowTrail(!showTrail) },
                   { label: "Newton Force (F)", active: showForceVectors, toggle: () => setShowForceVectors(!showForceVectors) },
                   { label: "Center of Mass", active: showCoM, toggle: () => setShowCoM(!showCoM) },
+                  { label: "CoM Ref Frame", active: comReferenceFrame, toggle: () => setComReferenceFrame(!comReferenceFrame) },
                   { label: "Fine Metric Grid", active: showGridOverlays, toggle: () => setShowGridOverlays(!showGridOverlays) }
                 ].map((item) => (
                     <button
@@ -1219,6 +1676,40 @@ export default function CollisionSimulator() {
       </div>
     </div>
   );
+
+  const samples = graphs.v1.map((item, index) => {
+    const t = item.time;
+    const v1Val = item.value;
+    const v2Val = graphs.v2[index]?.value ?? 0;
+    const pTotalVal = graphs.pTotal[index]?.value ?? 0;
+    const keTotalVal = graphs.keTotal[index]?.value ?? 0;
+    const ke1Val = graphs.ke1[index]?.value ?? 0;
+    const ke2Val = graphs.ke2[index]?.value ?? 0;
+    const impulseVal = graphs.impulse[index]?.value ?? 0;
+    
+    const vComVal = (mass1 * v1Val + mass2 * v2Val) / (mass1 + mass2);
+    const p1Val = mass1 * v1Val;
+    const p2Val = mass2 * v2Val;
+
+    return {
+      time: t,
+      v1: v1Val,
+      v2: v2Val,
+      vCom: vComVal,
+      p1: p1Val,
+      p2: p2Val,
+      pTotal: pTotalVal,
+      ke1: ke1Val,
+      ke2: ke2Val,
+      keTotal: keTotalVal,
+      force1: 0,
+      force2: 0,
+      impulse1: impulseVal,
+      impulse2: -impulseVal,
+      netImpulse: 0,
+      xCom: 0,
+    };
+  });
 
   return (
     <SimulationPageLayout 
