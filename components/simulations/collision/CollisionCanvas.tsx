@@ -76,6 +76,10 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     const r1 = Math.max(18, Math.min(42, 16 + mass1 * 2.5));
     const r2 = Math.max(18, Math.min(42, 16 + mass2 * 2.5));
 
+    // Scale visual radii to dynamically match physics coordinate space (base of 640px)
+    const vr1 = (r1 / 640) * RW;
+    const vr2 = (r2 / 640) * RW;
+
     const effectiveSq1 = scientificMode ? 1.0 : sq1;
     const effectiveSq2 = scientificMode ? 1.0 : sq2;
 
@@ -175,16 +179,16 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     const relV = cV1 - cV2;
 
     if (!hasCollided && !inContact && relV > 0 && !comReferenceFrame) {
-      const lDist = (r1 + r2) / RW;
+      const lDist = (r1 + r2) / 640;
       const remN = pos2 - pos1 - lDist;
       if (remN > 0) {
         const ttc = remN / (relV * VISUAL_SPEED_SCALE);
-        const xi = 80 + (pos1 + (cV1 * VISUAL_SPEED_SCALE) * ttc + r1 / RW) * RW;
+        const xi = 80 + (pos1 + (cV1 * VISUAL_SPEED_SCALE) * ttc + r1 / 640) * RW;
         ctx.fillStyle = `rgba(245,158,11,${0.025 + Math.abs(Math.sin(time * 4)) * 0.04})`;
         ctx.fillRect(xi - 25, 0, 50, H);
         ctx.strokeStyle = "rgba(245,158,11,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
         ctx.beginPath(); ctx.moveTo(xi, 30); ctx.lineTo(xi, H - 30); ctx.stroke(); ctx.setLineDash([]);
-        ctx.fillStyle = C.vel; ctx.font = "bold 8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+        ctx.fillStyle = C.vel; ctx.font = "bold 11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
         ctx.fillText(`ETA ${ttc.toFixed(2)}s`, xi, 44);
         ctx.beginPath(); ctx.arc(xi, TY, 5, 0, Math.PI * 2); ctx.strokeStyle = C.vel; ctx.lineWidth = 1.5; ctx.stroke();
       }
@@ -242,72 +246,72 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     // --- velocity vectors ---
     const VS = 28, MS = 10;
     if (showVectors.velocity) {
-      if (Math.abs(cV1) > 0.01) arrow(ctx, x1, TY - r1 - 10, x1 + cV1 * VS, TY - r1 - 10, `${cV1 > 0 ? "+" : ""}${cV1.toFixed(2)} m/s`, C.vel, 2);
-      if (Math.abs(cV2) > 0.01) arrow(ctx, x2, TY - r2 - 10, x2 + cV2 * VS, TY - r2 - 10, `${cV2 > 0 ? "+" : ""}${cV2.toFixed(2)} m/s`, C.vel, 2);
+      if (Math.abs(cV1) > 0.01) arrow(ctx, x1, TY - vr1 - 10, x1 + cV1 * VS, TY - vr1 - 10, `${cV1 > 0 ? "+" : ""}${cV1.toFixed(2)} m/s`, C.vel, 2);
+      if (Math.abs(cV2) > 0.01) arrow(ctx, x2, TY - vr2 - 10, x2 + cV2 * VS, TY - vr2 - 10, `${cV2 > 0 ? "+" : ""}${cV2.toFixed(2)} m/s`, C.vel, 2);
     }
     if (showVectors.momentum) {
       const p1 = mass1 * cV1, p2 = mass2 * cV2;
-      if (Math.abs(p1) > 0.01) arrow(ctx, x1, TY + r1 + 12, x1 + p1 * MS, TY + r1 + 12, `${p1 > 0 ? "+" : ""}${p1.toFixed(2)} kg·m/s`, C.mom, 2);
-      if (Math.abs(p2) > 0.01) arrow(ctx, x2, TY + r2 + 12, x2 + p2 * MS, TY + r2 + 12, `${p2 > 0 ? "+" : ""}${p2.toFixed(2)} kg·m/s`, C.mom, 2);
+      if (Math.abs(p1) > 0.01) arrow(ctx, x1, TY + vr1 + 12, x1 + p1 * MS, TY + vr1 + 12, `${p1 > 0 ? "+" : ""}${p1.toFixed(2)} kg·m/s`, C.mom, 2);
+      if (Math.abs(p2) > 0.01) arrow(ctx, x2, TY + vr2 + 12, x2 + p2 * MS, TY + vr2 + 12, `${p2 > 0 ? "+" : ""}${p2.toFixed(2)} kg·m/s`, C.mom, 2);
     }
 
     // --- Newton 3rd Law forces ---
     if (showForceVectors && inContact && contactForce > 0.01) {
-      const contactX = (x1 + r1 + x2 - r2) / 2;
+      const contactX = (x1 + vr1 + x2 - vr2) / 2;
       const fMag = Math.min(120, 15 + contactForce * 0.8);
       
       arrow(ctx, contactX, TY, contactX - fMag, TY, `F₂₁ = -${contactForce.toFixed(1)} N`, C.force, 3.5);
       arrow(ctx, contactX, TY, contactX + fMag, TY, `F₁₂ = +${contactForce.toFixed(1)} N`, C.force, 3.5);
       
-      ctx.fillStyle = C.force; ctx.font = "bold 8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+      ctx.fillStyle = C.force; ctx.font = "bold 12px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
       ctx.fillText("F₁₂ = −F₂₁  (Newton's Third Law)", (x1 + x2) / 2, TY - 52);
     }
 
     // --- object 1 ---
-    drawSphere(ctx, x1, TY, r1, effectiveSq1, 1 / effectiveSq1, mass1, cV1, C.obj1, C.obj1g, "#c4b5fd", 1);
-    ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
-    ctx.fillText(`m₁=${mass1.toFixed(1)}kg`, x1, TY + r1 + 34);
+    drawSphere(ctx, x1, TY, vr1, effectiveSq1, 1 / effectiveSq1, mass1, cV1, C.obj1, C.obj1g, "#c4b5fd", 1);
+    ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "12px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+    ctx.fillText(`m₁=${mass1.toFixed(1)}kg`, x1, TY + vr1 + 34);
     const ke1 = 0.5 * mass1 * cV1 * cV1;
-    ctx.fillText(`KE=${ke1.toFixed(1)}J`, x1, TY + r1 + 44);
+    ctx.fillText(`KE=${ke1.toFixed(1)}J`, x1, TY + vr1 + 50);
 
     // --- object 2 ---
-    drawSphere(ctx, x2, TY, r2, effectiveSq2, 1 / effectiveSq2, mass2, cV2, C.obj2, C.obj2g, "#99f6e4", 2);
-    ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.textAlign = "center";
-    ctx.fillText(`m₂=${mass2.toFixed(1)}kg`, x2, TY + r2 + 34);
+    drawSphere(ctx, x2, TY, vr2, effectiveSq2, 1 / effectiveSq2, mass2, cV2, C.obj2, C.obj2g, "#99f6e4", 2);
+    ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "12px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+    ctx.fillText(`m₂=${mass2.toFixed(1)}kg`, x2, TY + vr2 + 34);
     const ke2 = 0.5 * mass2 * cV2 * cV2;
-    ctx.fillText(`KE=${ke2.toFixed(1)}J`, x2, TY + r2 + 44);
+    ctx.fillText(`KE=${ke2.toFixed(1)}J`, x2, TY + vr2 + 50);
 
     // --- Scientific Accuracy Calibration Stats & Dimension lines ---
     if (scientificMode) {
       ctx.fillStyle = "#f59e0b";
-      ctx.font = "bold 8.5px 'JetBrains Mono',monospace";
+      ctx.font = "bold 12px 'JetBrains Mono',monospace";
       ctx.textAlign = "center";
 
-      // Precise 4-digit parameters
-      ctx.fillText(`x₁ = ${pos1.toFixed(4)} m`, x1, TY + r1 + 56);
-      ctx.fillText(`x₂ = ${pos2.toFixed(4)} m`, x2, TY + r2 + 56);
+      // Precise 4-digit parameters with generous vertical spacing
+      ctx.fillText(`x₁ = ${pos1.toFixed(4)} m`, x1, TY + vr1 + 68);
+      ctx.fillText(`x₂ = ${pos2.toFixed(4)} m`, x2, TY + vr2 + 68);
 
-      ctx.fillText(`v₁ = ${cV1.toFixed(4)} m/s`, x1, TY + r1 + 66);
-      ctx.fillText(`v₂ = ${cV2.toFixed(4)} m/s`, x2, TY + r2 + 66);
+      ctx.fillText(`v₁ = ${cV1.toFixed(4)} m/s`, x1, TY + vr1 + 86);
+      ctx.fillText(`v₂ = ${cV2.toFixed(4)} m/s`, x2, TY + vr2 + 86);
 
       const p1_val = mass1 * cV1;
       const p2_val = mass2 * cV2;
-      ctx.fillText(`p₁ = ${p1_val.toFixed(4)} kg·m/s`, x1, TY + r1 + 76);
-      ctx.fillText(`p₂ = ${p2_val.toFixed(4)} kg·m/s`, x2, TY + r2 + 76);
+      ctx.fillText(`p₁ = ${p1_val.toFixed(4)} kg·m/s`, x1, TY + vr1 + 104);
+      ctx.fillText(`p₂ = ${p2_val.toFixed(4)} kg·m/s`, x2, TY + vr2 + 104);
 
       // System wide details
       ctx.fillStyle = "rgba(255,255,255,0.45)";
-      ctx.font = "bold 7px 'JetBrains Mono',monospace";
+      ctx.font = "bold 10px 'JetBrains Mono',monospace";
       ctx.textAlign = "left";
       ctx.fillText(`SYSTEM SOLVER ACCURACY BOUNDS: ±0.01% (TOLERANCE = 10⁻⁵) | dt = 0.0001s`, 24, H - 20);
 
-      // Coordinate alignment indicator lines
+      // Coordinate alignment indicator lines spanning behind the text
       ctx.strokeStyle = "rgba(245,158,11,0.25)"; ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x1, TY);
-      ctx.lineTo(x1, TY + r1 + 50);
+      ctx.lineTo(x1, TY + vr1 + 110);
       ctx.moveTo(x2, TY);
-      ctx.lineTo(x2, TY + r2 + 50);
+      ctx.lineTo(x2, TY + vr2 + 110);
       ctx.stroke();
     }
 
@@ -327,10 +331,11 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
       ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       
-      ctx.fillStyle = C.com; ctx.font = "bold 7px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+      ctx.fillStyle = C.com; ctx.font = "bold 10px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
       ctx.fillText("CoM", xC, TY - 12);
       
       if (comReferenceFrame) {
+        ctx.font = "bold 9px 'JetBrains Mono',monospace";
         ctx.fillText("STATIONARY REF FRAME", xC, TY - 44);
       } else if (Math.abs(vCM) > 0.01) {
         arrow(ctx, xC, TY - 34, xC + vCM * VS, TY - 34, `v_cm=${vCM.toFixed(2)} m/s`, C.com, 2);
@@ -350,21 +355,21 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     const mg = ctx.createLinearGradient(meterX, 0, meterX + fillW, 0);
     mg.addColorStop(0, meterCol); mg.addColorStop(1, meterCol + "99");
     ctx.fillStyle = mg; roundRect(ctx, meterX, meterY, fillW, meterH, 3); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = "7px 'JetBrains Mono',monospace"; ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.font = "bold 9px 'JetBrains Mono',monospace"; ctx.textAlign = "left";
     ctx.fillText("REL-VEL", meterX, meterY - 4);
     ctx.textAlign = "right";
-    ctx.fillStyle = meterCol; ctx.font = "bold 8px 'JetBrains Mono',monospace";
-    ctx.fillText(`${relSpeed.toFixed(2)} m/s`, meterX + meterW, meterY + meterH + 10);
+    ctx.fillStyle = meterCol; ctx.font = "bold 11px 'JetBrains Mono',monospace";
+    ctx.fillText(`${relSpeed.toFixed(2)} m/s`, meterX + meterW, meterY + meterH + 11);
 
     // --- conservation lock indicator ---
     const keIcon = hasCollided ? (Math.abs(keAfter - keBefore) / (keBefore || 1) < 0.005 ? "✓ KE CONSERVED" : `ΔKE = ${(keBefore - keAfter).toFixed(1)} J LOST`) : "";
     if (keIcon) {
       const isConserved = keIcon.startsWith("✓");
       ctx.fillStyle = isConserved ? "rgba(16,185,129,0.12)" : "rgba(249,115,22,0.1)";
-      roundRect(ctx, 20, 22, 140, 18, 4); ctx.fill();
+      roundRect(ctx, 20, 18, 160, 22, 4); ctx.fill();
       ctx.fillStyle = isConserved ? "#10b981" : "#f97316";
-      ctx.font = "bold 8px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
-      ctx.fillText(keIcon, 90, 34);
+      ctx.font = "bold 11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+      ctx.fillText(keIcon, 100, 33);
     }
 
   }, [mass1, mass2, v1, v2, v1Post, v2Post, pos1, pos2, isPlaying, hasCollided,
@@ -432,11 +437,11 @@ function arrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number
   ctx.lineTo(x2 - head * Math.cos(angle + Math.PI / 6), y2 - head * Math.sin(angle + Math.PI / 6));
   ctx.closePath(); ctx.fill();
   const lx = x2 + 8 * Math.cos(angle), ly = y2 + 8 * Math.sin(angle);
-  ctx.font = "bold 8px 'JetBrains Mono',monospace";
+  ctx.font = "bold 11px 'JetBrains Mono',monospace";
   const tw = ctx.measureText(label).width;
-  ctx.fillStyle = "rgba(9,9,11,0.8)";
-  roundRect(ctx, lx - tw / 2 - 3, ly - 7, tw + 6, 13, 3); ctx.fill();
-  ctx.fillStyle = color; ctx.textAlign = "center"; ctx.fillText(label, lx, ly + 3);
+  ctx.fillStyle = "rgba(9,9,11,0.9)";
+  roundRect(ctx, lx - tw / 2 - 4, ly - 9, tw + 8, 17, 4); ctx.fill();
+  ctx.fillStyle = color; ctx.textAlign = "center"; ctx.fillText(label, lx, ly + 4);
   ctx.restore();
 }
 
