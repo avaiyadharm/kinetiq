@@ -21,6 +21,7 @@ interface SamplePoint {
   impulse2: number;
   netImpulse: number;
   xCom: number;
+  keDissipated: number;
 }
 
 interface CollisionGraphsProps {
@@ -419,7 +420,16 @@ export const CollisionGraphs: React.FC<CollisionGraphsProps> = ({
   const velocitySeries: Series[] = [
     { key: "v1", label: "v₁", color: "#8b5cf6" },
     { key: "v2", label: "v₂", color: "#06b6d4" },
-    { key: "vCom", label: "v_com", color: "#eab308" },
+  ];
+
+  // COM Velocity vs Time series
+  const comVelocitySeries: Series[] = [
+    { key: "vCom", label: "V_com (Center of Mass)", color: "#eab308" },
+  ];
+
+  // Energy Dissipation series
+  const keDissipatedSeries: Series[] = [
+    { key: "keDissipated", label: "ΔKE (Dissipated Energy)", color: "#f43f5e" },
   ];
 
   // Momentum vs Time series
@@ -475,7 +485,7 @@ export const CollisionGraphs: React.FC<CollisionGraphsProps> = ({
       {/* Conservation meter */}
       <ConservationMeter error={conservationError} />
 
-      {/* Grid of 6 interactive multi-series charts */}
+      {/* Grid of 8 interactive multi-series charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Graph 1: Velocity */}
         <MiniGraph
@@ -558,15 +568,42 @@ export const CollisionGraphs: React.FC<CollisionGraphsProps> = ({
           time={time}
           scientificMode={scientificMode}
         />
+
+        {/* Graph 7: COM Velocity */}
+        <MiniGraph
+          samples={samples}
+          series={comVelocitySeries}
+          label="Center of Mass Velocity vs Time"
+          unit="m/s"
+          hoverIndex={hoverIndex}
+          setHoverIndex={setHoverIndex}
+          collisionTime={collisionTime}
+          time={time}
+          showZeroLine
+          scientificMode={scientificMode}
+        />
+
+        {/* Graph 8: Energy Dissipation */}
+        <MiniGraph
+          samples={samples}
+          series={keDissipatedSeries}
+          label="Energy Dissipation vs Time"
+          unit="J"
+          hoverIndex={hoverIndex}
+          setHoverIndex={setHoverIndex}
+          collisionTime={collisionTime}
+          time={time}
+          scientificMode={scientificMode}
+        />
       </div>
 
       {/* Guidance note */}
       <div className="p-3 bg-white/[0.01] border border-white/5 rounded-xl flex items-start gap-2">
         <Info className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />
         <p className="text-[9px] text-white/35 leading-relaxed">
-          Hover any chart to scrub all 6 channels in sync. In an isolated system (no wall interactions),{" "}
+          Hover any chart to scrub all 8 channels in sync. In an isolated system (no wall interactions),{" "}
           <strong className="text-white/50">Σp (pink line)</strong> and{" "}
-          <strong className="text-white/50">v_com (yellow velocity)</strong> are perfectly flat constants,
+          <strong className="text-white/50">V_com (yellow Center of Mass velocity)</strong> are perfectly flat constants,
           while the <strong className="text-white/50">Center of Mass trajectory</strong> stays fully linear,
           independent of the collision category.
         </p>

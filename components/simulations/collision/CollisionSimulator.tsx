@@ -582,6 +582,47 @@ export default function CollisionSimulator() {
     v1: [] as any[], v2: [] as any[], pTotal: [] as any[],
     keTotal: [] as any[], ke1: [] as any[], ke2: [] as any[],
     impulse: [] as any[], relVel: [] as any[],
+    force1: [] as any[], force2: [] as any[],
+    impulse1: [] as any[], impulse2: [] as any[], netImpulse: [] as any[],
+    xCom: [] as any[], vCom: [] as any[], keDissipated: [] as any[]
+  });
+
+  const samples = (graphs.v1 || []).map((item, index) => {
+    const t = item.time;
+    const v1Val = item.value;
+    const v2Val = graphs.v2[index]?.value ?? 0;
+    const vComVal = graphs.vCom[index]?.value ?? 0;
+    const pTotalVal = graphs.pTotal[index]?.value ?? 0;
+    const keTotalVal = graphs.keTotal[index]?.value ?? 0;
+    const ke1Val = graphs.ke1[index]?.value ?? 0;
+    const ke2Val = graphs.ke2[index]?.value ?? 0;
+    const force1Val = graphs.force1[index]?.value ?? 0;
+    const force2Val = graphs.force2[index]?.value ?? 0;
+    const impulse1Val = graphs.impulse1[index]?.value ?? 0;
+    const impulse2Val = graphs.impulse2[index]?.value ?? 0;
+    const netImpulseVal = graphs.netImpulse[index]?.value ?? 0;
+    const xComVal = graphs.xCom[index]?.value ?? 0;
+    const keDissipatedVal = graphs.keDissipated[index]?.value ?? 0;
+
+    return {
+      time: t,
+      v1: v1Val,
+      v2: v2Val,
+      vCom: vComVal,
+      p1: mass1 * v1Val,
+      p2: mass2 * v2Val,
+      pTotal: pTotalVal,
+      ke1: ke1Val,
+      ke2: ke2Val,
+      keTotal: keTotalVal,
+      force1: force1Val,
+      force2: force2Val,
+      impulse1: impulse1Val,
+      impulse2: impulse2Val,
+      netImpulse: netImpulseVal,
+      xCom: xComVal,
+      keDissipated: keDissipatedVal,
+    };
   });
 
   // Conservation error: |Δp| / |p0|
@@ -604,6 +645,9 @@ export default function CollisionSimulator() {
     v1: [] as any[], v2: [] as any[], pTotal: [] as any[],
     keTotal: [] as any[], ke1: [] as any[], ke2: [] as any[],
     impulse: [] as any[], relVel: [] as any[],
+    force1: [] as any[], force2: [] as any[],
+    impulse1: [] as any[], impulse2: [] as any[], netImpulse: [] as any[],
+    xCom: [] as any[], vCom: [] as any[], keDissipated: [] as any[]
   });
 
   const handleCollisionTypeChange = (type: "elastic" | "inelastic") => {
@@ -820,6 +864,43 @@ export default function CollisionSimulator() {
       const impulseVal = currentP1 - prevP1Ref.current;
       prevP1Ref.current = currentP1;
 
+      // Force calculations for both balls
+      let force1Val = 0;
+      let force2Val = 0;
+      const Tc = 0.20;
+      if (inContactRef.current) {
+        const contactElapsed = currentTime - contactStartTimeRef.current;
+        if (contactElapsed < Tc) {
+          const theta = (contactElapsed / Tc) * Math.PI;
+          const u1 = contactPreV1Ref.current;
+          const u2 = contactPreV2Ref.current;
+          const uRel = u1 - u2;
+          const mu = (mass1 * mass2) / (mass1 + mass2);
+          const J = mu * uRel * (1 + e);
+          const Fmax = (Math.PI / 2) * (J / Tc);
+          const fVal = Fmax * Math.sin(theta);
+          force1Val = -fVal;
+          force2Val = fVal;
+        }
+      }
+
+      // Individual impulses
+      let impulse1Val = 0;
+      let impulse2Val = 0;
+      if (hasCollided) {
+        impulse1Val = mass1 * (currentV1 - contactPreV1Ref.current);
+        impulse2Val = mass2 * (currentV2 - contactPreV2Ref.current);
+      }
+      const netImpulseVal = impulse1Val + impulse2Val;
+
+      // COM position & velocity
+      const xComVal = (mass1 * nextPos1 + mass2 * nextPos2) / (mass1 + mass2);
+      const vComVal = (mass1 * currentV1 + mass2 * currentV2) / (mass1 + mass2);
+
+      // Energy dissipated relative to initial total mechanical energy
+      const initialKE = 0.5 * mass1 * v1 * v1 + 0.5 * mass2 * v2 * v2;
+      const keDissipatedVal = Math.max(0, initialKE - keTotalVal);
+
       // Conservation error
       if (initialMomentumRef.current === null) initialMomentumRef.current = pTotalVal;
       const p0 = initialMomentumRef.current;
@@ -835,6 +916,14 @@ export default function CollisionSimulator() {
         ke2: [...graphsRef.current.ke2, { time: currentTime, value: ke2Val }].slice(-100),
         impulse: [...graphsRef.current.impulse, { time: currentTime, value: impulseVal }].slice(-100),
         relVel: [...graphsRef.current.relVel, { time: currentTime, value: relVelVal }].slice(-100),
+        force1: [...graphsRef.current.force1, { time: currentTime, value: force1Val }].slice(-100),
+        force2: [...graphsRef.current.force2, { time: currentTime, value: force2Val }].slice(-100),
+        impulse1: [...graphsRef.current.impulse1, { time: currentTime, value: impulse1Val }].slice(-100),
+        impulse2: [...graphsRef.current.impulse2, { time: currentTime, value: impulse2Val }].slice(-100),
+        netImpulse: [...graphsRef.current.netImpulse, { time: currentTime, value: netImpulseVal }].slice(-100),
+        xCom: [...graphsRef.current.xCom, { time: currentTime, value: xComVal }].slice(-100),
+        vCom: [...graphsRef.current.vCom, { time: currentTime, value: vComVal }].slice(-100),
+        keDissipated: [...graphsRef.current.keDissipated, { time: currentTime, value: keDissipatedVal }].slice(-100),
       };
       setGraphs(graphsRef.current);
 
@@ -885,7 +974,11 @@ export default function CollisionSimulator() {
       setHasCollided(false); setCollisionTime(null);
       setConservationError(0); setCollisionCount(0);
       setCollisionData({ v1Pre: v1, v2Pre: v2, v1Post: 0, v2Post: 0 });
-      const empty = { v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [] };
+      const empty = {
+        v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [],
+        force1: [], force2: [], impulse1: [], impulse2: [], netImpulse: [],
+        xCom: [], vCom: [], keDissipated: []
+      };
       graphsRef.current = empty;
       setGraphs(empty);
     }
@@ -909,7 +1002,11 @@ export default function CollisionSimulator() {
     setContactForce(0);
     setSq1(1);
     setSq2(1);
-    const empty = { v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [] };
+    const empty = {
+      v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [],
+      force1: [], force2: [], impulse1: [], impulse2: [], netImpulse: [],
+      xCom: [], vCom: [], keDissipated: []
+    };
     graphsRef.current = empty;
     setGraphs(empty);
   }, [v1, v2, mass1]);
@@ -1056,6 +1153,43 @@ export default function CollisionSimulator() {
     const impulseVal = currentP1 - prevP1Ref.current;
     prevP1Ref.current = currentP1;
 
+    // Force calculations for both balls
+    let force1Val = 0;
+    let force2Val = 0;
+    const Tc = 0.20;
+    if (inContactRef.current) {
+      const contactElapsed = currentTime - contactStartTimeRef.current;
+      if (contactElapsed < Tc) {
+        const theta = (contactElapsed / Tc) * Math.PI;
+        const u1 = contactPreV1Ref.current;
+        const u2 = contactPreV2Ref.current;
+        const uRel = u1 - u2;
+        const mu = (mass1 * mass2) / (mass1 + mass2);
+        const J = mu * uRel * (1 + e);
+        const Fmax = (Math.PI / 2) * (J / Tc);
+        const fVal = Fmax * Math.sin(theta);
+        force1Val = -fVal;
+        force2Val = fVal;
+      }
+    }
+
+    // Individual impulses
+    let impulse1Val = 0;
+    let impulse2Val = 0;
+    if (hasCollided) {
+      impulse1Val = mass1 * (currentV1 - contactPreV1Ref.current);
+      impulse2Val = mass2 * (currentV2 - contactPreV2Ref.current);
+    }
+    const netImpulseVal = impulse1Val + impulse2Val;
+
+    // COM position & velocity
+    const xComVal = (mass1 * nextPos1 + mass2 * nextPos2) / (mass1 + mass2);
+    const vComVal = (mass1 * currentV1 + mass2 * currentV2) / (mass1 + mass2);
+
+    // Energy dissipated relative to initial total mechanical energy
+    const initialKE = 0.5 * mass1 * v1 * v1 + 0.5 * mass2 * v2 * v2;
+    const keDissipatedVal = Math.max(0, initialKE - keTotalVal);
+
     // Conservation error
     if (initialMomentumRef.current === null) initialMomentumRef.current = pTotalVal;
     const p0 = initialMomentumRef.current;
@@ -1071,6 +1205,14 @@ export default function CollisionSimulator() {
       ke2: [...graphsRef.current.ke2, { time: currentTime, value: ke2Val }].slice(-100),
       impulse: [...graphsRef.current.impulse, { time: currentTime, value: impulseVal }].slice(-100),
       relVel: [...graphsRef.current.relVel, { time: currentTime, value: relVelVal }].slice(-100),
+      force1: [...graphsRef.current.force1, { time: currentTime, value: force1Val }].slice(-100),
+      force2: [...graphsRef.current.force2, { time: currentTime, value: force2Val }].slice(-100),
+      impulse1: [...graphsRef.current.impulse1, { time: currentTime, value: impulse1Val }].slice(-100),
+      impulse2: [...graphsRef.current.impulse2, { time: currentTime, value: impulse2Val }].slice(-100),
+      netImpulse: [...graphsRef.current.netImpulse, { time: currentTime, value: netImpulseVal }].slice(-100),
+      xCom: [...graphsRef.current.xCom, { time: currentTime, value: xComVal }].slice(-100),
+      vCom: [...graphsRef.current.vCom, { time: currentTime, value: vComVal }].slice(-100),
+      keDissipated: [...graphsRef.current.keDissipated, { time: currentTime, value: keDissipatedVal }].slice(-100),
     };
     setGraphs(graphsRef.current);
   };
@@ -1347,8 +1489,8 @@ export default function CollisionSimulator() {
                 {[
                   { l: "m₁", val: mass1, unit: "kg", onChange: setMass1, color: "text-violet-400", min: 0.5, max: 10.0, step: 0.5 },
                   { l: "m₂", val: mass2, unit: "kg", onChange: setMass2, color: "text-cyan-400", min: 0.5, max: 10.0, step: 0.5 },
-                  { l: "v₁", val: v1, unit: "m/s", onChange: setV1, color: "text-amber-400", min: -6.0, max: 6.0, step: 0.5 },
-                  { l: "v₂", val: v2, unit: "m/s", onChange: setV2, color: "text-emerald-400", min: -6.0, max: 6.0, step: 0.5 },
+                  { l: "u₁", val: v1, unit: "m/s", onChange: setV1, color: "text-amber-400", min: -6.0, max: 6.0, step: 0.5 },
+                  { l: "u₂", val: v2, unit: "m/s", onChange: setV2, color: "text-emerald-400", min: -6.0, max: 6.0, step: 0.5 },
                 ].map(param => (
                   <div key={param.l} className="flex flex-col gap-1 bg-white/[0.02] border border-white/[0.03] px-3 py-2 rounded-xl">
                     <div className="flex justify-between items-center">
@@ -1677,39 +1819,7 @@ export default function CollisionSimulator() {
     </div>
   );
 
-  const samples = graphs.v1.map((item, index) => {
-    const t = item.time;
-    const v1Val = item.value;
-    const v2Val = graphs.v2[index]?.value ?? 0;
-    const pTotalVal = graphs.pTotal[index]?.value ?? 0;
-    const keTotalVal = graphs.keTotal[index]?.value ?? 0;
-    const ke1Val = graphs.ke1[index]?.value ?? 0;
-    const ke2Val = graphs.ke2[index]?.value ?? 0;
-    const impulseVal = graphs.impulse[index]?.value ?? 0;
-    
-    const vComVal = (mass1 * v1Val + mass2 * v2Val) / (mass1 + mass2);
-    const p1Val = mass1 * v1Val;
-    const p2Val = mass2 * v2Val;
 
-    return {
-      time: t,
-      v1: v1Val,
-      v2: v2Val,
-      vCom: vComVal,
-      p1: p1Val,
-      p2: p2Val,
-      pTotal: pTotalVal,
-      ke1: ke1Val,
-      ke2: ke2Val,
-      keTotal: keTotalVal,
-      force1: 0,
-      force2: 0,
-      impulse1: impulseVal,
-      impulse2: -impulseVal,
-      netImpulse: 0,
-      xCom: 0,
-    };
-  });
 
   return (
     <SimulationPageLayout 
