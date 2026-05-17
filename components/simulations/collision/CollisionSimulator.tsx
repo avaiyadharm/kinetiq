@@ -338,13 +338,14 @@ export default function CollisionSimulator() {
   });
 
   const [graphs, setGraphs] = useState({
-    v1: [] as any[],
-    v2: [] as any[],
-    pTotal: [] as any[],
-    keTotal: [] as any[],
-    ke1: [] as any[],
-    ke2: [] as any[],
+    v1: [] as any[], v2: [] as any[], pTotal: [] as any[],
+    keTotal: [] as any[], ke1: [] as any[], ke2: [] as any[],
+    impulse: [] as any[], relVel: [] as any[],
   });
+
+  // Conservation error: |Δp| / |p0|
+  const initialMomentumRef = useRef<number | null>(null);
+  const [conservationError, setConservationError] = useState(0);
 
   const lastTimeRef = useRef<number | null>(null);
   const pos1Ref = useRef(0.2);
@@ -353,14 +354,12 @@ export default function CollisionSimulator() {
   const v2Ref = useRef(-2.0);
   const collidedRef = useRef(false);
   const timeRef = useRef(0);
+  const prevP1Ref = useRef(mass1 * v1); // for impulse = Δp
   
   const graphsRef = useRef({
-    v1: [] as any[],
-    v2: [] as any[],
-    pTotal: [] as any[],
-    keTotal: [] as any[],
-    ke1: [] as any[],
-    ke2: [] as any[],
+    v1: [] as any[], v2: [] as any[], pTotal: [] as any[],
+    keTotal: [] as any[], ke1: [] as any[], ke2: [] as any[],
+    impulse: [] as any[], relVel: [] as any[],
   });
 
   const handleCollisionTypeChange = (type: "elastic" | "inelastic") => {
@@ -494,6 +493,18 @@ export default function CollisionSimulator() {
       const ke1Val = 0.5 * mass1 * currentV1 * currentV1;
       const ke2Val = 0.5 * mass2 * currentV2 * currentV2;
       const keTotalVal = ke1Val + ke2Val;
+      const relVelVal = Math.abs(currentV1 - currentV2);
+
+      // Impulse on object 1 = Δp1
+      const currentP1 = mass1 * currentV1;
+      const impulseVal = currentP1 - prevP1Ref.current;
+      prevP1Ref.current = currentP1;
+
+      // Conservation error
+      if (initialMomentumRef.current === null) initialMomentumRef.current = pTotalVal;
+      const p0 = initialMomentumRef.current;
+      const err = p0 !== 0 ? Math.abs((pTotalVal - p0) / p0) : 0;
+      setConservationError(err);
 
       graphsRef.current = {
         v1: [...graphsRef.current.v1, { time: currentTime, value: currentV1 }].slice(-100),
@@ -502,6 +513,8 @@ export default function CollisionSimulator() {
         keTotal: [...graphsRef.current.keTotal, { time: currentTime, value: keTotalVal }].slice(-100),
         ke1: [...graphsRef.current.ke1, { time: currentTime, value: ke1Val }].slice(-100),
         ke2: [...graphsRef.current.ke2, { time: currentTime, value: ke2Val }].slice(-100),
+        impulse: [...graphsRef.current.impulse, { time: currentTime, value: impulseVal }].slice(-100),
+        relVel: [...graphsRef.current.relVel, { time: currentTime, value: relVelVal }].slice(-100),
       };
       setGraphs(graphsRef.current);
 
@@ -521,53 +534,35 @@ export default function CollisionSimulator() {
       pos2Ref.current = 0.6;
       timeRef.current = 0;
       collidedRef.current = false;
+      prevP1Ref.current = mass1 * v1;
+      initialMomentumRef.current = null;
 
-      setPos1(0.2);
-      setPos2(0.6);
-      setTime(0);
-      setHasCollided(false);
-      setCollisionTime(null);
-      setCollisionData({
-        v1Pre: v1,
-        v2Pre: v2,
-        v1Post: 0,
-        v2Post: 0,
-      });
-      graphsRef.current = {
-        v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: []
-      };
-      setGraphs({
-        v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: []
-      });
+      setPos1(0.2); setPos2(0.6); setTime(0);
+      setHasCollided(false); setCollisionTime(null);
+      setConservationError(0);
+      setCollisionData({ v1Pre: v1, v2Pre: v2, v1Post: 0, v2Post: 0 });
+      const empty = { v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [] };
+      graphsRef.current = empty;
+      setGraphs(empty);
     }
   }, [v1, v2, mass1, mass2, e, isPlaying]);
 
   const handleReset = useCallback(() => {
     setIsPlaying(false);
-    setTime(0);
-    setPos1(0.2);
-    setPos2(0.6);
-    pos1Ref.current = 0.2;
-    pos2Ref.current = 0.6;
+    setTime(0); setPos1(0.2); setPos2(0.6);
+    pos1Ref.current = 0.2; pos2Ref.current = 0.6;
     timeRef.current = 0;
-    v1Ref.current = v1;
-    v2Ref.current = v2;
+    v1Ref.current = v1; v2Ref.current = v2;
     collidedRef.current = false;
-    setHasCollided(false);
-    setCollisionTime(null);
-    setCollisionData({
-      v1Pre: v1,
-      v2Pre: v2,
-      v1Post: 0,
-      v2Post: 0,
-    });
-    graphsRef.current = {
-      v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: []
-    };
-    setGraphs({
-      v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: []
-    });
-  }, [v1, v2]);
+    prevP1Ref.current = mass1 * v1;
+    initialMomentumRef.current = null;
+    setHasCollided(false); setCollisionTime(null);
+    setConservationError(0);
+    setCollisionData({ v1Pre: v1, v2Pre: v2, v1Post: 0, v2Post: 0 });
+    const empty = { v1: [], v2: [], pTotal: [], keTotal: [], ke1: [], ke2: [], impulse: [], relVel: [] };
+    graphsRef.current = empty;
+    setGraphs(empty);
+  }, [v1, v2, mass1]);
 
   // Frame Step action (frame-by-frame analysis)
   const handleStep = () => {
@@ -633,6 +628,10 @@ export default function CollisionSimulator() {
     const ke1Val = 0.5 * mass1 * currentV1 * currentV1;
     const ke2Val = 0.5 * mass2 * currentV2 * currentV2;
     const keTotalVal = ke1Val + ke2Val;
+    const relVelVal = Math.abs(currentV1 - currentV2);
+    const currentP1 = mass1 * currentV1;
+    const impulseVal = currentP1 - prevP1Ref.current;
+    prevP1Ref.current = currentP1;
 
     graphsRef.current = {
       v1: [...graphsRef.current.v1, { time: currentTime, value: currentV1 }].slice(-100),
@@ -641,6 +640,8 @@ export default function CollisionSimulator() {
       keTotal: [...graphsRef.current.keTotal, { time: currentTime, value: keTotalVal }].slice(-100),
       ke1: [...graphsRef.current.ke1, { time: currentTime, value: ke1Val }].slice(-100),
       ke2: [...graphsRef.current.ke2, { time: currentTime, value: ke2Val }].slice(-100),
+      impulse: [...graphsRef.current.impulse, { time: currentTime, value: impulseVal }].slice(-100),
+      relVel: [...graphsRef.current.relVel, { time: currentTime, value: relVelVal }].slice(-100),
     };
     setGraphs(graphsRef.current);
   };
@@ -717,8 +718,40 @@ export default function CollisionSimulator() {
 
   const activePhase = getActivePhase();
 
+  // Preset scenarios
+  const presets = [
+    { name: "Equal Mass", m1: 3, m2: 3, u1: 4, u2: -2, e: 1, label: "Velocity Swap" },
+    { name: "Heavy→Light", m1: 8, m2: 1, u1: 3, u2: 0, e: 1, label: "Light flies 2×" },
+    { name: "Light→Heavy", m1: 1, m2: 8, u1: 5, u2: 0, e: 1, label: "Bounce back" },
+    { name: "Perfectly Inelastic", m1: 3, m2: 3, u1: 4, u2: -2, e: 0, label: "Stick together" },
+    { name: "Head-On", m1: 2, m2: 5, u1: 5, u2: -3, e: 0.7, label: "Partial bounce" },
+  ];
+
+  const applyPreset = (p: typeof presets[0]) => {
+    setIsPlaying(false);
+    setMass1(p.m1); setMass2(p.m2);
+    setV1(p.u1); setV2(p.u2);
+    setCoeffRestitution(p.e);
+    setCollisionType(p.e === 1 ? "elastic" : "inelastic");
+  };
+
   const renderCanvasTab = () => (
     <div className="flex-1 flex flex-col bg-[#09090b] relative overflow-hidden">
+      {/* Preset scenarios bar */}
+      <div className="px-4 pt-3 pb-0 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+        <span className="text-[9px] font-black text-white/25 uppercase tracking-[0.2em] shrink-0 mr-1">Presets</span>
+        {presets.map(p => (
+          <button
+            key={p.name}
+            onClick={() => applyPreset(p)}
+            disabled={isPlaying}
+            className="shrink-0 flex flex-col items-start px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-primary/30 transition-all disabled:opacity-30 text-left"
+          >
+            <span className="text-[9px] font-black text-white/70 uppercase tracking-wider">{p.name}</span>
+            <span className="text-[8px] text-white/30 font-mono">{p.label}</span>
+          </button>
+        ))}
+      </div>
       <div className="flex-1 p-4 md:p-6 relative flex flex-col lg:flex-row gap-6 overflow-hidden">
         
         {/* Dominant Visual Columns */}
@@ -954,14 +987,17 @@ export default function CollisionSimulator() {
 
           {/* Real-time Telemetry Graphs grid */}
           <div className="space-y-4">
-              <CollisionGraphs 
+              <CollisionGraphs
                 v1Data={graphs.v1}
                 v2Data={graphs.v2}
                 pTotalData={graphs.pTotal}
                 keTotalData={graphs.keTotal}
                 ke1Data={graphs.ke1}
                 ke2Data={graphs.ke2}
+                impulseData={graphs.impulse}
+                relVelData={graphs.relVel}
                 collisionTime={collisionTime}
+                conservationError={conservationError}
               />
           </div>
           
