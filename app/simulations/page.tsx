@@ -34,13 +34,13 @@ export default function SimulationGalleryPage() {
     { id: "gravitation", title: "Gravitation", description: "Universal gravitation and planetary orbits simulation.", category: "Mechanics", difficulty: "Advanced", views: "14.8k", image: "/images/simulations/gravitation.png", color: "text-rose-400", dotColor: "bg-rose-400" },
     { id: "collision", title: "Collision & Momentum", description: "Elastic and inelastic collisions with real-time momentum and energy conservation.", category: "Mechanics", difficulty: "Intermediate", views: "13.4k", image: "/images/simulations/collision.png", color: "text-amber-400", dotColor: "bg-amber-400" },
     
-    // Waves & Oscillations
-    { id: "wave-interference", title: "Wave Interference", description: "Observe constructive and destructive interference from dual point sources.", category: "Waves & Oscillations", difficulty: "Advanced", views: "5.1k", image: "/images/simulations/wave-interferenc.png", color: "text-rose-400", dotColor: "bg-rose-400" },
-    { id: "standing-waves", title: "Standing Waves", description: "Visualize harmonics and nodes on a string under tension.", category: "Waves & Oscillations", difficulty: "Intermediate", views: "6.7k", image: "/images/simulations/standing-waves.png", color: "text-amber-400", dotColor: "bg-amber-400" },
-    { id: "resonance", title: "Resonance", description: "Frequency matching and amplitude amplification in forced oscillators.", category: "Waves & Oscillations", difficulty: "Advanced", views: "8.9k", image: "/images/simulations/resonance.png", color: "text-rose-400", dotColor: "bg-rose-400" },
-    { id: "sound-waves", title: "Sound Waves", description: "Longitudinal waves, pitch, and volume visualization.", category: "Waves & Oscillations", difficulty: "Easy", views: "14.2k", image: "/images/simulations/sound-wave.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
-    { id: "shm-waves", title: "SHM", description: "Pendulums and springs as oscillators.", category: "Waves & Oscillations", difficulty: "Intermediate", views: "9.5k", image: "/images/simulations/shm-wave.png", color: "text-amber-400", dotColor: "bg-amber-400" },
-    { id: "pendulum-lab", title: "Pendulum", description: "Investigate gravity and period with a custom pendulum lab.", category: "Waves & Oscillations", difficulty: "Intermediate", views: "8.2k", image: "/images/simulations/pendulum.png", color: "text-amber-400", dotColor: "bg-amber-400" },
+    // Waves and Oscillation
+    { id: "wave-interference", title: "Wave Interference", description: "Observe constructive and destructive interference from dual point sources.", category: "Waves and Oscillation", difficulty: "Advanced", views: "5.1k", image: "/images/simulations/wave-interferenc.png", color: "text-rose-400", dotColor: "bg-rose-400" },
+    { id: "standing-waves", title: "Standing Waves", description: "Visualize harmonics and nodes on a string under tension.", category: "Waves and Oscillation", difficulty: "Intermediate", views: "6.7k", image: "/images/simulations/standing-waves.png", color: "text-amber-400", dotColor: "bg-amber-400" },
+    { id: "resonance", title: "Resonance", description: "Frequency matching and amplitude amplification in forced oscillators.", category: "Waves and Oscillation", difficulty: "Advanced", views: "8.9k", image: "/images/simulations/resonance.png", color: "text-rose-400", dotColor: "bg-rose-400" },
+    { id: "sound-waves", title: "Sound Waves", description: "Longitudinal waves, pitch, and volume visualization.", category: "Waves and Oscillation", difficulty: "Easy", views: "14.2k", image: "/images/simulations/sound-wave.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
+    { id: "shm-waves", title: "SHM", description: "Pendulums and springs as oscillators.", category: "Waves and Oscillation", difficulty: "Intermediate", views: "9.5k", image: "/images/simulations/shm-wave.png", color: "text-amber-400", dotColor: "bg-amber-400" },
+    { id: "pendulum-lab", title: "Pendulum", description: "Investigate gravity and period with a custom pendulum lab.", category: "Waves and Oscillation", difficulty: "Intermediate", views: "8.2k", image: "/images/simulations/pendulum.png", color: "text-amber-400", dotColor: "bg-amber-400" },
 
     // Thermodynamics
     { id: "heat-transfer", title: "Heat Transfer", description: "Conduction, convection, and radiation in action.", category: "Thermodynamics", difficulty: "Intermediate", views: "10.4k", image: "/images/simulations/heat-transfer.png", color: "text-amber-400", dotColor: "bg-amber-400" },
@@ -49,12 +49,12 @@ export default function SimulationGalleryPage() {
     { id: "thermal-expansion", title: "Thermal Expansion", description: "Linear and volumetric expansion of solids and liquids.", category: "Thermodynamics", difficulty: "Easy", views: "8.1k", image: "/images/simulations/thermal-expansion.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
     { id: "kinetic-theory", title: "Kinetic Theory", description: "Microscopic motion of particles and its relation to temperature.", category: "Thermodynamics", difficulty: "Intermediate", views: "12.7k", image: "/images/simulations/kinetic-theory.png", color: "text-amber-400", dotColor: "bg-amber-400" },
 
-    // Electricity & Magnetism
-    { id: "circuits-lab", title: "Circuits", description: "Build and test complex DC circuits with resistors and bulbs.", category: "Electricity & Magnetism", difficulty: "Intermediate", views: "21.3k", image: "/images/simulations/circuits-lab.png", color: "text-amber-400", dotColor: "bg-amber-400" },
-    { id: "capacitors", title: "Capacitors", description: "Charge storage, capacitance, and dielectric effects.", category: "Electricity & Magnetism", difficulty: "Intermediate", views: "9.8k", image: "/images/simulations/capacitors.png", color: "text-amber-400", dotColor: "bg-amber-400" },
-    { id: "ohms-law", title: "Ohm’s Law", description: "Voltage, current, and resistance proportionality.", category: "Electricity & Magnetism", difficulty: "Easy", views: "19.5k", image: "/images/simulations/ohms-law.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
-    { id: "magnetic-fields", title: "Magnetic Fields", description: "Visualize field lines around bar magnets and electromagnets.", category: "Electricity & Magnetism", difficulty: "Easy", views: "14.5k", image: "/images/simulations/magnetic-fields.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
-    { id: "induction", title: "Electromagnetic Induction", description: "Faraday's Law, Lenz's Law, and generator principles.", category: "Electricity & Magnetism", difficulty: "Advanced", views: "7.6k", image: "/images/simulations/induction.png", color: "text-rose-400", dotColor: "bg-rose-400" },
+    // Electricity and Magnetism
+    { id: "circuits-lab", title: "Circuits", description: "Build and test complex DC circuits with resistors and bulbs.", category: "Electricity and Magnetism", difficulty: "Intermediate", views: "21.3k", image: "/images/simulations/circuits-lab.png", color: "text-amber-400", dotColor: "bg-amber-400" },
+    { id: "capacitors", title: "Capacitors", description: "Charge storage, capacitance, and dielectric effects.", category: "Electricity and Magnetism", difficulty: "Intermediate", views: "9.8k", image: "/images/simulations/capacitors.png", color: "text-amber-400", dotColor: "bg-amber-400" },
+    { id: "ohms-law", title: "Ohm’s Law", description: "Voltage, current, and resistance proportionality.", category: "Electricity and Magnetism", difficulty: "Easy", views: "19.5k", image: "/images/simulations/ohms-law.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
+    { id: "magnetic-fields", title: "Magnetic Fields", description: "Visualize field lines around bar magnets and electromagnets.", category: "Electricity and Magnetism", difficulty: "Easy", views: "14.5k", image: "/images/simulations/magnetic-fields.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
+    { id: "induction", title: "Electromagnetic Induction", description: "Faraday's Law, Lenz's Law, and generator principles.", category: "Electricity and Magnetism", difficulty: "Advanced", views: "7.6k", image: "/images/simulations/induction.png", color: "text-rose-400", dotColor: "bg-rose-400" },
 
     // Optics
     { id: "mirrors", title: "Mirrors", description: "Ray diagrams for plane, convex, and concave mirrors.", category: "Optics", difficulty: "Easy", views: "9.4k", image: "/images/simulations/mirrors.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
@@ -74,9 +74,9 @@ export default function SimulationGalleryPage() {
   const categories = [
     { name: "All", icon: <LayoutGrid className="w-4 h-4" /> },
     { name: "Mechanics", icon: <Activity className="w-4 h-4" /> },
-    { name: "Waves & Oscillations", icon: <Waves className="w-4 h-4" /> },
+    { name: "Waves and Oscillation", icon: <Waves className="w-4 h-4" /> },
     { name: "Thermodynamics", icon: <Thermometer className="w-4 h-4" /> },
-    { name: "Electricity & Magnetism", icon: <Zap className="w-4 h-4" /> },
+    { name: "Electricity and Magnetism", icon: <Zap className="w-4 h-4" /> },
     { name: "Optics", icon: <Lightbulb className="w-4 h-4" /> },
     { name: "Modern Physics", icon: <Atom className="w-4 h-4" /> },
   ];

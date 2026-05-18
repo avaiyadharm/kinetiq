@@ -51,10 +51,11 @@ export const SIMULATIONS = [
 
 export const CATEGORIES = [
   { name: "Mechanics", icon: "activity", count: "42 Simulations" },
-  { name: "Waves", icon: "waves", count: "18 Simulations" },
-  { name: "Electricity", icon: "zap", count: "25 Simulations" },
-  { name: "Optics", icon: "eye", count: "12 Simulations" },
+  { name: "Waves and Oscillation", icon: "waves", count: "18 Simulations" },
   { name: "Thermodynamics", icon: "thermometer", count: "15 Simulations" },
+  { name: "Electricity and Magnetism", icon: "zap", count: "25 Simulations" },
+  { name: "Optics", icon: "eye", count: "12 Simulations" },
+  { name: "Modern Physics", icon: "atom", count: "10 Simulations" },
 ];
 
 export const STATS = [
