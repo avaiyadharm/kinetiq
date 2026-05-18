@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { 
   Search, 
   Play, 
@@ -22,8 +23,16 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 
-export default function SimulationGalleryPage() {
-  const [activeCategory, setActiveCategory] = useState("All");
+function GalleryContent() {
+  const searchParams = useSearchParams();
+  const categoryQuery = searchParams.get("category");
+  const [activeCategory, setActiveCategory] = useState(categoryQuery || "All");
+
+  useEffect(() => {
+    if (categoryQuery) {
+      setActiveCategory(categoryQuery);
+    }
+  }, [categoryQuery]);
 
   const simulations = [
     // Mechanics
@@ -86,109 +95,116 @@ export default function SimulationGalleryPage() {
     : simulations.filter(sim => sim.category === activeCategory);
 
   return (
+    <main className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-8 pt-40 pb-24">
+      {/* Featured Hero Section */}
+      <section className="mb-16 relative rounded-3xl overflow-hidden shadow-2xl shadow-black/50 border border-border h-[400px] hero-gradient">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent z-10"></div>
+        <img 
+          className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-luminosity" 
+          src="/images/simulations/projectile-motion.png" 
+          alt="Advanced Kinematics"
+          loading="lazy"
+        />
+        <div className="relative z-20 p-12 flex flex-col items-start justify-center h-full max-w-2xl">
+          <span className="inline-block bg-success/10 text-success text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest border border-success/20">Featured Lab</span>
+          <h1 className="text-5xl font-bold font-display text-white mb-4 tracking-tight">Advanced Kinematics</h1>
+          <p className="text-lg text-white/70 mb-8 max-w-lg leading-relaxed">Explore complex projectile motion with variable air resistance and multi-body dynamics. Visualize velocity vectors in real-time with laboratory precision.</p>
+          <Link href="/simulations/projectile-motion">
+            <Button className="bg-primary text-white px-8 py-6 rounded-lg font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center gap-2 group">
+              <Play className="w-5 h-5 fill-current group-hover:scale-110 transition-transform" />
+              Launch Simulation
+            </Button>
+          </Link>
+        </div>
+      </section>
+
+      {/* Categories / Filters */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-white font-display">Browse by Category</h2>
+          <div className="text-primary font-bold flex items-center gap-1 text-sm bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+            {filteredSimulations.length} Labs Available
+          </div>
+        </div>
+        <div className="flex overflow-x-auto pb-4 gap-3 no-scrollbar items-center">
+          {categories.map((cat) => (
+            <button 
+              key={cat.name}
+              onClick={() => setActiveCategory(cat.name)}
+              className={`whitespace-nowrap flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold transition-all duration-300 border ${
+                activeCategory === cat.name 
+                  ? "bg-primary text-white border-primary shadow-lg shadow-primary/20 scale-105" 
+                  : "bg-[#18181b] text-white/60 border-border hover:bg-white/5 hover:text-white hover:scale-105"
+              }`}
+            >
+              {cat.icon}
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Simulation Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 min-h-[400px]">
+        {filteredSimulations.map((sim) => (
+          <Link key={sim.id} href={`/simulations/${sim.id}`} className="group">
+            <article className="lab-card overflow-hidden flex flex-col h-full bg-[#18181b] border border-border rounded-lg shadow-sm hover:shadow-2xl hover:shadow-primary/20 transition-all duration-500 hover:-translate-y-2">
+              <div className="relative h-48 overflow-hidden bg-black/20 border-b border-border">
+                <img 
+                  alt={sim.title} 
+                  className="w-full h-full object-cover group-hover:scale-110 group-hover:opacity-100 transition-all duration-700 opacity-80" 
+                  src={sim.image} 
+                  loading="lazy"
+                />
+                <button className="absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-full text-white/60 hover:text-primary transition-colors border border-white/10 shadow-sm z-10">
+                  <Bookmark className="w-4 h-4" />
+                </button>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#18181b] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="absolute bottom-4 left-4 z-10">
+                  <span className="bg-black/60 backdrop-blur-md text-white text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest font-bold border border-white/10 shadow-sm transition-transform duration-300 group-hover:scale-105 inline-block">
+                    {sim.category}
+                  </span>
+                </div>
+              </div>
+              <div className="p-6 flex-1 flex flex-col relative z-10 bg-[#18181b]">
+                <h3 className="text-lg font-bold text-white mb-2 group-hover:text-primary transition-colors duration-300 font-display">{sim.title}</h3>
+                <p className="text-sm text-white/60 line-clamp-2 mb-6 flex-1 leading-relaxed group-hover:text-white/80 transition-colors duration-300">{sim.description}</p>
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-border/50">
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ${sim.color}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${sim.dotColor} shadow-[0_0_8px_rgba(0,0,0,0.5)]`}></span> 
+                    {sim.difficulty}
+                  </span>
+                  <div className="flex items-center text-white/40 group-hover:text-white/60 transition-colors duration-300 text-[10px] font-mono font-medium">
+                    <Activity className="w-3.5 h-3.5 mr-1 opacity-50" />
+                    {sim.views} VIEWS
+                  </div>
+                </div>
+              </div>
+            </article>
+          </Link>
+        ))}
+        {filteredSimulations.length === 0 && (
+          <div className="col-span-full flex flex-col items-center justify-center text-center py-24 bg-[#18181b] rounded-2xl border border-dashed border-border shadow-inner">
+             <div className="w-16 h-16 bg-black/20 rounded-full flex items-center justify-center mb-4">
+               <Box className="w-8 h-8 text-primary opacity-20" />
+             </div>
+             <p className="text-white font-bold text-lg mb-2">No simulations found</p>
+             <p className="text-white/50 text-sm mb-6">Try selecting a different category or clear filters.</p>
+             <button onClick={() => setActiveCategory("All")} className="text-primary font-bold text-sm hover:underline px-6 py-2 bg-primary/10 rounded-full border border-primary/20 transition-colors">View All Labs</button>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+export default function SimulationGalleryPage() {
+  return (
     <div className="min-h-screen bg-background text-foreground font-sans antialiased">
       <Navbar />
-      
-      <main className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-8 pt-40 pb-24">
-        {/* Featured Hero Section */}
-        <section className="mb-16 relative rounded-3xl overflow-hidden shadow-2xl shadow-black/50 border border-border h-[400px] hero-gradient">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/80 to-transparent z-10"></div>
-          <img 
-            className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-luminosity" 
-            src="/images/simulations/projectile-motion.png" 
-            alt="Advanced Kinematics"
-            loading="lazy"
-          />
-          <div className="relative z-20 p-12 flex flex-col items-start justify-center h-full max-w-2xl">
-            <span className="inline-block bg-success/10 text-success text-[10px] font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-widest border border-success/20">Featured Lab</span>
-            <h1 className="text-5xl font-bold font-display text-white mb-4 tracking-tight">Advanced Kinematics</h1>
-            <p className="text-lg text-white/70 mb-8 max-w-lg leading-relaxed">Explore complex projectile motion with variable air resistance and multi-body dynamics. Visualize velocity vectors in real-time with laboratory precision.</p>
-            <Link href="/simulations/projectile-motion">
-              <Button className="bg-primary text-white px-8 py-6 rounded-lg font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center gap-2 group">
-                <Play className="w-5 h-5 fill-current group-hover:scale-110 transition-transform" />
-                Launch Simulation
-              </Button>
-            </Link>
-          </div>
-        </section>
-
-        {/* Categories / Filters */}
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white font-display">Browse by Category</h2>
-            <div className="text-primary font-bold flex items-center gap-1 text-sm bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-              {filteredSimulations.length} Labs Available
-            </div>
-          </div>
-          <div className="flex overflow-x-auto pb-4 gap-3 no-scrollbar items-center">
-            {categories.map((cat) => (
-              <button 
-                key={cat.name}
-                onClick={() => setActiveCategory(cat.name)}
-                className={`whitespace-nowrap flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold transition-all border ${
-                  activeCategory === cat.name 
-                    ? "bg-primary text-white border-primary shadow-lg shadow-primary/20" 
-                    : "bg-[#18181b] text-white/60 border-border hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                {cat.icon}
-                {cat.name}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Simulation Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 min-h-[400px]">
-          {filteredSimulations.map((sim) => (
-            <Link key={sim.id} href={`/simulations/${sim.id}`} className="group">
-              <article className="lab-card overflow-hidden flex flex-col h-full bg-[#18181b] border border-border rounded-lg shadow-sm hover:shadow-xl hover:shadow-black/50 transition-all duration-300">
-                <div className="relative h-48 overflow-hidden bg-black/20 border-b border-border">
-                  <img 
-                    alt={sim.title} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-80" 
-                    src={sim.image} 
-                    loading="lazy"
-                  />
-                  <button className="absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-full text-white/60 hover:text-primary transition-colors border border-white/10 shadow-sm">
-                    <Bookmark className="w-4 h-4" />
-                  </button>
-                  <div className="absolute bottom-4 left-4">
-                    <span className="bg-black/60 backdrop-blur-md text-white text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest font-bold border border-white/10 shadow-sm">
-                      {sim.category}
-                    </span>
-                  </div>
-                </div>
-                <div className="p-6 flex-1 flex flex-col">
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-primary transition-colors font-display">{sim.title}</h3>
-                  <p className="text-sm text-white/60 line-clamp-2 mb-6 flex-1 leading-relaxed">{sim.description}</p>
-                  <div className="flex items-center justify-between mt-auto pt-4 border-t border-border/50">
-                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${sim.color}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${sim.dotColor} shadow-[0_0_8px_rgba(0,0,0,0.5)]`}></span> 
-                      {sim.difficulty}
-                    </span>
-                    <div className="flex items-center text-white/40 text-[10px] font-mono font-medium">
-                      <Activity className="w-3.5 h-3.5 mr-1 opacity-50" />
-                      {sim.views} VIEWS
-                    </div>
-                  </div>
-                </div>
-              </article>
-            </Link>
-          ))}
-          {filteredSimulations.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center text-center py-24 bg-[#18181b] rounded-2xl border border-dashed border-border shadow-inner">
-               <div className="w-16 h-16 bg-black/20 rounded-full flex items-center justify-center mb-4">
-                 <Box className="w-8 h-8 text-primary opacity-20" />
-               </div>
-               <p className="text-white font-bold text-lg mb-2">No simulations found</p>
-               <p className="text-white/50 text-sm mb-6">Try selecting a different category or clear filters.</p>
-               <button onClick={() => setActiveCategory("All")} className="text-primary font-bold text-sm hover:underline px-6 py-2 bg-primary/10 rounded-full border border-primary/20 transition-colors">View All Labs</button>
-            </div>
-          )}
-        </div>
-      </main>
-
+      <Suspense fallback={<div className="h-screen flex items-center justify-center text-white/50 pt-20">Loading Gallery...</div>}>
+        <GalleryContent />
+      </Suspense>
       <Footer />
     </div>
   );

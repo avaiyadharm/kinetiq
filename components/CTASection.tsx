@@ -2,6 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -38,12 +39,16 @@ export const CTASection: React.FC<Readonly<CTASectionProps>> = () => {
           </div>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button size="lg" className="bg-primary text-white px-12 py-8 rounded-xl text-lg font-bold hover:bg-primary/90 transition-all shadow-md active:scale-95">
-              Get Started for Free
-            </Button>
-            <Button size="lg" variant="outline" className="px-12 py-8 rounded-xl text-lg font-bold text-white/80 border-border hover:bg-white/5 transition-all">
-              Contact Sales
-            </Button>
+            <Link href="/simulations">
+              <Button size="lg" className="bg-primary text-white px-12 py-8 rounded-xl text-lg font-bold hover:bg-primary/90 transition-all shadow-md active:scale-95">
+                Get Started for Free
+              </Button>
+            </Link>
+            <Link href="/login">
+              <Button size="lg" variant="outline" className="px-12 py-8 rounded-xl text-lg font-bold text-white/80 border-border hover:bg-white/5 transition-all">
+                Contact Sales
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

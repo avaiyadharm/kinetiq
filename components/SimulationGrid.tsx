@@ -41,49 +41,49 @@ export const SimulationGrid: React.FC<Readonly<SimulationGridProps>> = () => {
               viewport={{ once: true }}
               className="flex"
             >
-              <Card className="group relative lab-card overflow-hidden transition-all duration-500 flex flex-col w-full border border-border shadow-sm">
-                <div className="aspect-video overflow-hidden bg-black/40 border-b border-border relative">
-                  <Image
-                    src={sim.image}
-                    alt={sim.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    className="object-cover group-hover:scale-105 transition-transform duration-700 opacity-90"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              <Link href={sim.href} className="group relative w-full block outline-none">
+                <Card className="lab-card overflow-hidden transition-all duration-500 flex flex-col w-full border border-border shadow-sm group-hover:shadow-2xl group-hover:shadow-primary/20 group-hover:-translate-y-2 bg-[#18181b]">
+                  <div className="aspect-video overflow-hidden bg-black/40 border-b border-border relative">
+                    <Image
+                      src={sim.image}
+                      alt={sim.title}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      className="object-cover group-hover:scale-110 transition-transform duration-700 opacity-90 group-hover:opacity-100"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#18181b] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    
+                    <Badge variant="outline" className={cn(
+                      "absolute top-4 left-4 backdrop-blur-md border shadow-sm z-10 transition-transform duration-300 group-hover:scale-105",
+                      sim.difficulty === "Beginner" ? "text-success border-success/20 bg-black/40" :
+                      sim.difficulty === "Intermediate" ? "text-accent border-accent/20 bg-black/40" :
+                      "text-red-500 border-red-500/20 bg-black/40"
+                    )}>
+                      {sim.difficulty}
+                    </Badge>
+                  </div>
                   
-                  <Badge variant="outline" className={cn(
-                    "absolute top-4 left-4 backdrop-blur-md border shadow-sm",
-                    sim.difficulty === "Beginner" ? "text-success border-success/20 bg-black/40" :
-                    sim.difficulty === "Intermediate" ? "text-accent border-accent/20 bg-black/40" :
-                    "text-red-500 border-red-500/20 bg-black/40"
-                  )}>
-                    {sim.difficulty}
-                  </Badge>
-                </div>
-                
-                <CardHeader className="space-y-1">
-                  <CardTitle className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors font-display">
-                    {sim.title}
-                  </CardTitle>
-                </CardHeader>
-                
-                <CardContent className="flex-1">
-                  <p className="text-foreground/60 text-sm leading-relaxed line-clamp-2">
-                    {sim.description}
-                  </p>
-                </CardContent>
-                
-                <CardFooter className="pt-4 flex items-center justify-between border-t border-border/50">
-                  <Link href={sim.href} passHref>
-                    <Button variant="link" className="p-0 h-auto text-primary text-xs font-bold uppercase tracking-widest group/btn">
-                      <Play className="w-4 h-4 fill-current mr-2 group-hover/btn:scale-110 transition-transform" /> 
+                  <CardHeader className="space-y-1 relative z-10">
+                    <CardTitle className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors font-display">
+                      {sim.title}
+                    </CardTitle>
+                  </CardHeader>
+                  
+                  <CardContent className="flex-1 relative z-10">
+                    <p className="text-foreground/60 text-sm leading-relaxed line-clamp-2 group-hover:text-white/80 transition-colors">
+                      {sim.description}
+                    </p>
+                  </CardContent>
+                  
+                  <CardFooter className="pt-4 flex items-center justify-between border-t border-border/50 relative z-10">
+                    <div className="p-0 h-auto text-primary text-xs font-bold uppercase tracking-widest flex items-center gap-2 group-hover:text-primary transition-colors">
+                      <Play className="w-4 h-4 fill-current transition-transform group-hover:scale-110" /> 
                       Launch Simulation
-                    </Button>
-                  </Link>
-                  <Rocket className="w-5 h-5 text-white/5 group-hover:text-primary/20 transition-colors" />
-                </CardFooter>
-              </Card>
+                    </div>
+                    <Rocket className="w-5 h-5 text-white/10 group-hover:text-primary/40 transition-colors duration-300" />
+                  </CardFooter>
+                </Card>
+              </Link>
             </motion.div>
           ))}
         </div>

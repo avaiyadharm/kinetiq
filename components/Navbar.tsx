@@ -33,11 +33,11 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
         </Link>
       </div>
       
-      <nav className="hidden md:flex items-center gap-6">
-        <NavigationMenu>
-          <NavigationMenuList className="gap-6">
+      <nav className="hidden md:flex items-center gap-2">
+        <NavigationMenu delayDuration={0}>
+          <NavigationMenuList className="gap-2">
             <NavigationMenuItem>
-              <NavigationMenuTrigger className="bg-transparent text-white/70 hover:bg-transparent hover:text-primary data-[state=open]:bg-transparent focus:bg-transparent px-0 font-bold text-sm h-auto py-0">
+              <NavigationMenuTrigger className="bg-transparent text-white/70 hover:bg-white/5 hover:text-white data-[state=open]:bg-white/5 data-[state=open]:text-white focus:bg-white/5 px-4 font-bold text-sm h-auto py-2 rounded-lg transition-all duration-300">
                 Gallery
               </NavigationMenuTrigger>
               <NavigationMenuContent>
@@ -45,11 +45,11 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
                   {/* Categories Column */}
                   <div className="col-span-1 border-r border-border/50 pr-6">
                      <h4 className="text-white font-bold mb-4 font-display text-lg">Categories</h4>
-                     <ul className="flex flex-col gap-3">
+                     <ul className="flex flex-col gap-1">
                        {CATEGORIES.map((cat) => (
                          <li key={cat.name}>
                            <NavigationMenuLink asChild>
-                             <Link href={`/simulations?category=${encodeURIComponent(cat.name)}`} className="text-white/60 hover:text-primary text-sm font-medium transition-colors block">
+                             <Link href={`/simulations?category=${encodeURIComponent(cat.name)}`} className="text-white/60 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 block">
                                {cat.name}
                              </Link>
                            </NavigationMenuLink>
@@ -63,13 +63,13 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
                      <div className="grid grid-cols-2 gap-4">
                         {SIMULATIONS.slice(0, 4).map((sim) => (
                           <NavigationMenuLink asChild key={sim.title}>
-                             <Link href={sim.href} className="group flex gap-3 p-3 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
+                             <Link href={sim.href} className="group flex gap-3 p-3 rounded-lg hover:bg-white/5 transition-all duration-300 border border-transparent hover:border-white/10">
                                 <div className="w-16 h-16 rounded bg-black/40 overflow-hidden flex-shrink-0 relative">
-                                   <div className="absolute inset-0 bg-primary/20 mix-blend-overlay group-hover:opacity-0 transition-opacity z-10" />
+                                   <div className="absolute inset-0 bg-primary/20 mix-blend-overlay group-hover:opacity-0 transition-opacity duration-300 z-10" />
                                    <img src={sim.image} alt={sim.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 relative z-0" />
                                 </div>
                                 <div className="flex flex-col justify-center">
-                                   <h5 className="text-white text-sm font-bold group-hover:text-primary transition-colors">{sim.title}</h5>
+                                   <h5 className="text-white text-sm font-bold group-hover:text-primary transition-colors duration-300">{sim.title}</h5>
                                    <p className="text-white/50 text-[10px] line-clamp-2 mt-1 leading-snug">{sim.description}</p>
                                 </div>
                              </Link>
@@ -78,7 +78,7 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
                      </div>
                      <div className="mt-4 pt-4 border-t border-border/50 flex justify-end">
                        <NavigationMenuLink asChild>
-                          <Link href="/simulations" className="text-primary text-xs font-bold hover:underline flex items-center gap-1 bg-primary/10 px-4 py-2 rounded-full border border-primary/20 transition-colors hover:bg-primary/20">
+                          <Link href="/simulations" className="text-primary text-xs font-bold hover:underline flex items-center gap-1 bg-primary/10 px-4 py-2 rounded-full border border-primary/20 transition-all duration-300 hover:bg-primary/20 hover:scale-105">
                             Explore All Labs <span aria-hidden="true">&rarr;</span>
                           </Link>
                        </NavigationMenuLink>
@@ -91,7 +91,7 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
             {NAVIGATION_LINKS.filter(l => l.label !== "Gallery").map((link) => (
               <NavigationMenuItem key={link.label}>
                 <NavigationMenuLink asChild>
-                  <Link href={link.href} className="text-sm font-bold text-white/70 hover:text-primary transition-all px-4 py-2 block">
+                  <Link href={link.href} className="text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 transition-all duration-300 px-4 py-2 rounded-lg block">
                     {link.label}
                   </Link>
                 </NavigationMenuLink>
@@ -101,9 +101,11 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
         </NavigationMenu>
       </nav>
       
-      <Button className="bg-primary text-white rounded-lg hover:bg-primary/90 transition-all shadow-sm">
-        Start Exploring
-      </Button>
+      <Link href="/simulations">
+        <Button className="bg-primary text-white rounded-lg hover:bg-primary/90 transition-all shadow-sm">
+          Start Exploring
+        </Button>
+      </Link>
     </motion.header>
   );
 };

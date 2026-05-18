@@ -2,6 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { CATEGORIES } from "@/src/data/mockData";
 import { Activity, Waves, Zap, Eye, Thermometer } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -37,13 +38,15 @@ export const CategoryGrid: React.FC<Readonly<CategoryGridProps>> = () => {
                 viewport={{ once: true }}
                 className="flex"
               >
-                <Card className="group cursor-pointer lab-card rounded-2xl p-8 text-center hover:bg-primary/5 hover:border-primary/20 transition-all duration-300 w-full flex flex-col items-center bg-[#18181b] shadow-sm border-border">
-                  <div className="w-16 h-16 rounded-2xl bg-black/40 flex items-center justify-center group-hover:bg-primary/10 transition-colors shadow-inner mb-6">
-                    {Icon && <Icon className="w-8 h-8 text-white/30 group-hover:text-primary transition-colors" />}
-                  </div>
-                  <h4 className="text-lg font-bold text-white mb-2 font-display">{category.name}</h4>
-                  <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">{category.count}</p>
-                </Card>
+                <Link href={`/simulations?category=${encodeURIComponent(category.name)}`} className="w-full block outline-none">
+                  <Card className="group cursor-pointer lab-card rounded-2xl p-8 text-center hover:bg-primary/5 hover:border-primary/20 transition-all duration-300 w-full flex flex-col items-center bg-[#18181b] shadow-sm border-border hover:-translate-y-1">
+                    <div className="w-16 h-16 rounded-2xl bg-black/40 flex items-center justify-center group-hover:bg-primary/10 transition-colors shadow-inner mb-6 group-hover:scale-110">
+                      {Icon && <Icon className="w-8 h-8 text-white/30 group-hover:text-primary transition-colors" />}
+                    </div>
+                    <h4 className="text-lg font-bold text-white mb-2 font-display group-hover:text-primary transition-colors">{category.name}</h4>
+                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">{category.count}</p>
+                  </Card>
+                </Link>
               </motion.div>
             );
           })}
