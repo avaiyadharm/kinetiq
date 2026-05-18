@@ -1,7 +1,6 @@
 export const NAVIGATION_LINKS = [
   { label: "Gallery", href: "/simulations" },
   { label: "Dashboard", href: "/dashboard" },
-  { label: "Login", href: "/login" },
 ];
 
 export const SIMULATIONS = [

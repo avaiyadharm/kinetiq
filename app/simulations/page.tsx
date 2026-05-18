@@ -96,7 +96,12 @@ function GalleryContent() {
     : simulations.filter(sim => sim.category === activeCategory);
 
   return (
-    <main className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-8 pt-40 pb-24">
+    <motion.main 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
+      className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-8 pt-40 pb-24"
+    >
       {/* Featured Hero Section */}
       <motion.section 
         initial={{ opacity: 0, y: -20, scale: 0.98 }}
@@ -239,7 +244,7 @@ function GalleryContent() {
           )}
         </AnimatePresence>
       </motion.div>
-    </main>
+    </motion.main>
   );
 }
 

@@ -101,11 +101,18 @@ export const Navbar: React.FC<Readonly<NavbarProps>> = () => {
         </NavigationMenu>
       </nav>
       
-      <Link href="/simulations">
-        <Button className="bg-primary text-white rounded-lg hover:bg-primary/90 transition-all shadow-sm">
-          Start Exploring
-        </Button>
-      </Link>
+      <div className="flex items-center gap-2 md:gap-4">
+        <Link href="/login">
+          <Button variant="ghost" className="text-white/80 hover:text-white hover:bg-white/5 font-bold transition-all">
+            Log In
+          </Button>
+        </Link>
+        <Link href="/signup">
+          <Button className="bg-primary text-white rounded-lg hover:bg-primary/90 transition-all shadow-md font-bold px-6">
+            Sign Up
+          </Button>
+        </Link>
+      </div>
     </motion.header>
   );
 };
