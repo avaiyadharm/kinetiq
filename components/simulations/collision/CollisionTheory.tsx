@@ -91,9 +91,9 @@ export const CollisionTheory: React.FC = () => {
             color="#8b5cf6"
           />
           <FormulaCard
-            title="Impulse-Momentum Theorem"
-            formula="J = F·Δt = Δp"
-            description="The impulse (force × time) experienced during collision equals the change in momentum. A longer collision time means smaller peak force (crumple zones in cars use this)."
+            title="Impulse (J) & Momentum Change"
+            formula="J = ∫F dt = Δp"
+            description="The impulse (J) experienced during a collision equals the change in momentum (Δp). The area under the Force-Time graph equals this momentum change. A larger force over a shorter time produces the SAME impulse as a smaller force over a longer time."
             color="#06b6d4"
           />
           <FormulaCard

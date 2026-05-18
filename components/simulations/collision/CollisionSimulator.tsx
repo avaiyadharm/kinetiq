@@ -497,6 +497,19 @@ const EquationsDerivationsPanel = ({
           </div>
         </div>
       </div>
+
+      <div className="mt-4 pt-3 border-t border-white/[0.05] space-y-2">
+        <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1">Physics Insights</div>
+        <div className="text-[10px] text-white/50 leading-relaxed bg-white/[0.02] p-2 rounded-lg border border-white/[0.03]">
+          <strong className="text-violet-400">Momentum</strong> is always conserved in isolated systems (Σp_initial = Σp_final).
+        </div>
+        <div className="text-[10px] text-white/50 leading-relaxed bg-white/[0.02] p-2 rounded-lg border border-white/[0.03]">
+          <strong className="text-cyan-400">Kinetic energy</strong> is only conserved in perfectly elastic collisions (e=1). In such cases, the relative speed of approach equals the relative speed of separation.
+        </div>
+        <div className="text-[10px] text-white/50 leading-relaxed bg-white/[0.02] p-2 rounded-lg border border-white/[0.03]">
+          <strong className="text-pink-400">Impulse (J)</strong> changes momentum (J = ∫Fdt = Δp). Internal collision forces cancel out precisely due to <strong className="text-emerald-400">Newton&apos;s Third Law</strong> (F₁₂ = −F₂₁).
+        </div>
+      </div>
     </div>
   );
 };
@@ -1311,11 +1324,13 @@ export default function CollisionSimulator() {
 
   // Preset scenarios
   const presets = [
-    { name: "Equal Mass", m1: 3, m2: 3, u1: 4, u2: -2, e: 1, label: "Velocity Swap" },
-    { name: "Heavy→Light", m1: 8, m2: 1, u1: 3, u2: 0, e: 1, label: "Light flies 2×" },
-    { name: "Light→Heavy", m1: 1, m2: 8, u1: 5, u2: 0, e: 1, label: "Bounce back" },
-    { name: "Perfectly Inelastic", m1: 3, m2: 3, u1: 4, u2: -2, e: 0, label: "Stick together" },
-    { name: "Head-On", m1: 2, m2: 5, u1: 5, u2: -3, e: 0.7, label: "Partial bounce" },
+    { name: "Perfectly Elastic", m1: 2.0, m2: 2.0, u1: 4.0, u2: -2.0, e: 1.0, label: "e = 1 (Conserved KE)" },
+    { name: "Partially Elastic", m1: 2.0, m2: 2.0, u1: 4.0, u2: -2.0, e: 0.6, label: "0 < e < 1" },
+    { name: "Perfectly Inelastic", m1: 3.0, m2: 3.0, u1: 4.0, u2: -2.0, e: 0.0, label: "e = 0 (Stick together)" },
+    { name: "Head-On", m1: 2.0, m2: 5.0, u1: 5.0, u2: -5.0, e: 0.9, label: "High kinetic impact" },
+    { name: "Equal Mass", m1: 3.0, m2: 3.0, u1: 5.0, u2: 0.0, e: 1.0, label: "m₁ = m₂ (Velocity exchange)" },
+    { name: "Heavy-Light", m1: 8.0, m2: 1.0, u1: 3.0, u2: 0.0, e: 1.0, label: "m₁ ≫ m₂" },
+    { name: "Light-Heavy", m1: 1.0, m2: 8.0, u1: 5.0, u2: 0.0, e: 1.0, label: "m₁ ≪ m₂ (Wall bounce)" },
   ];
 
   const applyPreset = (p: typeof presets[0]) => {
