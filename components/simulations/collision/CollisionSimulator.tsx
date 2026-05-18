@@ -135,6 +135,7 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
 };
 
 const VISUAL_SPEED_SCALE = 0.08;
+const COLLISION_CONTACT_DURATION = 0.06; // 60ms duration for snappy, crisp visual collisions
 
 interface InlineEditableValueProps {
   value: number;
@@ -725,7 +726,7 @@ export default function CollisionSimulator() {
       // ── Ball-ball continuous contact lifecycle ────────────────────────────
       if (inContactRef.current) {
         const contactElapsed = currentTime - contactStartTimeRef.current;
-        const Tc = 0.20; // 200ms duration for perfect visual capture
+        const Tc = COLLISION_CONTACT_DURATION; // snappy collision duration
         
         if (contactElapsed < Tc) {
           const theta = (contactElapsed / Tc) * Math.PI;
@@ -735,9 +736,23 @@ export default function CollisionSimulator() {
           
           // d(t) = R_sum - uRel * [ (1+e)/2 * (Tc/pi) * sin(theta) ]
           // This ensures dVal perfectly returns to limitCollisionDist at t = Tc with no overlap or pop.
-          const dVal = limitCollisionDist - (uRel * VISUAL_SPEED_SCALE) * (
+          const dValPhysical = limitCollisionDist - (uRel * VISUAL_SPEED_SCALE) * (
             ((1 + e) / 2) * (Tc / Math.PI) * Math.sin(theta)
           );
+          
+          // Squish coefficients based on physical compression
+          const fc = Math.max(0, (limitCollisionDist - dValPhysical) / limitCollisionDist);
+          const currentSq1 = Math.max(0.72, 1 - 0.28 * (mass2 / (mass1 + mass2)) * fc);
+          const currentSq2 = Math.max(0.72, 1 - 0.28 * (mass1 / (mass1 + mass2)) * fc);
+          setSq1(currentSq1);
+          setSq2(currentSq2);
+
+          // Calculate visual separation dVal to prevent overlaps under all modes
+          // In scientificMode, balls are rigid spheres (no squish) => dVal is limitCollisionDist
+          // In normal mode, balls squish horizontally => dVal matches the sum of the squished horizontal radii
+          const activeSq1 = scientificMode ? 1.0 : currentSq1;
+          const activeSq2 = scientificMode ? 1.0 : currentSq2;
+          const dVal = (r1 * activeSq1 + r2 * activeSq2) / 640;
           
           const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
           const xCM = contactXcmStartRef.current + (vCM * VISUAL_SPEED_SCALE) * contactElapsed;
@@ -755,11 +770,6 @@ export default function CollisionSimulator() {
           const Fmax = (Math.PI / 2) * (J / Tc);
           const fVal = Fmax * Math.sin(theta);
           setContactForce(fVal);
-          
-          // Squish coefficients
-          const fc = Math.max(0, (limitCollisionDist - dVal) / limitCollisionDist);
-          setSq1(Math.max(0.72, 1 - 0.28 * (mass2 / (mass1 + mass2)) * fc));
-          setSq2(Math.max(0.72, 1 - 0.28 * (mass1 / (mass1 + mass2)) * fc));
         } else {
           // Separation complete
           inContactRef.current = false;
@@ -867,7 +877,7 @@ export default function CollisionSimulator() {
       // Force calculations for both balls
       let force1Val = 0;
       let force2Val = 0;
-      const Tc = 0.20;
+      const Tc = COLLISION_CONTACT_DURATION;
       if (inContactRef.current) {
         const contactElapsed = currentTime - contactStartTimeRef.current;
         if (contactElapsed < Tc) {
@@ -1031,7 +1041,7 @@ export default function CollisionSimulator() {
     // ── Ball-ball continuous contact lifecycle (Stepper Sync) ─────────────
     if (inContactRef.current) {
       const contactElapsed = currentTime - contactStartTimeRef.current;
-      const Tc = 0.20;
+      const Tc = COLLISION_CONTACT_DURATION;
       
       if (contactElapsed < Tc) {
         const theta = (contactElapsed / Tc) * Math.PI;
@@ -1041,9 +1051,23 @@ export default function CollisionSimulator() {
         
         // d(t) = R_sum - uRel * [ (1+e)/2 * (Tc/pi) * sin(theta) ]
         // This ensures dVal perfectly returns to limitCollisionDist at t = Tc with no overlap or pop.
-        const dVal = limitCollisionDist - (uRel * VISUAL_SPEED_SCALE) * (
+        const dValPhysical = limitCollisionDist - (uRel * VISUAL_SPEED_SCALE) * (
           ((1 + e) / 2) * (Tc / Math.PI) * Math.sin(theta)
         );
+        
+        // Squish coefficients based on physical compression
+        const fc = Math.max(0, (limitCollisionDist - dValPhysical) / limitCollisionDist);
+        const currentSq1 = Math.max(0.72, 1 - 0.28 * (mass2 / (mass1 + mass2)) * fc);
+        const currentSq2 = Math.max(0.72, 1 - 0.28 * (mass1 / (mass1 + mass2)) * fc);
+        setSq1(currentSq1);
+        setSq2(currentSq2);
+
+        // Calculate visual separation dVal to prevent overlaps under all modes
+        // In scientificMode, balls are rigid spheres (no squish) => dVal is limitCollisionDist
+        // In normal mode, balls squish horizontally => dVal matches the sum of the squished horizontal radii
+        const activeSq1 = scientificMode ? 1.0 : currentSq1;
+        const activeSq2 = scientificMode ? 1.0 : currentSq2;
+        const dVal = (r1 * activeSq1 + r2 * activeSq2) / 640;
         
         const vCM = (mass1 * u1 + mass2 * u2) / (mass1 + mass2);
         const xCM = contactXcmStartRef.current + (vCM * VISUAL_SPEED_SCALE) * contactElapsed;
@@ -1060,10 +1084,6 @@ export default function CollisionSimulator() {
         const Fmax = (Math.PI / 2) * (J / Tc);
         const fVal = Fmax * Math.sin(theta);
         setContactForce(fVal);
-        
-        const fc = Math.max(0, (limitCollisionDist - dVal) / limitCollisionDist);
-        setSq1(Math.max(0.72, 1 - 0.28 * (mass2 / (mass1 + mass2)) * fc));
-        setSq2(Math.max(0.72, 1 - 0.28 * (mass1 / (mass1 + mass2)) * fc));
       } else {
         inContactRef.current = false;
         setInContact(false);
@@ -1156,7 +1176,7 @@ export default function CollisionSimulator() {
     // Force calculations for both balls
     let force1Val = 0;
     let force2Val = 0;
-    const Tc = 0.20;
+    const Tc = COLLISION_CONTACT_DURATION;
     if (inContactRef.current) {
       const contactElapsed = currentTime - contactStartTimeRef.current;
       if (contactElapsed < Tc) {
@@ -1539,7 +1559,7 @@ export default function CollisionSimulator() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
-                <span className="text-[8px] font-black text-white/35 uppercase tracking-widest">Active Sensor</span>
+                <span className="text-[8px] font-black text-white/75 uppercase tracking-widest">Active Sensor</span>
               </div>
             </div>
 

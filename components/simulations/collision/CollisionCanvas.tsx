@@ -83,8 +83,8 @@ export const CollisionCanvas: React.FC<CollisionCanvasProps> = (props) => {
     const effectiveSq1 = scientificMode ? 1.0 : sq1;
     const effectiveSq2 = scientificMode ? 1.0 : sq2;
 
-    // Calculate center of mass position (0 to 1 normalized)
-    const posC = (mass1 * pos1 + mass2 * pos2) / (mass1 + mass2);
+    // Calculate center of mass position (0 to 1 normalized) - placed exactly between both spheres
+    const posC = (pos1 + pos2) / 2;
 
     // Apply Center of Mass Frame conversion if enabled
     const pos1Render = comReferenceFrame ? (pos1 - posC + 0.5) : pos1;
