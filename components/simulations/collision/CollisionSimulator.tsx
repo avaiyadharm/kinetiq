@@ -1541,7 +1541,7 @@ export default function CollisionSimulator() {
         <div className="w-full lg:w-[420px] flex flex-col gap-5 z-10 overflow-y-auto custom-scrollbar pr-1 select-none shrink-0">
           
           {/* Phase Pulse: Interactive Science Telemetry monitor */}
-          <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-5 shadow-xl relative overflow-hidden group">
+          <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-5 shadow-xl relative overflow-hidden group shrink-0">
             <div className="absolute top-0 right-0 p-8 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity">
                <BookOpen className="w-24 h-24 text-primary" />
             </div>
@@ -1609,7 +1609,7 @@ export default function CollisionSimulator() {
           </div>
 
           {/* Real-time Telemetry Graphs grid */}
-          <div className="space-y-4">
+          <div className="space-y-4 shrink-0">
               <CollisionGraphs
                 samples={samples}
                 collisionTime={collisionTime}
@@ -1619,7 +1619,7 @@ export default function CollisionSimulator() {
               />
           </div>
           
-          <div className="mt-auto bg-gradient-to-br from-primary/10 to-transparent rounded-[32px] p-6 border border-white/5 flex items-center justify-between">
+          <div className="mt-auto bg-gradient-to-br from-primary/10 to-transparent rounded-[32px] p-6 border border-white/5 flex items-center justify-between shrink-0">
               <div className="space-y-1">
                   <p className="text-xs font-bold text-white tracking-tight">System Environment Suite</p>
                   <p className="text-[10px] text-white/40">Adjust material properties in Config</p>

@@ -358,8 +358,8 @@ export default function CircularMotionSimulator() {
           </div>
         </div>
 
-        <div className="w-full lg:w-[420px] flex flex-col gap-6 z-10 overflow-y-auto custom-scrollbar pr-1">
-          <div className="bg-[#18181b] rounded-[32px] p-8 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group">
+        <div className="w-full lg:w-[420px] flex flex-col gap-6 z-10 overflow-y-auto custom-scrollbar pr-1 shrink-0">
+          <div className="bg-[#18181b] rounded-[32px] p-8 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group shrink-0">
             <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
                <BookOpen className="w-24 h-24 text-primary" />
             </div>
@@ -387,7 +387,7 @@ export default function CircularMotionSimulator() {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 shrink-0">
               <div className="flex items-center justify-between px-2">
                   <span className="text-[10px] font-bold text-white/20 uppercase tracking-[0.3em]">Telemetry Pipeline</span>
                   <div className="flex items-center gap-1.5">
@@ -405,7 +405,7 @@ export default function CircularMotionSimulator() {
               />
           </div>
           
-          <div className="mt-auto bg-gradient-to-br from-primary/10 to-transparent rounded-[32px] p-6 border border-white/5 flex items-center justify-between">
+          <div className="mt-auto bg-gradient-to-br from-primary/10 to-transparent rounded-[32px] p-6 border border-white/5 flex items-center justify-between shrink-0">
               <div className="space-y-1">
                   <p className="text-xs font-bold text-white tracking-tight">Interactive Lab</p>
                   <p className="text-[10px] text-white/40">Adjust parameters in Config</p>
