@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface WaveInterferenceCanvasProps {
   frequency: number; // Hz
@@ -251,6 +251,73 @@ export const WaveInterferenceCanvas: React.FC<WaveInterferenceCanvasProps> = ({
     };
   }, []);
 
+  // Mouse Physics Inspector State
+  const [hoverData, setHoverData] = useState({
+    visible: false, x: 0, y: 0, r1: 0, r2: 0, deltaR: 0, z: 0, I: 0, type: '', phase1: 0, phase2: 0, lambda: 0
+  });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const u = (e.clientX - rect.left) / rect.width;
+    const v = 1.0 - (e.clientY - rect.top) / rect.height;
+
+    const px = u * 10 - 5;
+    const py = v * 10 - 5;
+
+    const lambda = waveSpeed / frequency;
+    const k = 2 * Math.PI / lambda;
+    const omega = 2 * Math.PI * frequency;
+
+    const s1x = -separation / 2;
+    const s2x = separation / 2;
+
+    const r1 = Math.max(Math.sqrt((px - s1x)**2 + py**2), 0.001);
+    const r2 = Math.max(Math.sqrt((px - s2x)**2 + py**2), 0.001);
+
+    const atten1 = (1 / Math.sqrt(r1)) * Math.exp(-damping * r1);
+    const atten2 = (1 / Math.sqrt(r2)) * Math.exp(-damping * r2);
+
+    const phase1 = k * r1 - omega * time;
+    const phase2 = k * r2 - omega * time + phaseDifference;
+
+    const z1 = amplitude * atten1 * Math.sin(phase1);
+    const z2 = amplitude * atten2 * Math.sin(phase2);
+    
+    let z = z1;
+    let I1 = amplitude * atten1;
+    let I2 = amplitude * atten2;
+    let I = I1 * I1;
+    let deltaR = 0;
+    let type = "Source 1 Only";
+
+    if (numSources === 2) {
+      z += z2;
+      I += I2 * I2 + 2 * I1 * I2 * Math.cos(k * (r1 - r2) - phaseDifference);
+      deltaR = Math.abs(r1 - r2);
+
+      const netPhaseDiff = Math.abs(k * (r1 - r2) - phaseDifference);
+      const modPhase = netPhaseDiff % (2 * Math.PI);
+      
+      if (Math.min(modPhase, 2 * Math.PI - modPhase) < 0.6) {
+        type = "Constructive";
+      } else if (Math.abs(modPhase - Math.PI) < 0.6) {
+        type = "Destructive";
+      } else {
+        type = "Intermediate";
+      }
+    }
+
+    setHoverData({
+      visible: true, x: e.clientX, y: e.clientY,
+      r1, r2, deltaR, z, I, type, phase1, phase2, lambda
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setHoverData(prev => ({ ...prev, visible: false }));
+  };
+
   // Render loop update
   useEffect(() => {
     if (!glRef.current) return;
@@ -276,7 +343,11 @@ export const WaveInterferenceCanvas: React.FC<WaveInterferenceCanvasProps> = ({
   const modeNames = ["Displacement", "Intensity", "Phase", "Scientific Grayscale", "Neon Cinematic", "Contour"];
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-[#09090b] rounded-[32px] border border-white/10 overflow-hidden shadow-2xl">
+    <div 
+      className="relative w-full h-full flex items-center justify-center bg-[#09090b] rounded-[32px] border border-white/10 overflow-hidden shadow-2xl cursor-crosshair"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       <motion.canvas
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -314,6 +385,65 @@ export const WaveInterferenceCanvas: React.FC<WaveInterferenceCanvasProps> = ({
            </div>
         </div>
       )}
+
+      {/* Cursor Physics Inspector */}
+      <AnimatePresence>
+        {hoverData.visible && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.1 }}
+            className="fixed pointer-events-none z-50 bg-black/80 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl min-w-[220px]"
+            style={{ 
+              left: hoverData.x + 20, 
+              top: hoverData.y + 20,
+              // Prevent tooltip from going offscreen
+              transform: `translate(${hoverData.x > window.innerWidth - 300 ? '-120%' : '0'}, ${hoverData.y > window.innerHeight - 300 ? '-120%' : '0'})` 
+            }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`w-2 h-2 rounded-full ${hoverData.type === 'Constructive' ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)]' : hoverData.type === 'Destructive' ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]' : 'bg-white/20'}`} />
+              <span className="text-[10px] font-black uppercase tracking-widest text-white/80">{hoverData.type}</span>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between items-center gap-6 border-b border-white/5 pb-1">
+                <span className="text-[9px] uppercase tracking-widest text-white/40">Path Diff (Δr)</span>
+                <span className="text-xs font-mono font-bold text-white">{numSources === 2 ? (hoverData.deltaR / hoverData.lambda).toFixed(2) + 'λ' : 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center gap-6 border-b border-white/5 pb-1">
+                <span className="text-[9px] uppercase tracking-widest text-white/40">Intensity (I)</span>
+                <span className="text-xs font-mono font-bold text-amber-400">{hoverData.I.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center gap-6 border-b border-white/5 pb-1">
+                <span className="text-[9px] uppercase tracking-widest text-white/40">Displacement (z)</span>
+                <span className="text-xs font-mono font-bold text-cyan-400">{hoverData.z.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center gap-6 border-b border-white/5 pb-1">
+                <span className="text-[9px] uppercase tracking-widest text-white/40">r₁</span>
+                <span className="text-xs font-mono font-bold text-white/60">{hoverData.r1.toFixed(2)}m</span>
+              </div>
+              {numSources === 2 && (
+                <div className="flex justify-between items-center gap-6">
+                  <span className="text-[9px] uppercase tracking-widest text-white/40">r₂</span>
+                  <span className="text-xs font-mono font-bold text-white/60">{hoverData.r2.toFixed(2)}m</span>
+                </div>
+              )}
+            </div>
+
+            {/* Dynamic Equation Hint */}
+            {numSources === 2 && (
+              <div className="mt-3 pt-3 border-t border-white/10 flex flex-col gap-1">
+                <span className="text-[8px] uppercase tracking-widest text-white/30">Governing Rule</span>
+                <span className={`text-[10px] font-mono font-bold ${hoverData.type === 'Constructive' ? 'text-cyan-400' : hoverData.type === 'Destructive' ? 'text-rose-400' : 'text-white/40'}`}>
+                  {hoverData.type === 'Constructive' ? 'Δr ≈ nλ (In Phase)' : hoverData.type === 'Destructive' ? 'Δr ≈ (n+½)λ (Canceled)' : 'Complex Superposition'}
+                </span>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

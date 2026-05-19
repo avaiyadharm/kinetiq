@@ -202,7 +202,14 @@ export default function WaveInterferenceSimulator() {
   const lambda = waveSpeed / frequency;
   const omega = 2 * Math.PI * frequency;
   const k = 2 * Math.PI / lambda;
-  const nodalLines = numSources === 2 ? Math.floor(2 * separation / lambda) : 0;
+  
+  // Interference Geometry (Dual Sources)
+  const ratio = separation / lambda;
+  const antinodalLines = numSources === 2 ? 1 + 2 * Math.floor(ratio) : 0;
+  const nodalLines = numSources === 2 ? 2 * Math.floor(ratio + 0.5) : 0;
+  
+  // Fringe Angle (First order maximum)
+  const firstOrderAngle = numSources === 2 && ratio >= 1 ? (Math.asin(1 / ratio) * 180 / Math.PI).toFixed(1) + "°" : "N/A";
 
   return (
     <SimulationPageLayout 
@@ -247,7 +254,71 @@ export default function WaveInterferenceSimulator() {
           </div>
 
           {/* Configuration Panel Sidebar */}
-          <div className="w-full xl:w-[420px] flex flex-col gap-6 overflow-y-auto pr-2 no-scrollbar">
+          <div className="w-full xl:w-[460px] flex flex-col gap-6 overflow-y-auto pr-2 no-scrollbar">
+            
+            {/* Live Scientific Telemetry & Equations */}
+            <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-6 shadow-xl shrink-0 relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-8 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity pointer-events-none">
+                 <Activity className="w-32 h-32 text-cyan-500" />
+               </div>
+               
+               <div className="relative z-10 flex flex-col gap-4">
+                 <h3 className="text-xs font-black uppercase tracking-widest text-white/60 flex items-center gap-2">
+                   <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                   Scientific Telemetry
+                 </h3>
+                 
+                 {/* Live Equation Box */}
+                 <div className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col gap-2">
+                   <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Live Wave Equation</div>
+                   <div className="font-mono text-xs md:text-sm text-cyan-400 font-bold tracking-tight overflow-x-auto whitespace-nowrap pb-1 no-scrollbar">
+                     z = {amplitude.toFixed(1)} sin({k.toFixed(1)}r₁ - {omega.toFixed(1)}t) 
+                     {numSources === 2 && (
+                       <span className="text-violet-400"> + {amplitude.toFixed(1)} sin({k.toFixed(1)}r₂ - {omega.toFixed(1)}t {(phaseDifference > 0) ? `+ ${(phaseDifference/Math.PI).toFixed(2)}π` : ""})</span>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* Wave Dynamics Matrix */}
+                 <div className="grid grid-cols-2 gap-3">
+                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-cyan-500/30 transition-colors">
+                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wavelength (λ)</span>
+                     <span className="text-base font-mono font-black text-cyan-400">{lambda.toFixed(2)} <span className="text-xs text-cyan-500/50">m</span></span>
+                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">v = fλ → {waveSpeed.toFixed(1)} = {frequency.toFixed(1)} × {lambda.toFixed(2)}</span>
+                   </div>
+                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-emerald-500/30 transition-colors">
+                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wave Number (k)</span>
+                     <span className="text-base font-mono font-black text-emerald-400">{k.toFixed(2)} <span className="text-xs text-emerald-500/50">rad/m</span></span>
+                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">k = 2π/λ</span>
+                   </div>
+                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-rose-500/30 transition-colors">
+                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Angular Freq (ω)</span>
+                     <span className="text-base font-mono font-black text-rose-400">{omega.toFixed(2)} <span className="text-xs text-rose-500/50">rad/s</span></span>
+                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">ω = 2πf</span>
+                   </div>
+                   {numSources === 2 ? (
+                     <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-amber-500/30 transition-colors">
+                       <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Interference Topology</span>
+                       <div className="flex gap-2 items-baseline">
+                         <span className="text-base font-mono font-black text-amber-400">{antinodalLines}</span>
+                         <span className="text-[9px] text-amber-500/50 uppercase font-bold">Max</span>
+                         <span className="text-base font-mono font-black text-white/40">/</span>
+                         <span className="text-base font-mono font-black text-amber-400">{nodalLines}</span>
+                         <span className="text-[9px] text-amber-500/50 uppercase font-bold">Min</span>
+                       </div>
+                       <span className="text-[8px] font-mono text-white/30 uppercase mt-1">θ₁ = {firstOrderAngle}</span>
+                     </div>
+                   ) : (
+                     <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 opacity-50">
+                       <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Interference Topology</span>
+                       <span className="text-base font-mono font-black text-white/30">N/A</span>
+                       <span className="text-[8px] font-mono text-white/30 uppercase mt-1">Requires dual sources</span>
+                     </div>
+                   )}
+                 </div>
+               </div>
+            </div>
+
             <ControlCard title="Source Dynamics" icon={Activity} color="#22d3ee">
               <div className="space-y-6">
                 <div className="flex flex-col gap-3">
@@ -348,29 +419,6 @@ export default function WaveInterferenceSimulator() {
               </div>
             </ControlCard>
             
-            <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-4 shadow-xl shrink-0">
-               <h3 className="text-xs font-black uppercase tracking-widest text-white/60">Scientific Telemetry</h3>
-               <div className="grid grid-cols-2 gap-3">
-                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
-                   <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wavelength (λ)</span>
-                   <span className="text-sm font-mono font-bold text-cyan-400">{lambda.toFixed(2)} m</span>
-                 </div>
-                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
-                   <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wave Number (k)</span>
-                   <span className="text-sm font-mono font-bold text-emerald-400">{k.toFixed(2)} rad/m</span>
-                 </div>
-                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
-                   <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Angular Freq (ω)</span>
-                   <span className="text-sm font-mono font-bold text-rose-400">{omega.toFixed(2)} rad/s</span>
-                 </div>
-                 {numSources === 2 && (
-                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
-                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Approx Nodal Lines</span>
-                     <span className="text-sm font-mono font-bold text-amber-400">{nodalLines}</span>
-                   </div>
-                 )}
-               </div>
-            </div>
           </div>
         </div>
       )}
