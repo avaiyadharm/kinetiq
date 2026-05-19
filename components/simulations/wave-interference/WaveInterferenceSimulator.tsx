@@ -203,7 +203,6 @@ export default function WaveInterferenceSimulator() {
   const omega = 2 * Math.PI * frequency;
   const k = 2 * Math.PI / lambda;
   
-  // Interference Geometry (Dual Sources)
   const ratio = separation / lambda;
   const antinodalLines = numSources === 2 ? 1 + 2 * Math.floor(ratio) : 0;
   const nodalLines = numSources === 2 ? 2 * Math.floor(ratio + 0.5) : 0;
