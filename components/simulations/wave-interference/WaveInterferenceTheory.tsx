@@ -64,6 +64,32 @@ export const WaveInterferenceTheory = () => {
             </div>
           </div>
         </section>
+
+        <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5">
+          <h3 className="text-xl font-bold uppercase tracking-widest text-primary mb-4 flex items-center gap-3">
+            <span className="w-6 h-[2px] bg-primary/50" /> 
+            3. Wave Energy & Visualization
+          </h3>
+          <p className="text-white/70 leading-relaxed">
+            The way waves are observed depends on whether we measure their immediate displacement or their time-averaged energy. The visualization engine provides multiple rendering modes to study these properties:
+          </p>
+          <ul className="space-y-4 text-sm text-white/60">
+            <li className="bg-white/5 p-4 rounded-xl border border-white/5">
+              <strong className="text-cyan-400 text-base mb-1 block">Displacement Mode</strong>
+              Plots the instantaneous net wave height z_net. Positive peaks (crests) and negative peaks (troughs) alternate over time.
+            </li>
+            <li className="bg-white/5 p-4 rounded-xl border border-white/5">
+              <strong className="text-amber-400 text-base mb-1 block">Intensity Mode</strong>
+              Plots the energy density. Wave intensity \( I \) is proportional to the square of the amplitude: 
+              <div className="font-mono text-white/80 my-2 tracking-widest">I ∝ A²</div>
+              In regions of constructive interference, the intensity is four times that of a single source (\( 4A^2 \)), whereas destructive regions have zero intensity.
+            </li>
+            <li className="bg-white/5 p-4 rounded-xl border border-white/5">
+              <strong className="text-rose-400 text-base mb-1 block">Phase Mode</strong>
+              Visualizes the continuous spatial evolution of the wave's phase angle using a complex sum to map the local phase to a continuous color spectrum.
+            </li>
+          </ul>
+        </section>
       </div>
     </div>
   );

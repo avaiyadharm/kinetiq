@@ -5,7 +5,7 @@ import { WaveInterferenceCanvas } from "./WaveInterferenceCanvas";
 import { WaveInterferenceTheory } from "./WaveInterferenceTheory";
 import { SimulationPageLayout, TabType } from "@/components/simulations/SimulationPageLayout";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Waves, Settings, Maximize2, HelpCircle } from "lucide-react";
+import { Play, Pause, Waves, Settings, Maximize2, HelpCircle, Activity, Radiation } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // --- ClickableValue: Premium Tactile Slider + Parameter Field ---
@@ -120,7 +120,8 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
           colorClass.includes("violet") ? "accent-violet-500" : 
           colorClass.includes("emerald") ? "accent-emerald-500" :
           colorClass.includes("cyan") ? "accent-cyan-500" :
-          colorClass.includes("orange") ? "accent-orange-500" : "accent-primary"
+          colorClass.includes("orange") ? "accent-orange-500" :
+          colorClass.includes("rose") ? "accent-rose-500" : "accent-primary"
         )}
       />
     </div>
@@ -128,7 +129,7 @@ const ClickableValue: React.FC<ClickableValueProps> = ({
 };
 
 const ControlCard = ({ title, icon: Icon, children, color }: any) => (
-  <div className="bg-[#18181b] rounded-[32px] p-6 md:p-8 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group">
+  <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-6 shadow-xl relative overflow-hidden group shrink-0">
     <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
        <Icon className="w-24 h-24" style={{ color }} />
     </div>
@@ -147,11 +148,15 @@ export default function WaveInterferenceSimulator() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [time, setTime] = useState(0);
 
-  // Physics params
+  // Advanced Physics params
   const [frequency, setFrequency] = useState(1.5);
+  const [amplitude, setAmplitude] = useState(1.0);
   const [separation, setSeparation] = useState(3.0);
   const [numSources, setNumSources] = useState<1 | 2>(2);
-  const waveSpeed = 2.0;
+  const [phaseDifference, setPhaseDifference] = useState(0);
+  const [waveSpeed, setWaveSpeed] = useState(2.0);
+  const [damping, setDamping] = useState(0.05);
+  const [renderMode, setRenderMode] = useState(0);
 
   const lastTimeRef = useRef<number | null>(null);
   const requestRef = useRef<number>(0);
@@ -181,10 +186,23 @@ export default function WaveInterferenceSimulator() {
     setIsPlaying(false);
     setTime(0);
     setFrequency(1.5);
+    setAmplitude(1.0);
     setSeparation(3.0);
     setNumSources(2);
+    setPhaseDifference(0);
+    setWaveSpeed(2.0);
+    setDamping(0.05);
+    setRenderMode(0);
     setTimeout(() => setIsPlaying(true), 100);
   };
+
+  const renderModes = ["Displacement", "Intensity", "Phase", "Grayscale", "Neon", "Contour"];
+
+  // Telemetry Derived Values
+  const lambda = waveSpeed / frequency;
+  const omega = 2 * Math.PI * frequency;
+  const k = 2 * Math.PI / lambda;
+  const nodalLines = numSources === 2 ? Math.floor(2 * separation / lambda) : 0;
 
   return (
     <SimulationPageLayout 
@@ -194,20 +212,20 @@ export default function WaveInterferenceSimulator() {
       onReset={handleReset}
     >
       {activeTab === "canvas" && (
-        <div className="flex-1 flex flex-col lg:flex-row p-6 gap-6 overflow-hidden">
+        <div className="flex-1 flex flex-col xl:flex-row p-6 gap-6 overflow-hidden">
           {/* Main Visualizer */}
           <div className="flex-1 relative flex flex-col bg-[#18181b] rounded-[32px] border border-border shadow-2xl overflow-hidden min-h-[500px]">
-             <div className="absolute top-6 left-6 z-10 flex gap-2">
+             <div className="absolute top-6 left-6 z-20 flex gap-2">
                 <button 
                   onClick={() => setIsPlaying(!isPlaying)}
-                  className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-primary/20 transition-all border border-white/10"
+                  className="bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-primary/20 transition-all border border-white/10 shadow-lg"
                 >
                   {isPlaying ? <Pause className="w-4 h-4 text-primary" /> : <Play className="w-4 h-4 text-primary" />}
                   {isPlaying ? "Pause" : "Run"}
                 </button>
              </div>
-             <div className="absolute top-6 right-6 z-10">
-                <button className="bg-black/60 backdrop-blur-md p-2 rounded-xl text-white/50 hover:text-white transition-all border border-white/10">
+             <div className="absolute top-6 right-6 z-20">
+                <button className="bg-black/80 backdrop-blur-md p-2 rounded-xl text-white/50 hover:text-white transition-all border border-white/10 shadow-lg">
                   <Maximize2 className="w-4 h-4" />
                 </button>
              </div>
@@ -218,41 +236,76 @@ export default function WaveInterferenceSimulator() {
                   separation={separation}
                   numSources={numSources}
                   waveSpeed={waveSpeed}
+                  amplitude={amplitude}
+                  phaseDifference={phaseDifference}
+                  damping={damping}
+                  renderMode={renderMode}
                   time={time}
                   isPlaying={isPlaying}
                 />
              </div>
           </div>
 
-          {/* Quick Config Panel Sidebar */}
-          <div className="w-full lg:w-[380px] flex flex-col gap-6 overflow-y-auto pr-2 no-scrollbar">
-            <ControlCard title="Wave Parameters" icon={Waves} color="#22d3ee">
+          {/* Configuration Panel Sidebar */}
+          <div className="w-full xl:w-[420px] flex flex-col gap-6 overflow-y-auto pr-2 no-scrollbar">
+            <ControlCard title="Source Dynamics" icon={Activity} color="#22d3ee">
               <div className="space-y-6">
+                <div className="flex flex-col gap-3">
+                  <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.15em] ml-1">Visualization Mode</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {renderModes.map((mode, i) => (
+                      <button 
+                        key={i}
+                        onClick={() => setRenderMode(i)}
+                        className={cn("py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest border transition-all", 
+                          renderMode === i ? "bg-cyan-500/20 border-cyan-500 text-cyan-400" : "bg-black/20 border-white/5 text-white/40 hover:bg-white/5 hover:text-white")}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <ClickableValue 
                   label="Oscillator Frequency"
                   unit="Hz"
                   value={frequency}
                   min={0.5}
-                  max={5.0}
+                  max={8.0}
                   step={0.1}
                   onChange={setFrequency}
                   colorClass="text-cyan-400"
                 />
 
+                <ClickableValue 
+                  label="Base Amplitude"
+                  unit="A₀"
+                  value={amplitude}
+                  min={0.1}
+                  max={3.0}
+                  step={0.1}
+                  onChange={setAmplitude}
+                  colorClass="text-emerald-400"
+                />
+              </div>
+            </ControlCard>
+
+            <ControlCard title="Interference Topology" icon={Radiation} color="#8b5cf6">
+              <div className="space-y-6">
                 <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.15em] ml-1">Active Sources</label>
+                  <label className="text-[10px] font-black text-white/40 uppercase tracking-[0.15em] ml-1">Active Emitters</label>
                   <div className="grid grid-cols-2 gap-2">
                     <button 
                       onClick={() => setNumSources(1)}
                       className={cn("py-3 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all", 
-                        numSources === 1 ? "bg-primary/20 border-primary text-primary" : "bg-black/20 border-white/5 text-white/40 hover:bg-white/5 hover:text-white")}
+                        numSources === 1 ? "bg-violet-500/20 border-violet-500 text-violet-400" : "bg-black/20 border-white/5 text-white/40 hover:bg-white/5 hover:text-white")}
                     >
                       Single
                     </button>
                     <button 
                       onClick={() => setNumSources(2)}
                       className={cn("py-3 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all", 
-                        numSources === 2 ? "bg-primary/20 border-primary text-primary" : "bg-black/20 border-white/5 text-white/40 hover:bg-white/5 hover:text-white")}
+                        numSources === 2 ? "bg-violet-500/20 border-violet-500 text-violet-400" : "bg-black/20 border-white/5 text-white/40 hover:bg-white/5 hover:text-white")}
                     >
                       Dual
                     </button>
@@ -265,16 +318,29 @@ export default function WaveInterferenceSimulator() {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
+                      className="space-y-6"
                     >
                       <ClickableValue 
-                        label="Source Separation"
+                        label="Emitter Separation"
                         unit="m"
                         value={separation}
-                        min={1.0}
+                        min={0.5}
                         max={8.0}
-                        step={0.5}
+                        step={0.1}
                         onChange={setSeparation}
                         colorClass="text-violet-400"
+                      />
+                      
+                      <ClickableValue 
+                        label="Phase Difference (Δφ)"
+                        unit="rad"
+                        value={phaseDifference}
+                        min={0}
+                        max={2 * Math.PI}
+                        step={Math.PI / 8}
+                        formatter={(v) => (v / Math.PI).toFixed(2) + "π"}
+                        onChange={setPhaseDifference}
+                        colorClass="text-rose-400"
                       />
                     </motion.div>
                   )}
@@ -282,17 +348,25 @@ export default function WaveInterferenceSimulator() {
               </div>
             </ControlCard>
             
-            <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-4 shadow-xl">
-               <h3 className="text-xs font-black uppercase tracking-widest text-white/60">Live Telemetry</h3>
-               <div className="space-y-2">
-                 <div className="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/5">
-                   <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">Wavelength (λ)</span>
-                   <span className="text-sm font-mono font-bold text-emerald-400">{(waveSpeed / frequency).toFixed(2)} m</span>
+            <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-4 shadow-xl shrink-0">
+               <h3 className="text-xs font-black uppercase tracking-widest text-white/60">Scientific Telemetry</h3>
+               <div className="grid grid-cols-2 gap-3">
+                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
+                   <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wavelength (λ)</span>
+                   <span className="text-sm font-mono font-bold text-cyan-400">{lambda.toFixed(2)} m</span>
+                 </div>
+                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
+                   <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wave Number (k)</span>
+                   <span className="text-sm font-mono font-bold text-emerald-400">{k.toFixed(2)} rad/m</span>
+                 </div>
+                 <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
+                   <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Angular Freq (ω)</span>
+                   <span className="text-sm font-mono font-bold text-rose-400">{omega.toFixed(2)} rad/s</span>
                  </div>
                  {numSources === 2 && (
-                   <div className="flex justify-between items-center p-3 bg-black/40 rounded-xl border border-white/5">
-                     <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">d / λ Ratio</span>
-                     <span className="text-sm font-mono font-bold text-amber-400">{(separation / (waveSpeed / frequency)).toFixed(2)}</span>
+                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1">
+                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Approx Nodal Lines</span>
+                     <span className="text-sm font-mono font-bold text-amber-400">{nodalLines}</span>
                    </div>
                  )}
                </div>
@@ -304,22 +378,32 @@ export default function WaveInterferenceSimulator() {
       {activeTab === "config" && (
         <div className="flex-1 p-12 overflow-y-auto bg-[#09090b]">
            <div className="max-w-3xl mx-auto space-y-8">
-             <h2 className="text-3xl font-bold font-display text-white">Full Environment Configuration</h2>
-             <p className="text-white/60">Configure the underlying simulation parameters, rendering quality, and numerical solver preferences.</p>
+             <h2 className="text-3xl font-bold font-display text-white">Environment Configuration</h2>
+             <p className="text-white/60">Fine-tune the physical properties of the computational wave medium.</p>
              
-             {/* Extended config options could go here */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ControlCard title="Wave Engine" icon={Settings} color="#10b981">
+                <ControlCard title="Medium Properties" icon={Settings} color="#10b981">
                   <div className="space-y-6">
                     <ClickableValue 
-                      label="Wave Propagation Speed"
+                      label="Wave Propagation Speed (v)"
                       unit="m/s"
                       value={waveSpeed}
                       min={0.5}
-                      max={5.0}
+                      max={8.0}
                       step={0.5}
-                      onChange={() => {}} // Read-only for now, or implement state
+                      onChange={setWaveSpeed}
                       colorClass="text-emerald-400"
+                    />
+                    
+                    <ClickableValue 
+                      label="Spatial Damping Factor"
+                      unit="m⁻¹"
+                      value={damping}
+                      min={0.0}
+                      max={0.5}
+                      step={0.01}
+                      onChange={setDamping}
+                      colorClass="text-orange-400"
                     />
                   </div>
                 </ControlCard>
@@ -337,10 +421,10 @@ export default function WaveInterferenceSimulator() {
       {activeTab === "guide" && (
         <div className="flex-1 flex items-center justify-center p-12">
           <div className="text-center space-y-4 max-w-lg">
-            <HelpCircle className="w-16 h-16 text-primary/40 mx-auto" />
+            <HelpCircle className="w-16 h-16 text-cyan-500/40 mx-auto" />
             <h3 className="text-2xl font-bold text-white">Laboratory Guide</h3>
             <p className="text-white/60">
-              Select <strong>Dual Sources</strong> to observe interference patterns. Adjust the <strong>Frequency</strong> and <strong>Separation</strong> to see how the number of nodal and antinodal lines changes.
+              Select <strong>Dual Sources</strong> to observe interference patterns. Adjust the <strong>Frequency</strong> and <strong>Separation</strong> to see how the number of nodal and antinodal lines changes. Experiment with the <strong>Visualization Modes</strong> to see Intensity, Phase, and Contour representations of the superposition principle.
             </p>
           </div>
         </div>
