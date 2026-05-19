@@ -18,6 +18,10 @@ interface StandingWavesCanvasProps {
   isPlaying: boolean;
   time: number;
   length: number; // L
+  tension: number;
+  density: number;
+  damping: number;
+  reflection: number;
 }
 
 export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
@@ -32,12 +36,16 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
   isPlaying,
   time,
   length,
+  tension,
+  density,
+  damping,
+  reflection,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Mouse inspector
   const [hoverData, setHoverData] = useState({
-    visible: false, x: 0, y: 0, px: 0, z: 0, nodeType: ""
+    visible: false, x: 0, y: 0, px: 0, z: 0, energy: 0, nodeType: "", definition: ""
   });
 
   useEffect(() => {
@@ -54,147 +62,233 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
       ctx.clearRect(0, 0, width, height);
 
       // Math Setup
-      let k = 0;
       let lambda = 0;
-      let phaseShift = 0; // for free boundary at x=0
-      let baseFunc = Math.sin;
+      let k = 0;
 
       if (boundaryType === "Fixed-Fixed") {
         lambda = (2 * length) / harmonic;
         k = (2 * Math.PI) / lambda;
-        baseFunc = Math.sin;
       } else if (boundaryType === "Free-Free") {
         lambda = (2 * length) / harmonic;
         k = (2 * Math.PI) / lambda;
-        baseFunc = Math.cos;
       } else if (boundaryType === "Fixed-Free") {
-        lambda = (4 * length) / (2 * harmonic - 1);
+        // Enforce odd harmonic
+        const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+        lambda = (4 * length) / oddHarmonic;
         k = (2 * Math.PI) / lambda;
-        baseFunc = Math.sin;
       }
 
       const omega = k * waveSpeed;
-      const A = amplitude * 100; // Visual scaling
+      const A = amplitude * 80; // Visual scaling factor
+      const gamma = damping; // Spatial attenuation factor
+      const R = reflection;  // Reflection coefficient at boundary
+      const reflSign = boundaryType.endsWith("Fixed") ? -1 : 1;
+      const baseWaveFunc = boundaryType.startsWith("Free") ? Math.cos : Math.sin;
 
-      // Define equations
-      const y1 = (x: number) => (A / 2) * baseFunc(k * x - omega * time);
-      const y2 = (x: number) => (A / 2) * baseFunc(k * x + omega * time);
-      const y_net = (x: number) => A * baseFunc(k * x) * Math.cos(omega * time);
+      // Travelling wave components
+      // y1: Forward wave traveling to the right
+      const y1 = (x: number) => (A / 2) * Math.exp(-gamma * x) * baseWaveFunc(k * x - omega * time);
 
-      // Rendering Style
+      // y2: Backward wave traveling to the left (reflected at x = L)
+      const y2 = (x: number) => {
+        const dist = 2 * length - x;
+        return reflSign * R * (A / 2) * Math.exp(-gamma * dist) * baseWaveFunc(k * dist - omega * time);
+      };
+
+      // Net displacement from superposition
+      const y_net = (x: number) => y1(x) + y2(x);
+
+      // Derivatives for Energy Calculations (K = 0.5 * rho * dy/dt^2, U = 0.5 * T * dy/dx^2)
+      const dy1_dt = (x: number) => -omega * (A / 2) * Math.exp(-gamma * x) * (boundaryType.startsWith("Free") ? -Math.sin(k * x - omega * time) : Math.cos(k * x - omega * time));
+      const dy2_dt = (x: number) => {
+        const dist = 2 * length - x;
+        return -omega * reflSign * R * (A / 2) * Math.exp(-gamma * dist) * (boundaryType.startsWith("Free") ? -Math.sin(k * dist - omega * time) : Math.cos(k * dist - omega * time));
+      };
+
+      const dy1_dx = (x: number) => {
+        const exp = Math.exp(-gamma * x);
+        if (boundaryType.startsWith("Free")) {
+          return (A / 2) * exp * (-k * Math.sin(k * x - omega * time) - gamma * Math.cos(k * x - omega * time));
+        } else {
+          return (A / 2) * exp * (k * Math.cos(k * x - omega * time) - gamma * Math.sin(k * x - omega * time));
+        }
+      };
+
+      const dy2_dx = (x: number) => {
+        const dist = 2 * length - x;
+        const exp = Math.exp(-gamma * dist);
+        if (boundaryType.startsWith("Free")) {
+          return reflSign * R * (A / 2) * exp * (k * Math.sin(k * dist - omega * time) + gamma * Math.cos(k * dist - omega * time));
+        } else {
+          return reflSign * R * (A / 2) * exp * (-k * Math.cos(k * dist - omega * time) + gamma * Math.sin(k * dist - omega * time));
+        }
+      };
+
+      const dy_dt = (x: number) => dy1_dt(x) + dy2_dt(x);
+      const dy_dx = (x: number) => dy1_dx(x) + dy2_dx(x);
+
       const isScientific = renderMode === "Scientific";
-      
-      if (!isScientific) {
-        // Draw grid
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for (let i = 0; i <= 10; i++) {
-          ctx.moveTo(0, (height / 10) * i);
-          ctx.lineTo(width, (height / 10) * i);
-          ctx.moveTo((width / 10) * i, 0);
-          ctx.lineTo((width / 10) * i, height);
-        }
-        ctx.stroke();
-      }
+      const isEnergyMode = renderMode === "Energy";
 
-      // Draw components if enabled
-      if (showComponents) {
-        ctx.lineWidth = 2;
-        // Right-traveling wave (Cyan)
-        ctx.beginPath();
-        for (let px = 0; px <= width; px++) {
-          const x = (px / width) * length;
-          const py = height / 2 - y1(x);
-          if (px === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.4)";
-        if (!isScientific) ctx.shadowColor = "rgba(34, 211, 238, 0.8)";
-        if (!isScientific) ctx.shadowBlur = 10;
-        ctx.stroke();
-
-        // Left-traveling wave (Rose)
-        ctx.beginPath();
-        for (let px = 0; px <= width; px++) {
-          const x = (px / width) * length;
-          const py = height / 2 - y2(x);
-          if (px === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.strokeStyle = "rgba(244, 63, 94, 0.4)";
-        if (!isScientific) ctx.shadowColor = "rgba(244, 63, 94, 0.8)";
-        if (!isScientific) ctx.shadowBlur = 10;
-        ctx.stroke();
-        
-        ctx.shadowBlur = 0;
-      }
-
-      // Draw Resultant Standing Wave
+      // Draw Grid
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let px = 0; px <= width; px++) {
-        const x = (px / width) * length;
-        const py = height / 2 - y_net(x);
-        if (px === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+      for (let i = 0; i <= 10; i++) {
+        ctx.moveTo(0, (height / 10) * i);
+        ctx.lineTo(width, (height / 10) * i);
+        ctx.moveTo((width / 10) * i, 0);
+        ctx.lineTo((width / 10) * i, height);
       }
-
-      ctx.lineWidth = isScientific ? 2 : 4;
-      
-      if (renderMode === "Displacement") {
-        ctx.strokeStyle = "#fff";
-        ctx.shadowColor = "rgba(255,255,255,0.5)";
-        ctx.shadowBlur = 15;
-      } else if (renderMode === "Energy") {
-        // Energy is proportional to square of amplitude + square of velocity
-        // We can color code based on local kinetic energy (velocity^2)
-        const v_env = Math.abs(Math.sin(omega * time)); // overall velocity magnitude
-        const r = Math.floor(255 * v_env);
-        const b = Math.floor(255 * (1 - v_env));
-        ctx.strokeStyle = `rgb(${r}, 100, ${b})`;
-        ctx.shadowColor = `rgb(${r}, 100, ${b})`;
-        ctx.shadowBlur = 20;
-      } else if (renderMode === "Phase") {
-        const p = Math.abs(Math.cos(omega * time));
-        ctx.strokeStyle = `hsl(${p * 360}, 100%, 70%)`;
-      } else {
-        ctx.strokeStyle = "#aaa";
-        ctx.shadowBlur = 0;
-      }
-
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      // Calculate Nodes and Antinodes
-      const numNodes = boundaryType === "Fixed-Fixed" ? harmonic + 1 : boundaryType === "Free-Free" ? harmonic : harmonic;
-      const numAntinodes = boundaryType === "Fixed-Fixed" ? harmonic : boundaryType === "Free-Free" ? harmonic + 1 : harmonic;
-      
-      const drawMarkers = () => {
-        // Find positions by scanning or math
-        // For Fixed-Fixed: nodes at x = n*lambda/2
+      // Reference Center-Line
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (isEnergyMode) {
+        // Energy visualization mode
+        // Plot K, U, and Total Energy E
+        const scale = 0.08 / (tension * 0.01 + 1); // scaling factor to keep curves on screen
+        
+        ctx.lineWidth = 2;
+        
+        // Draw Kinetic Energy Density (Green/Cyan)
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        for (let px = 0; px <= width; px++) {
+          const x = (px / width) * length;
+          const K = 0.5 * density * Math.pow(dy_dt(x), 2) * scale;
+          const py = height / 2 - K;
+          if (px === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Potential Energy Density (Orange)
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.5)";
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        for (let px = 0; px <= width; px++) {
+          const x = (px / width) * length;
+          const U = 0.5 * tension * Math.pow(dy_dx(x), 2) * scale;
+          const py = height / 2 - U;
+          if (px === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Total Energy Density (Vibrant Purple/Pink)
+        ctx.strokeStyle = "#d946ef";
+        ctx.lineWidth = 4;
+        ctx.shadowColor = "rgba(217, 70, 239, 0.4)";
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        for (let px = 0; px <= width; px++) {
+          const x = (px / width) * length;
+          const K = 0.5 * density * Math.pow(dy_dt(x), 2) * scale;
+          const U = 0.5 * tension * Math.pow(dy_dx(x), 2) * scale;
+          const E = K + U;
+          const py = height / 2 - E;
+          if (px === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      } else {
+        // Draw traveling components if enabled
+        if (showComponents) {
+          ctx.lineWidth = 1.5;
+          
+          // Right-traveling wave (Cyan)
+          ctx.beginPath();
+          for (let px = 0; px <= width; px++) {
+            const x = (px / width) * length;
+            const py = height / 2 - y1(x);
+            if (px === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = "rgba(34, 211, 238, 0.4)";
+          ctx.stroke();
+
+          // Left-traveling wave (Rose)
+          ctx.beginPath();
+          for (let px = 0; px <= width; px++) {
+            const x = (px / width) * length;
+            const py = height / 2 - y2(x);
+            if (px === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = "rgba(244, 63, 94, 0.4)";
+          ctx.stroke();
+        }
+
+        // Draw Net Standing Wave
+        ctx.beginPath();
+        for (let px = 0; px <= width; px++) {
+          const x = (px / width) * length;
+          const py = height / 2 - y_net(x);
+          if (px === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+
+        ctx.lineWidth = isScientific ? 2 : 4;
+        if (renderMode === "Displacement") {
+          ctx.strokeStyle = "#ffffff";
+          ctx.shadowColor = "rgba(255, 255, 255, 0.3)";
+          ctx.shadowBlur = 10;
+        } else if (renderMode === "Phase") {
+          // Color code by phase angle
+          const phaseVal = (omega * time) % (2 * Math.PI);
+          ctx.strokeStyle = `hsl(${(phaseVal / (2 * Math.PI)) * 360}, 90%, 65%)`;
+        } else {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Draw phase arrows & envelope at antinodes to show phase inversion between adjacent antinodes
         let nodes: number[] = [];
         let antinodes: number[] = [];
 
         if (boundaryType === "Fixed-Fixed") {
-          for(let i=0; i<=harmonic; i++) nodes.push(i * lambda / 2);
-          for(let i=0; i<harmonic; i++) antinodes.push((i + 0.5) * lambda / 2);
+          for (let i = 0; i <= harmonic; i++) nodes.push((i * lambda) / 2);
+          for (let i = 0; i < harmonic; i++) antinodes.push(((i + 0.5) * lambda) / 2);
         } else if (boundaryType === "Free-Free") {
-          for(let i=0; i<harmonic; i++) nodes.push((i + 0.5) * lambda / 2);
-          for(let i=0; i<=harmonic; i++) antinodes.push(i * lambda / 2);
+          for (let i = 0; i < harmonic; i++) nodes.push(((i + 0.5) * lambda) / 2);
+          for (let i = 0; i <= harmonic; i++) antinodes.push((i * lambda) / 2);
         } else if (boundaryType === "Fixed-Free") {
-          for(let i=0; i<harmonic; i++) nodes.push(i * lambda / 2);
-          for(let i=0; i<harmonic; i++) antinodes.push((i + 0.5) * lambda / 2);
+          const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+          for (let m = 0; (m * lambda) / 2 <= length + 0.01; m++) {
+            const pos = (m * lambda) / 2;
+            if (pos <= length - 0.01) nodes.push(pos);
+          }
+          for (let m = 0; (m + 0.5) * lambda / 2 <= length + 0.01; m++) {
+            antinodes.push(((m + 0.5) * lambda) / 2);
+          }
         }
 
+        // Draw node markers
         if (showNodes) {
-          ctx.fillStyle = isScientific ? "#fff" : "#ef4444";
-          nodes.forEach(x => {
+          ctx.fillStyle = isScientific ? "#ffffff" : "#ef4444";
+          nodes.forEach((x) => {
             const px = (x / length) * width;
             ctx.beginPath();
             ctx.arc(px, height / 2, 6, 0, Math.PI * 2);
             ctx.fill();
+            
+            // Halo
             if (!isScientific) {
-              ctx.fillStyle = "rgba(239, 68, 68, 0.2)";
+              ctx.fillStyle = "rgba(239, 68, 68, 0.15)";
               ctx.beginPath();
               ctx.arc(px, height / 2, 14, 0, Math.PI * 2);
               ctx.fill();
@@ -203,37 +297,76 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
           });
         }
 
+        // Draw antinode markers & phase indicators
         if (showAntinodes) {
-          ctx.fillStyle = isScientific ? "#fff" : "#10b981";
-          antinodes.forEach(x => {
+          antinodes.forEach((x) => {
             const px = (x / length) * width;
-            const py = height / 2 - y_net(x);
+            const displacement = y_net(x);
+            const py = height / 2 - displacement;
+
+            // Draw point marker
+            ctx.fillStyle = isScientific ? "#ffffff" : "#10b981";
             ctx.beginPath();
             ctx.arc(px, py, 6, 0, Math.PI * 2);
             ctx.fill();
-            if (!isScientific) {
-              // Antinode bounding envelope
-              ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
-              ctx.setLineDash([4, 4]);
-              ctx.beginPath();
-              ctx.moveTo(px, height / 2 - A * baseFunc(k*x));
-              ctx.lineTo(px, height / 2 + A * baseFunc(k*x));
-              ctx.stroke();
-              ctx.setLineDash([]);
-            }
+
+            // Draw phase indicator arrow at each antinode
+            // Adjacent antinodes are 180 degrees out of phase, which is visually demonstrated by arrows pointing in opposite directions
+            const spatialFactor = baseWaveFunc(k * x);
+            const direction = spatialFactor * Math.cos(omega * time) > 0 ? 1 : -1;
+            
+            // Draw arrow
+            ctx.strokeStyle = direction > 0 ? "#10b981" : "#f43f5e";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(px, height / 2);
+            ctx.lineTo(px, height / 2 - direction * 35);
+            ctx.stroke();
+
+            // Arrow tip
+            ctx.fillStyle = direction > 0 ? "#10b981" : "#f43f5e";
+            ctx.beginPath();
+            ctx.moveTo(px - 4, height / 2 - direction * 30);
+            ctx.lineTo(px + 4, height / 2 - direction * 30);
+            ctx.lineTo(px, height / 2 - direction * 37);
+            ctx.fill();
           });
         }
-      };
-
-      drawMarkers();
-
-      // Boundaries
-      ctx.fillStyle = "#fff";
-      if (boundaryType.startsWith("Fixed")) {
-        ctx.fillRect(0, height / 2 - 20, 8, 40);
       }
+
+      // Render boundary condition visuals with annotations
+      ctx.fillStyle = "#ffffff";
+      if (boundaryType.startsWith("Fixed")) {
+        ctx.fillRect(0, height / 2 - 25, 8, 50);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.6)";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText("FIXED NODE (π SHIFT)", 12, height / 2 + 3);
+      } else {
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, height / 2, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText("FREE ANTINODE (0 SHIFT)", 12, height / 2 + 3);
+      }
+
+      ctx.fillStyle = "#ffffff";
       if (boundaryType.endsWith("Fixed")) {
-        ctx.fillRect(width - 8, height / 2 - 20, 8, 40);
+        ctx.fillRect(width - 8, height / 2 - 25, 8, 50);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.6)";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText("FIXED NODE (π SHIFT)", width - 140, height / 2 + 3);
+      } else {
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(width, height / 2, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
+        ctx.font = "bold 9px monospace";
+        ctx.fillText("FREE ANTINODE (0 SHIFT)", width - 150, height / 2 + 3);
       }
 
       animationId = requestAnimationFrame(render);
@@ -242,7 +375,7 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     render();
 
     return () => cancelAnimationFrame(animationId);
-  }, [amplitude, harmonic, waveSpeed, boundaryType, renderMode, showComponents, showNodes, showAntinodes, time, length]);
+  }, [amplitude, harmonic, waveSpeed, boundaryType, renderMode, showComponents, showNodes, showAntinodes, time, length, tension, density, damping, reflection]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
@@ -250,30 +383,60 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     const u = (e.clientX - rect.left) / rect.width;
     const x = u * length;
 
-    let k = 0;
     let lambda = 0;
-    let baseFunc = Math.sin;
+    let k = 0;
+
     if (boundaryType === "Fixed-Fixed") {
       lambda = (2 * length) / harmonic;
       k = (2 * Math.PI) / lambda;
-      baseFunc = Math.sin;
     } else if (boundaryType === "Free-Free") {
       lambda = (2 * length) / harmonic;
       k = (2 * Math.PI) / lambda;
-      baseFunc = Math.cos;
     } else if (boundaryType === "Fixed-Free") {
-      lambda = (4 * length) / (2 * harmonic - 1);
+      const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+      lambda = (4 * length) / oddHarmonic;
       k = (2 * Math.PI) / lambda;
-      baseFunc = Math.sin;
     }
+
     const omega = k * waveSpeed;
-    const z = amplitude * baseFunc(k * x) * Math.cos(omega * time);
+    const A = amplitude * 80;
+    const gamma = damping;
+    const R = reflection;
+    const reflSign = boundaryType.endsWith("Fixed") ? -1 : 1;
+    const baseWaveFunc = boundaryType.startsWith("Free") ? Math.cos : Math.sin;
+
+    const y1_val = (A / 2) * Math.exp(-gamma * x) * baseWaveFunc(k * x - omega * time);
+    const y2_val = (A / 2) * Math.exp(-gamma * (2 * length - x)) * baseWaveFunc(k * (2 * length - x) - omega * time);
+    const z_scaled = y1_val + reflSign * R * y2_val;
+    const z = z_scaled / 80; // normalize back to physical units
+
+    // Derivatives for local energy
+    const dy1_dt = -omega * (A / 2) * Math.exp(-gamma * x) * (boundaryType.startsWith("Free") ? -Math.sin(k * x - omega * time) : Math.cos(k * x - omega * time));
+    const dy2_dt = -omega * reflSign * R * (A / 2) * Math.exp(-gamma * (2 * length - x)) * (boundaryType.startsWith("Free") ? -Math.sin(k * (2 * length - x) - omega * time) : Math.cos(k * (2 * length - x) - omega * time));
+    const dy_dt = dy1_dt + dy2_dt;
+
+    const dy1_dx = (A / 2) * Math.exp(-gamma * x) * (boundaryType.startsWith("Free") ? (-k * Math.sin(k * x - omega * time) - gamma * Math.cos(k * x - omega * time)) : (k * Math.cos(k * x - omega * time) - gamma * Math.sin(k * x - omega * time)));
+    const dy2_dx = reflSign * R * (A / 2) * Math.exp(-gamma * (2 * length - x)) * (boundaryType.startsWith("Free") ? (k * Math.sin(k * (2 * length - x) - omega * time) + gamma * Math.cos(k * (2 * length - x) - omega * time)) : (-k * Math.cos(k * (2 * length - x) - omega * time) + gamma * Math.sin(k * (2 * length - x) - omega * time)));
+    const dy_dx = dy1_dx + dy2_dx;
+
+    // Local energy density
+    const scale = 0.08 / (tension * 0.01 + 1);
+    const K = 0.5 * density * Math.pow(dy_dt, 2) * scale;
+    const U = 0.5 * tension * Math.pow(dy_dx, 2) * scale;
+    const localEnergy = K + U;
+
+    // Node / Antinode classification
+    const envelope = Math.abs(baseWaveFunc(k * x));
+    let nodeType = "Intermediate Node";
+    let definition = "Medium oscillates between minimum and maximum limits. Superposition of traveling waves creates varying local displacement.";
     
-    // Classify node/antinode
-    const envelope = Math.abs(baseFunc(k * x));
-    let nodeType = "Intermediate";
-    if (envelope < 0.1) nodeType = "Node (Zero Amplitude)";
-    else if (envelope > 0.9) nodeType = "Antinode (Max Amplitude)";
+    if (envelope < 0.1) {
+      nodeType = "Node (Zero Amplitude)";
+      definition = "A point along a standing wave where the wave has minimum (zero) amplitude at all times due to destructive interference.";
+    } else if (envelope > 0.9) {
+      nodeType = "Antinode (Maximum Amplitude)";
+      definition = "A point at which the displacement of the standing wave is at its maximum at all times due to constructive interference.";
+    }
 
     setHoverData({
       visible: true,
@@ -281,11 +444,13 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
       y: e.clientY,
       px: x,
       z,
-      nodeType
+      energy: localEnergy,
+      nodeType,
+      definition
     });
   };
 
-  const handleMouseLeave = () => setHoverData(prev => ({ ...prev, visible: false }));
+  const handleMouseLeave = () => setHoverData((prev) => ({ ...prev, visible: false }));
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-[#09090b] rounded-[32px] border border-white/10 overflow-hidden shadow-2xl cursor-crosshair">
@@ -307,7 +472,7 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
           </span>
         </div>
         <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-mono text-white/60 shadow-lg uppercase">
-          RENDER: {renderMode} | BOUNDARY: {boundaryType} | L: {length.toFixed(1)}m
+          RENDER: {renderMode} | BOUNDARY: {boundaryType} | L: {length.toFixed(1)}m | Time scale: 1.0x (Real-time)
         </div>
       </div>
 
@@ -319,26 +484,34 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.1 }}
-            className="fixed pointer-events-none z-50 bg-black/80 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl min-w-[200px]"
+            className="fixed pointer-events-none z-50 bg-black/90 backdrop-blur-xl border border-white/15 p-4 rounded-2xl shadow-2xl max-w-[280px]"
             style={{ 
               left: hoverData.x + 20, 
               top: hoverData.y + 20,
-              transform: `translate(${hoverData.x > window.innerWidth - 250 ? '-120%' : '0'}, ${hoverData.y > window.innerHeight - 200 ? '-120%' : '0'})` 
+              transform: `translate(${hoverData.x > window.innerWidth - 300 ? '-120%' : '0'}, ${hoverData.y > window.innerHeight - 250 ? '-120%' : '0'})` 
             }}
           >
-            <div className="flex items-center gap-2 mb-3">
-              <span className={`w-2 h-2 rounded-full ${hoverData.nodeType.includes('Node') ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]' : hoverData.nodeType.includes('Antinode') ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-white/20'}`} />
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${hoverData.nodeType.includes('Node (Zero') ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]' : hoverData.nodeType.includes('Antinode') ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]'}`} />
               <span className="text-[10px] font-black uppercase tracking-widest text-white/80">{hoverData.nodeType}</span>
             </div>
+
+            <p className="text-[9px] text-white/50 leading-relaxed mb-3 font-medium">
+              {hoverData.definition}
+            </p>
             
-            <div className="space-y-2">
-              <div className="flex justify-between items-center gap-6 border-b border-white/5 pb-1">
-                <span className="text-[9px] uppercase tracking-widest text-white/40">Position (x)</span>
-                <span className="text-xs font-mono font-bold text-white/80">{hoverData.px.toFixed(2)}m</span>
+            <div className="space-y-2 border-t border-white/5 pt-2">
+              <div className="flex justify-between items-center gap-6">
+                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Position (x)</span>
+                <span className="text-xs font-mono font-bold text-white/80">{hoverData.px.toFixed(2)} m</span>
               </div>
-              <div className="flex justify-between items-center gap-6 border-b border-white/5 pb-1">
-                <span className="text-[9px] uppercase tracking-widest text-white/40">Displacement (z)</span>
-                <span className="text-xs font-mono font-bold text-cyan-400">{hoverData.z.toFixed(2)}</span>
+              <div className="flex justify-between items-center gap-6">
+                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Displacement (z)</span>
+                <span className="text-xs font-mono font-bold text-cyan-400">{(hoverData.z * 100).toFixed(1)} cm</span>
+              </div>
+              <div className="flex justify-between items-center gap-6">
+                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Local Energy</span>
+                <span className="text-xs font-mono font-bold text-fuchsia-400">{hoverData.energy.toFixed(3)} J/m</span>
               </div>
             </div>
           </motion.div>

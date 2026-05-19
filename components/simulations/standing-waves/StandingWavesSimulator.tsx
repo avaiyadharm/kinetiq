@@ -6,6 +6,7 @@ import { SimulationPageLayout, TabType } from "@/components/simulations/Simulati
 import { Play, Pause, Waves, Settings, Activity, Maximize2, Layers, HelpCircle, MousePointer2, Settings2, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StandingWavesTheory } from "./StandingWavesTheory";
+import StandingWavesEnvironment from "./StandingWavesEnvironment";
 
 // --- ClickableValue: Premium Tactile Slider + Parameter Field ---
 interface ClickableValueProps {
@@ -86,11 +87,51 @@ export const StandingWavesSimulator = () => {
 
   // Physics parameters
   const [harmonic, setHarmonic] = useState(3);
-  const [waveSpeed, setWaveSpeed] = useState(200); // m/s
   const [length, setLength] = useState(2.0); // m
   const [amplitude, setAmplitude] = useState(1.0);
   const [boundaryType, setBoundaryType] = useState<BoundaryType>("Fixed-Fixed");
   const [renderMode, setRenderMode] = useState<RenderMode>("Displacement");
+
+  // Environment State
+  const [tension, setTension] = useState(100); 
+  const [density, setDensity] = useState(0.01);
+  const [damping, setDamping] = useState(0);
+  const [reflection, setReflection] = useState(1.0);
+  const [preset, setPreset] = useState("Ideal String");
+
+  // Derived Physics
+  const waveSpeed = Math.sqrt(tension / density);
+  
+  // Handlers for physical consistency
+  const handleBoundaryChange = (type: BoundaryType) => {
+    setBoundaryType(type);
+    if (type === "Fixed-Free" && harmonic % 2 === 0) {
+      setHarmonic(Math.max(1, harmonic - 1));
+    }
+  };
+
+  const handleHarmonicChange = (newVal: number) => {
+    if (boundaryType === "Fixed-Free") {
+      // For Fixed-Free boundaries, harmonic mode (n) must be an odd integer (1, 3, 5...)
+      const val = Math.round(newVal);
+      if (val % 2 === 0) {
+        if (val > harmonic) {
+          setHarmonic(val + 1);
+        } else {
+          setHarmonic(Math.max(1, val - 1));
+        }
+      } else {
+        setHarmonic(Math.max(1, val));
+      }
+    } else {
+      setHarmonic(Math.max(1, Math.round(newVal)));
+    }
+  };
+
+  const handleWaveSpeedChange = (v: number) => {
+    // Keep density fixed, change tension to achieve target wave speed: T = v^2 * rho
+    setTension(v * v * density);
+  };
   
   // Visualization parameters
   const [showComponents, setShowComponents] = useState(false);
@@ -101,16 +142,19 @@ export const StandingWavesSimulator = () => {
   let lambda = 0;
   let k = 0;
   let baseFuncStr = "sin";
+  
+  const activeHarmonic = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+
   if (boundaryType === "Fixed-Fixed") {
-    lambda = (2 * length) / harmonic;
+    lambda = (2 * length) / activeHarmonic;
     k = (2 * Math.PI) / lambda;
     baseFuncStr = "sin";
   } else if (boundaryType === "Free-Free") {
-    lambda = (2 * length) / harmonic;
+    lambda = (2 * length) / activeHarmonic;
     k = (2 * Math.PI) / lambda;
     baseFuncStr = "cos";
   } else if (boundaryType === "Fixed-Free") {
-    lambda = (4 * length) / (2 * harmonic - 1);
+    lambda = (4 * length) / activeHarmonic;
     k = (2 * Math.PI) / lambda;
     baseFuncStr = "sin";
   }
@@ -137,7 +181,10 @@ export const StandingWavesSimulator = () => {
   const handleReset = () => {
     setTime(0);
     setHarmonic(3);
-    setWaveSpeed(200);
+    setTension(100);
+    setDensity(0.01);
+    setDamping(0);
+    setReflection(1.0);
     setLength(2.0);
     setBoundaryType("Fixed-Fixed");
     setRenderMode("Displacement");
@@ -182,6 +229,10 @@ export const StandingWavesSimulator = () => {
                   isPlaying={isPlaying}
                   time={time}
                   length={length}
+                  tension={tension}
+                  density={density}
+                  damping={damping}
+                  reflection={reflection}
                 />
              </div>
           </div>
@@ -237,6 +288,15 @@ export const StandingWavesSimulator = () => {
                      <span className="text-base font-mono font-black text-amber-400">{omega.toFixed(1)} <span className="text-xs text-amber-500/50">rad/s</span></span>
                      <span className="text-[8px] font-mono text-white/30 uppercase mt-1">ω = 2πf</span>
                    </div>
+                   {/* Resonance Condition Geometry */}
+                  <div className="col-span-2 bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Resonance Geometry</span>
+                    <span className="text-xs font-mono font-bold text-cyan-400">
+                      {boundaryType === "Fixed-Fixed" || boundaryType === "Free-Free" 
+                        ? `L = ${activeHarmonic}λ/2` 
+                        : `L = ${activeHarmonic}λ/4 (n odd)`}
+                    </span>
+                  </div>
                  </div>
                </div>
             </div>
@@ -249,7 +309,7 @@ export const StandingWavesSimulator = () => {
                     {["Fixed-Fixed", "Free-Free", "Fixed-Free"].map(mode => (
                       <button 
                         key={mode}
-                        onClick={() => setBoundaryType(mode as any)}
+                        onClick={() => handleBoundaryChange(mode as any)}
                         className={cn(
                           "px-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border",
                           boundaryType === mode 
@@ -270,7 +330,7 @@ export const StandingWavesSimulator = () => {
                   min={1}
                   max={8}
                   step={1}
-                  onChange={setHarmonic}
+                  onChange={handleHarmonicChange}
                   colorClass="text-emerald-400"
                   format={(v) => `n = ${v}`}
                 />
@@ -297,7 +357,7 @@ export const StandingWavesSimulator = () => {
                   min={50}
                   max={500}
                   step={10}
-                  onChange={setWaveSpeed}
+                  onChange={handleWaveSpeedChange}
                   colorClass="text-blue-400"
                 />
                 <ClickableValue 
@@ -370,6 +430,25 @@ export const StandingWavesSimulator = () => {
             </ControlCard>
 
           </div>
+        </div>
+      )}
+
+      {activeTab === "config" && (
+        <div className="flex-1 overflow-y-auto p-12 bg-black">
+          <StandingWavesEnvironment
+            tension={tension}
+            setTension={setTension}
+            density={density}
+            setDensity={setDensity}
+            damping={damping}
+            setDamping={setDamping}
+            reflection={reflection}
+            setReflection={setReflection}
+            preset={preset}
+            setPreset={setPreset}
+            length={length}
+            boundaryType={boundaryType}
+          />
         </div>
       )}
 
