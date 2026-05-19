@@ -5,7 +5,7 @@ import { WaveInterferenceCanvas } from "./WaveInterferenceCanvas";
 import { WaveInterferenceTheory } from "./WaveInterferenceTheory";
 import { SimulationPageLayout, TabType } from "@/components/simulations/SimulationPageLayout";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Waves, Settings, Maximize2, HelpCircle, Activity, Radiation } from "lucide-react";
+import { Play, Pause, Waves, Settings, Maximize2, HelpCircle, Activity, Radiation, MousePointer2, Layers, BookOpen, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // --- ClickableValue: Premium Tactile Slider + Parameter Field ---
@@ -466,13 +466,94 @@ export default function WaveInterferenceSimulator() {
       )}
 
       {activeTab === "guide" && (
-        <div className="flex-1 flex items-center justify-center p-12">
-          <div className="text-center space-y-4 max-w-lg">
-            <HelpCircle className="w-16 h-16 text-cyan-500/40 mx-auto" />
-            <h3 className="text-2xl font-bold text-white">Laboratory Guide</h3>
-            <p className="text-white/60">
-              Select <strong>Dual Sources</strong> to observe interference patterns. Adjust the <strong>Frequency</strong> and <strong>Separation</strong> to see how the number of nodal and antinodal lines changes. Experiment with the <strong>Visualization Modes</strong> to see Intensity, Phase, and Contour representations of the superposition principle.
-            </p>
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar bg-black/50">
+          <div className="max-w-6xl mx-auto w-full space-y-8 pb-12">
+            
+            <div className="text-center space-y-4 py-8">
+              <div className="inline-flex items-center justify-center p-4 rounded-full bg-cyan-500/10 border border-cyan-500/20 mb-2">
+                <HelpCircle className="w-8 h-8 text-cyan-400" />
+              </div>
+              <h2 className="text-3xl font-black text-white tracking-tight">System Operations Guide</h2>
+              <p className="text-white/50 max-w-2xl mx-auto leading-relaxed">
+                Comprehensive operational manual for the Wave Interference computational environment. Learn how to navigate the visualization modes, interpret scientific telemetry, and utilize interactive probing tools.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              
+              {/* Telemetry Guide Card */}
+              <div className="bg-[#18181b] p-6 rounded-[32px] border border-white/5 shadow-xl space-y-4 hover:border-cyan-500/30 transition-all group overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-500/20 transition-all" />
+                <div className="w-12 h-12 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center relative z-10">
+                  <Activity className="w-6 h-6 text-cyan-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white relative z-10">Scientific Telemetry</h3>
+                <p className="text-sm text-white/50 leading-relaxed relative z-10">
+                  The sidebar dynamically computes real-time constants (k, ω, λ). Watch as the exact governing superposition wave equation updates automatically when you modify frequency, amplitude, or phase parameters.
+                </p>
+              </div>
+
+              {/* Cursor Probing Card */}
+              <div className="bg-[#18181b] p-6 rounded-[32px] border border-white/5 shadow-xl space-y-4 hover:border-emerald-500/30 transition-all group overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all" />
+                <div className="w-12 h-12 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center relative z-10">
+                  <MousePointer2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white relative z-10">Interactive Probing</h3>
+                <p className="text-sm text-white/50 leading-relaxed relative z-10">
+                  Hover directly over the simulation canvas. The computational engine will lock onto your cursor to measure precise path differences (Δr), local intensity, and identify constructive vs. destructive interference nodes.
+                </p>
+              </div>
+
+              {/* Visualization Modes Card */}
+              <div className="bg-[#18181b] p-6 rounded-[32px] border border-white/5 shadow-xl space-y-4 hover:border-violet-500/30 transition-all group overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-32 h-32 bg-violet-500/10 rounded-full blur-3xl group-hover:bg-violet-500/20 transition-all" />
+                <div className="w-12 h-12 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center relative z-10">
+                  <Layers className="w-6 h-6 text-violet-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white relative z-10">Topology Rendering</h3>
+                <p className="text-sm text-white/50 leading-relaxed relative z-10">
+                  Toggle between 6 different WebGL visualization topologies. Use <strong className="text-white/80">Phase</strong> mode to observe wavefront rotation, <strong className="text-white/80">Intensity</strong> to view energy density, or <strong className="text-white/80">Contour</strong> to map precise spatial amplitudes.
+                </p>
+              </div>
+
+              {/* Source Control Card */}
+              <div className="bg-[#18181b] p-6 rounded-[32px] border border-white/5 shadow-xl space-y-4 hover:border-amber-500/30 transition-all group overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl group-hover:bg-amber-500/20 transition-all" />
+                <div className="w-12 h-12 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center relative z-10">
+                  <Settings2 className="w-6 h-6 text-amber-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white relative z-10">Source Control</h3>
+                <p className="text-sm text-white/50 leading-relaxed relative z-10">
+                  Enable dual sources to form interference fringes. Tune the <strong className="text-white/80">Phase Difference</strong> to artificially shift the interference pattern, converting central maximums into minimums.
+                </p>
+              </div>
+
+              {/* Damping Card */}
+              <div className="bg-[#18181b] p-6 rounded-[32px] border border-white/5 shadow-xl space-y-4 hover:border-rose-500/30 transition-all group overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-32 h-32 bg-rose-500/10 rounded-full blur-3xl group-hover:bg-rose-500/20 transition-all" />
+                <div className="w-12 h-12 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center relative z-10">
+                  <Waves className="w-6 h-6 text-rose-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white relative z-10">Wave Damping</h3>
+                <p className="text-sm text-white/50 leading-relaxed relative z-10">
+                  Realistic waves lose energy over distance via inverse-square attenuation. Apply the <strong className="text-white/80">Damping</strong> parameter to simulate frictional loss and visualize how wave intensity drops exponentially.
+                </p>
+              </div>
+
+              {/* Theory Connect Card */}
+              <div className="bg-[#18181b] p-6 rounded-[32px] border border-white/5 shadow-xl space-y-4 hover:border-blue-500/30 transition-all group overflow-hidden relative">
+                <div className="absolute -right-6 -top-6 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-all" />
+                <div className="w-12 h-12 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-center relative z-10">
+                  <BookOpen className="w-6 h-6 text-blue-400" />
+                </div>
+                <h3 className="text-lg font-bold text-white relative z-10">Theoretical Integration</h3>
+                <p className="text-sm text-white/50 leading-relaxed relative z-10">
+                  Switch to the <strong className="text-white/80">Theoretical Basis</strong> tab for mathematical derivations of superposition. Compare the formulas to the live readout of fringe angles and nodal counts on the sidebar.
+                </p>
+              </div>
+
+            </div>
           </div>
         </div>
       )}

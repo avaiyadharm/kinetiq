@@ -90,6 +90,29 @@ export const WaveInterferenceTheory = () => {
             </li>
           </ul>
         </section>
+
+        <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity pointer-events-none">
+             <span className="w-32 h-32 text-cyan-500 rounded-full bg-cyan-500/20 block blur-3xl" />
+          </div>
+          <h3 className="text-xl font-bold uppercase tracking-widest text-cyan-400 mb-4 flex items-center gap-3 relative z-10">
+            <span className="w-6 h-[2px] bg-cyan-400/50" /> 
+            4. Scientific Telemetry & Interactive Probing
+          </h3>
+          <p className="text-white/70 leading-relaxed relative z-10">
+            This laboratory is designed as a fully computable environment. The new <strong>Scientific Telemetry</strong> and <strong>Interactive Probing</strong> systems connect mathematical abstraction directly to visual phenomena in real-time.
+          </p>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-white/60 relative z-10">
+            <li className="bg-black/40 p-5 rounded-2xl border border-white/5 hover:border-cyan-500/30 transition-colors">
+              <strong className="text-cyan-400 text-base mb-2 block font-bold tracking-widest uppercase">Live Wave Equation Engine</strong>
+              The sidebar telemetry tracks the live state of the simulation, computing dynamic variables such as angular frequency \( \omega \), wave number \( k \), and the resulting interference topology (Nodal/Antinodal counts). Modifying any slider updates the governing super-position equation instantly.
+            </li>
+            <li className="bg-black/40 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 transition-colors">
+              <strong className="text-emerald-400 text-base mb-2 block font-bold tracking-widest uppercase">Cursor Physics Inspector</strong>
+              Hovering over the WebGL simulation canvas turns your cursor into a mathematical probe. It calculates the physical distances from both sources (\( r_1 \), \( r_2 \)), exact path difference (\( \Delta r \)), and local displacement (\( z \)), automatically identifying whether you are hovering over a Constructive or Destructive superposition region.
+            </li>
+          </ul>
+        </section>
       </div>
     </div>
   );
