@@ -455,7 +455,7 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
       />
       
       {/* HUD Overlays */}
-      <div className="absolute top-6 left-6 flex flex-col gap-2 pointer-events-none z-10">
+      <div className="absolute top-20 left-6 flex flex-col gap-2 pointer-events-none z-10">
         <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2 shadow-lg">
           <div className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`} />
           <span className="text-xs font-mono font-bold text-white/90 tracking-widest uppercase">
