@@ -89,7 +89,7 @@ export const StandingWavesSimulator = () => {
   const [simMode, setSimMode] = useState<"harmonic" | "driven">("harmonic");
   const [harmonic, setHarmonic] = useState(3);
   const [length, setLength] = useState(2.0); // m
-  const [amplitude, setAmplitude] = useState(0.8);
+  const [amplitude, setAmplitude] = useState(1.2);
   const [boundaryType, setBoundaryType] = useState<BoundaryType | "Partially Reflective">("Fixed-Fixed");
   const [renderMode, setRenderMode] = useState<RenderMode>("Displacement");
 
@@ -284,6 +284,7 @@ export const StandingWavesSimulator = () => {
     setDrivingFrequency(25.0);
     setPreset("Nylon String");
     setLength(2.0);
+    setAmplitude(1.2);
     setBoundaryType("Fixed-Fixed");
     setRenderMode("Displacement");
     setSimMode("harmonic");
