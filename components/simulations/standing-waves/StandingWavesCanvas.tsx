@@ -24,7 +24,7 @@ interface StandingWavesCanvasProps {
   reflection: number;
   simMode?: "harmonic" | "driven";
   drivingFrequency?: number;
-  boundaryImpedance?: number;
+  visualAmplitudeFactor?: number;
 }
 
 export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
@@ -45,6 +45,7 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
   reflection,
   simMode = "harmonic",
   drivingFrequency = 10.0,
+  visualAmplitudeFactor = 1,
   boundaryImpedance = 0,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -101,7 +102,9 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
       let omega = 0;
 
       // Scaling for canvas (amplitude * visual scale)
-      const A_px = amplitude * 45;
+      const maxAxisVal = Math.max(1.5 * amplitude * visualAmplitudeFactor, 1.0);
+      const visualScale = (height * 0.4) / maxAxisVal;
+      const A_px = amplitude * visualScale;
 
       if (!isDriven) {
         // --- HARMONIC MODE (FREE VIBRATION) ---

@@ -89,7 +89,7 @@ export const StandingWavesSimulator = () => {
   const [simMode, setSimMode] = useState<"harmonic" | "driven">("harmonic");
   const [harmonic, setHarmonic] = useState(3);
   const [length, setLength] = useState(2.0); // m
-  const [amplitude, setAmplitude] = useState(1.2);
+  
   const [boundaryType, setBoundaryType] = useState<BoundaryType | "Partially Reflective">("Fixed-Fixed");
   const [renderMode, setRenderMode] = useState<RenderMode>("Displacement");
 
@@ -97,8 +97,10 @@ export const StandingWavesSimulator = () => {
   const [tension, setTension] = useState(120); // T (N)
   const [density, setDensity] = useState(0.003); // μ (kg/m) - Nylon String default
   const [damping, setDamping] = useState(0.15); // β (s⁻¹)
+  const [visualAmplitudeFactor, setVisualAmplitudeFactor] = useState(5); // visual scaling factor
   const [boundaryImpedance, setBoundaryImpedance] = useState(25.0); // Z_2 (kg/s)
   const [drivingFrequency, setDrivingFrequency] = useState(25.0); // f_d (Hz)
+  const [amplitude, setAmplitude] = useState(1.0); // A (m) - displacement amplitude
   const [preset, setPreset] = useState("Nylon String");
 
   // Derived Physics
@@ -223,7 +225,7 @@ export const StandingWavesSimulator = () => {
 
       const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
       const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
-      const amp = amplitude * Math.sqrt(Y_re * Y_re + Y_im * Y_im);
+      const amp = amplitude * Math.sqrt(Y_re * Y_re + Y_im * Y_im) * visualAmplitudeFactor;
       if (amp > maxAmp) maxAmp = amp;
     }
     return maxAmp;
@@ -247,7 +249,7 @@ export const StandingWavesSimulator = () => {
   const pad = 12;
   const graphW = svgW - 2 * pad;
   const graphH = svgH - 2 * pad;
-  const maxAxisVal = Math.max(1.5 * amplitude, maxSweepAmp);
+  const maxAxisVal = Math.max(1.5 * amplitude * visualAmplitudeFactor, maxSweepAmp * visualAmplitudeFactor);
 
   const pathD = sweepPoints.map((pt, index) => {
     const x = pad + ((pt.f - fMin) / (fMax - fMin)) * graphW;
@@ -354,6 +356,7 @@ export const StandingWavesSimulator = () => {
                   simMode={simMode}
                   drivingFrequency={drivingFrequency}
                   boundaryImpedance={boundaryImpedance}
+                  visualAmplitudeFactor={visualAmplitudeFactor}
                 />
 
                 {/* --- ADVANCED MODE 1: PHASE SPACE PLOTTER OVERLAY --- */}
