@@ -86,24 +86,35 @@ export const StandingWavesSimulator = () => {
   const [time, setTime] = useState(0);
 
   // Physics parameters
+  const [simMode, setSimMode] = useState<"harmonic" | "driven">("harmonic");
   const [harmonic, setHarmonic] = useState(3);
   const [length, setLength] = useState(2.0); // m
-  const [amplitude, setAmplitude] = useState(1.0);
-  const [boundaryType, setBoundaryType] = useState<BoundaryType>("Fixed-Fixed");
+  const [amplitude, setAmplitude] = useState(0.8);
+  const [boundaryType, setBoundaryType] = useState<BoundaryType | "Partially Reflective">("Fixed-Fixed");
   const [renderMode, setRenderMode] = useState<RenderMode>("Displacement");
 
   // Environment State
-  const [tension, setTension] = useState(100); 
-  const [density, setDensity] = useState(0.01);
-  const [damping, setDamping] = useState(0);
-  const [reflection, setReflection] = useState(1.0);
-  const [preset, setPreset] = useState("Ideal String");
+  const [tension, setTension] = useState(120); // T (N)
+  const [density, setDensity] = useState(0.003); // μ (kg/m) - Nylon String default
+  const [damping, setDamping] = useState(0.15); // β (s⁻¹)
+  const [boundaryImpedance, setBoundaryImpedance] = useState(25.0); // Z_2 (kg/s)
+  const [drivingFrequency, setDrivingFrequency] = useState(25.0); // f_d (Hz)
+  const [preset, setPreset] = useState("Nylon String");
 
   // Derived Physics
-  const waveSpeed = Math.sqrt(tension / density);
-  
+  const waveSpeed = Math.sqrt(tension / density); // v = √(T/μ)
+  const Z1 = Math.sqrt(tension * density); // String impedance Z = √(Tμ)
+
+  // Compute boundary reflection coefficient R
+  let R = -1;
+  if (boundaryType === "Fixed-Fixed") R = -1;
+  else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") R = 1;
+  else if (boundaryType === "Partially Reflective") {
+    R = (boundaryImpedance - Z1) / (boundaryImpedance + Z1);
+  }
+
   // Handlers for physical consistency
-  const handleBoundaryChange = (type: BoundaryType) => {
+  const handleBoundaryChange = (type: any) => {
     setBoundaryType(type);
     if (type === "Fixed-Free" && harmonic % 2 === 0) {
       setHarmonic(Math.max(1, harmonic - 1));
@@ -112,7 +123,6 @@ export const StandingWavesSimulator = () => {
 
   const handleHarmonicChange = (newVal: number) => {
     if (boundaryType === "Fixed-Free") {
-      // For Fixed-Free boundaries, harmonic mode (n) must be an odd integer (1, 3, 5...)
       const val = Math.round(newVal);
       if (val % 2 === 0) {
         if (val > harmonic) {
@@ -128,38 +138,124 @@ export const StandingWavesSimulator = () => {
     }
   };
 
-  const handleWaveSpeedChange = (v: number) => {
-    // Keep density fixed, change tension to achieve target wave speed: T = v^2 * rho
-    setTension(v * v * density);
-  };
-  
   // Visualization parameters
   const [showComponents, setShowComponents] = useState(false);
   const [showNodes, setShowNodes] = useState(true);
   const [showAntinodes, setShowAntinodes] = useState(true);
 
+  // Advanced features state
+  const [showPhaseSpace, setShowPhaseSpace] = useState(false);
+  const [showFourier, setShowFourier] = useState(false);
+
   // Telemetry computation
   let lambda = 0;
   let k = 0;
+  let frequency = 0;
+  let omega = 0;
+  let qFactor = 0;
+  let bandwidth = 0;
   let baseFuncStr = "sin";
-  
-  const activeHarmonic = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
 
-  if (boundaryType === "Fixed-Fixed") {
-    lambda = (2 * length) / activeHarmonic;
-    k = (2 * Math.PI) / lambda;
-    baseFuncStr = "sin";
-  } else if (boundaryType === "Free-Free") {
-    lambda = (2 * length) / activeHarmonic;
-    k = (2 * Math.PI) / lambda;
-    baseFuncStr = "cos";
-  } else if (boundaryType === "Fixed-Free") {
-    lambda = (4 * length) / activeHarmonic;
-    k = (2 * Math.PI) / lambda;
-    baseFuncStr = "sin";
+  if (simMode === "harmonic") {
+    const activeHarmonic = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+    if (boundaryType === "Fixed-Fixed") {
+      lambda = (2 * length) / activeHarmonic;
+      k = (2 * Math.PI) / lambda;
+      baseFuncStr = "sin";
+    } else if (boundaryType === "Free-Free") {
+      lambda = (2 * length) / activeHarmonic;
+      k = (2 * Math.PI) / lambda;
+      baseFuncStr = "cos";
+    } else if (boundaryType === "Fixed-Free") {
+      lambda = (4 * length) / activeHarmonic;
+      k = (2 * Math.PI) / lambda;
+      baseFuncStr = "sin";
+    } else {
+      lambda = (2 * length) / activeHarmonic;
+      k = (2 * Math.PI) / lambda;
+      baseFuncStr = "sin";
+    }
+    frequency = waveSpeed / lambda;
+    omega = 2 * Math.PI * frequency;
+    qFactor = damping > 0 ? omega / (2 * damping) : Infinity;
+    bandwidth = damping / Math.PI;
+  } else {
+    // Driven mode telemetry
+    frequency = drivingFrequency;
+    omega = 2 * Math.PI * frequency;
+    
+    // Complex wave number kc = k - i * alpha
+    const w_v2 = (omega * omega) / (waveSpeed * waveSpeed);
+    const b_w_v2 = (damping * omega) / (waveSpeed * waveSpeed);
+    k = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
+    lambda = k > 0 ? (2 * Math.PI) / k : 0;
+    
+    // Find closest natural resonant frequency for Q-factor
+    const f1 = waveSpeed / (2 * length);
+    const harmonicEstimate = Math.max(1, Math.round(frequency / f1));
+    const resonantFreqEstimate = harmonicEstimate * f1;
+    qFactor = damping > 0 ? (2 * Math.PI * resonantFreqEstimate) / (2 * damping) : Infinity;
+    bandwidth = damping / Math.PI;
   }
-  const frequency = waveSpeed / lambda;
-  const omega = 2 * Math.PI * frequency;
+
+  // --- Real-time SVG Resonance Curve Solver ---
+  const getResonanceAmplitude = (f_d: number) => {
+    const w_d = 2 * Math.PI * f_d;
+    const w_v2 = (w_d * w_d) / (waveSpeed * waveSpeed);
+    const b_w_v2 = (damping * w_d) / (waveSpeed * waveSpeed);
+    const k_val = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
+    const alpha_val = k_val > 0 ? (damping * w_d) / (waveSpeed * waveSpeed * k_val) : 0;
+
+    const exp_2aL = Math.exp(-2 * alpha_val * length);
+    const den_re = 1 + R * exp_2aL * Math.cos(2 * k_val * length);
+    const den_im = - R * exp_2aL * Math.sin(2 * k_val * length);
+    const den_mag2 = den_re * den_re + den_im * den_im;
+
+    let maxAmp = 0;
+    // Sample 6 spatial points to find the max displacement along the string
+    for (let i = 0; i <= 6; i++) {
+      const x = (i / 6) * length;
+      const exp_ax = Math.exp(-alpha_val * x);
+      const exp_a2Lx = Math.exp(-alpha_val * (2 * length - x));
+
+      const num_re = exp_ax * Math.cos(k_val * x) + R * exp_a2Lx * Math.cos(k_val * (2 * length - x));
+      const num_im = - exp_ax * Math.sin(k_val * x) - R * exp_a2Lx * Math.sin(k_val * (2 * length - x));
+
+      const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
+      const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
+      const amp = amplitude * Math.sqrt(Y_re * Y_re + Y_im * Y_im);
+      if (amp > maxAmp) maxAmp = amp;
+    }
+    return maxAmp;
+  };
+
+  // Generate sweep SVG points
+  const fMin = 1.0;
+  const fMax = 120.0;
+  const sweepPoints: { f: number; amp: number }[] = [];
+  let maxSweepAmp = 0;
+  if (simMode === "driven") {
+    for (let f = fMin; f <= fMax; f += 2.0) {
+      const amp = getResonanceAmplitude(f);
+      if (amp > maxSweepAmp) maxSweepAmp = amp;
+      sweepPoints.push({ f, amp });
+    }
+  }
+
+  const svgW = 380;
+  const svgH = 100;
+  const pad = 12;
+  const graphW = svgW - 2 * pad;
+  const graphH = svgH - 2 * pad;
+  const maxAxisVal = Math.max(1.5 * amplitude, maxSweepAmp);
+
+  const pathD = sweepPoints.map((pt, index) => {
+    const x = pad + ((pt.f - fMin) / (fMax - fMin)) * graphW;
+    const y = svgH - pad - (pt.amp / maxAxisVal) * graphH;
+    return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+
+  const indicatorX = pad + ((drivingFrequency - fMin) / (fMax - fMin)) * graphW;
 
   // Render loop
   useEffect(() => {
@@ -181,13 +277,16 @@ export const StandingWavesSimulator = () => {
   const handleReset = () => {
     setTime(0);
     setHarmonic(3);
-    setTension(100);
-    setDensity(0.01);
-    setDamping(0);
-    setReflection(1.0);
+    setTension(120);
+    setDensity(0.003);
+    setDamping(0.15);
+    setBoundaryImpedance(25.0);
+    setDrivingFrequency(25.0);
+    setPreset("Nylon String");
     setLength(2.0);
     setBoundaryType("Fixed-Fixed");
     setRenderMode("Displacement");
+    setSimMode("harmonic");
   };
 
   return (
@@ -209,14 +308,32 @@ export const StandingWavesSimulator = () => {
                   {isPlaying ? <Pause className="w-4 h-4 text-primary" /> : <Play className="w-4 h-4 text-primary" />}
                   {isPlaying ? "Pause" : "Run"}
                 </button>
+                <button 
+                  onClick={() => setSimMode(simMode === "harmonic" ? "driven" : "harmonic")}
+                  className="bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl text-cyan-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-cyan-500/20 transition-all border border-cyan-500/30 shadow-lg"
+                >
+                  <Waves className="w-4 h-4" />
+                  {simMode === "harmonic" ? "Free Vibration" : "Driven Sweep"}
+                </button>
              </div>
-             <div className="absolute top-6 right-6 z-20">
-                <button className="bg-black/80 backdrop-blur-md p-2 rounded-xl text-white/50 hover:text-white transition-all border border-white/10 shadow-lg">
-                  <Maximize2 className="w-4 h-4" />
+             <div className="absolute top-6 right-6 z-20 flex gap-2">
+                <button 
+                  onClick={() => setShowPhaseSpace(!showPhaseSpace)}
+                  className={cn("bg-black/80 backdrop-blur-md px-3 py-2 rounded-xl text-xs uppercase font-bold border transition-all shadow-lg", showPhaseSpace ? "text-fuchsia-400 border-fuchsia-500/50" : "text-white/50 border-white/10 hover:text-white")}
+                  title="Toggle Probe Phase-Space Plot"
+                >
+                  Phase-Space
+                </button>
+                <button 
+                  onClick={() => setShowFourier(!showFourier)}
+                  className={cn("bg-black/80 backdrop-blur-md px-3 py-2 rounded-xl text-xs uppercase font-bold border transition-all shadow-lg", showFourier ? "text-violet-400 border-violet-500/50" : "text-white/50 border-white/10 hover:text-white")}
+                  title="Toggle Active Fourier Spectrum"
+                >
+                  Fourier FFT
                 </button>
              </div>
              
-             <div className="flex-1 flex items-center justify-center p-4">
+             <div className="flex-1 flex items-center justify-center p-4 relative">
                 <StandingWavesCanvas 
                   amplitude={amplitude}
                   harmonic={harmonic}
@@ -232,8 +349,137 @@ export const StandingWavesSimulator = () => {
                   tension={tension}
                   density={density}
                   damping={damping}
-                  reflection={reflection}
+                  reflection={R}
+                  simMode={simMode}
+                  drivingFrequency={drivingFrequency}
+                  boundaryImpedance={boundaryImpedance}
                 />
+
+                {/* --- ADVANCED MODE 1: PHASE SPACE PLOTTER OVERLAY --- */}
+                {showPhaseSpace && (
+                  <div className="absolute bottom-6 left-6 w-[180px] h-[150px] bg-black/95 backdrop-blur-md border border-fuchsia-500/30 p-3 rounded-2xl flex flex-col gap-1.5 shadow-2xl">
+                    <span className="text-[8px] font-black uppercase text-fuchsia-400 tracking-wider">Phase-Space Probe (x = L/2)</span>
+                    <div className="flex-1 border border-white/5 relative flex items-center justify-center overflow-hidden bg-black/40 rounded-lg">
+                      {/* Generates a parametric orbit of y vs y_dot */}
+                      <svg className="w-full h-full">
+                        <line x1="0" y1="58" x2="160" y2="58" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                        <line x1="77" y1="0" x2="77" y2="120" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                        {(() => {
+                          // Plot parametric spiral/orbit of y vs dy_dt
+                          const pts: string[] = [];
+                          const x_probe = length / 2;
+                          // Sample a loop backwards in time
+                          for (let i = 0; i <= 80; i++) {
+                            const t_past = time - (i * 0.04);
+                            if (t_past < 0) break;
+                            const envelope = simMode === "harmonic" ? Math.exp(-damping * t_past) : 1.0;
+                            let y_val = 0;
+                            let v_val = 0;
+                            if (simMode === "harmonic") {
+                              const k_val = (harmonic * Math.PI) / length;
+                              const w_0 = k_val * waveSpeed;
+                              const w_d = Math.sqrt(Math.max(0, w_0 * w_0 - damping * damping));
+                              y_val = amplitude * envelope * Math.sin(k_val * x_probe) * Math.cos(w_d * t_past);
+                              v_val = -damping * y_val - w_d * amplitude * envelope * Math.sin(k_val * x_probe) * Math.sin(w_d * t_past);
+                            } else {
+                              const w_d = 2 * Math.PI * drivingFrequency;
+                              const w_v2 = (w_d * w_d) / (waveSpeed * waveSpeed);
+                              const b_w_v2 = (damping * w_d) / (waveSpeed * waveSpeed);
+                              const k_val = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
+                              const alpha_val = k_val > 0 ? (damping * w_d) / (waveSpeed * waveSpeed * k_val) : 0;
+                              const exp_2aL = Math.exp(-2 * alpha_val * length);
+                              const den_re = 1 + R * exp_2aL * Math.cos(2 * k_val * length);
+                              const den_im = - R * exp_2aL * Math.sin(2 * k_val * length);
+                              const den_mag2 = den_re * den_re + den_im * den_im;
+                              const exp_ax = Math.exp(-alpha_val * x_probe);
+                              const exp_a2Lx = Math.exp(-alpha_val * (2 * length - x_probe));
+                              const num_re = exp_ax * Math.cos(k_val * x_probe) + R * exp_a2Lx * Math.cos(k_val * (2 * length - x_probe));
+                              const num_im = - exp_ax * Math.sin(k_val * x_probe) - R * exp_a2Lx * Math.sin(k_val * (2 * length - x_probe));
+                              const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
+                              const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
+                              y_val = amplitude * (Y_re * Math.cos(w_d * t_past) - Y_im * Math.sin(w_d * t_past));
+                              v_val = -w_d * amplitude * (Y_re * Math.sin(w_d * t_past) + Y_im * Math.cos(w_d * t_past));
+                            }
+                            // Scale
+                            const px = 77 + (y_val / amplitude) * 65;
+                            const py = 58 - (v_val / (amplitude * (omega || 10))) * 45;
+                            pts.push(`${x_probe > 0 ? (i === 0 ? "M" : "L") : "M"} ${px.toFixed(1)} ${py.toFixed(1)}`);
+                          }
+                          return <path d={pts.join(" ")} fill="none" stroke="#d946ef" strokeWidth="1.5" opacity="0.8" />;
+                        })()}
+                        {/* Dot at current state */}
+                        {(() => {
+                          const x_probe = length / 2;
+                          let y_val = 0;
+                          let v_val = 0;
+                          const envelope = simMode === "harmonic" ? Math.exp(-damping * time) : 1.0;
+                          if (simMode === "harmonic") {
+                            const k_val = (harmonic * Math.PI) / length;
+                            const w_0 = k_val * waveSpeed;
+                            const w_d = Math.sqrt(Math.max(0, w_0 * w_0 - damping * damping));
+                            y_val = amplitude * envelope * Math.sin(k_val * x_probe) * Math.cos(w_d * time);
+                            v_val = -damping * y_val - w_d * amplitude * envelope * Math.sin(k_val * x_probe) * Math.sin(w_d * time);
+                          } else {
+                            const w_d = 2 * Math.PI * drivingFrequency;
+                            const w_v2 = (w_d * w_d) / (waveSpeed * waveSpeed);
+                            const b_w_v2 = (damping * w_d) / (waveSpeed * waveSpeed);
+                            const k_val = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
+                            const alpha_val = k_val > 0 ? (damping * w_d) / (waveSpeed * waveSpeed * k_val) : 0;
+                            const exp_2aL = Math.exp(-2 * alpha_val * length);
+                            const den_re = 1 + R * exp_2aL * Math.cos(2 * k_val * length);
+                            const den_im = - R * exp_2aL * Math.sin(2 * k_val * length);
+                            const den_mag2 = den_re * den_re + den_im * den_im;
+                            const exp_ax = Math.exp(-alpha_val * x_probe);
+                            const exp_a2Lx = Math.exp(-alpha_val * (2 * length - x_probe));
+                            const num_re = exp_ax * Math.cos(k_val * x_probe) + R * exp_a2Lx * Math.cos(k_val * (2 * length - x_probe));
+                            const num_im = - exp_ax * Math.sin(k_val * x_probe) - R * exp_a2Lx * Math.sin(k_val * (2 * length - x_probe));
+                            const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
+                            const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
+                            y_val = amplitude * (Y_re * Math.cos(w_d * time) - Y_im * Math.sin(w_d * time));
+                            v_val = -w_d * amplitude * (Y_re * Math.sin(w_d * time) + Y_im * Math.cos(w_d * time));
+                          }
+                          const px = 77 + (y_val / amplitude) * 65;
+                          const py = 58 - (v_val / (amplitude * (omega || 10))) * 45;
+                          return <circle cx={px} cy={py} r="4.5" fill="#d946ef" className="animate-ping" style={{ transformOrigin: `${px}px ${py}px` }} />;
+                        })()}
+                      </svg>
+                    </div>
+                    <span className="text-[7px] text-white/40 text-center font-mono">y(L/2) vs dy/dt(L/2)</span>
+                  </div>
+                )}
+
+                {/* --- ADVANCED MODE 2: REAL-TIME FOURIER ANALYSIS SPECTROGRAM --- */}
+                {showFourier && (
+                  <div className="absolute bottom-6 right-6 w-[180px] h-[150px] bg-black/95 backdrop-blur-md border border-violet-500/30 p-3 rounded-2xl flex flex-col gap-1.5 shadow-2xl">
+                    <span className="text-[8px] font-black uppercase text-violet-400 tracking-wider">Fourier Harmonic Spectrum</span>
+                    <div className="flex-1 border border-white/5 flex items-end justify-between p-2 bg-black/40 rounded-lg overflow-hidden">
+                      {/* Computes overlap of the current string state with the Fourier modes */}
+                      {(() => {
+                        const modes = [1, 2, 3, 4, 5, 6];
+                        return modes.map((m) => {
+                          let weight = 0;
+                          if (simMode === "harmonic") {
+                            // Weight is 1.0 for active mode, decaying with damping
+                            weight = harmonic === m ? Math.exp(-damping * time) : 0.005;
+                          } else {
+                            // In driven mode, weight is high if driving frequency is close to the mode resonance
+                            const f_m = m * (waveSpeed / (2 * length));
+                            const delta = Math.abs(drivingFrequency - f_m);
+                            weight = 1.0 / (1.0 + Math.pow(delta / (damping + 0.1), 2));
+                          }
+                          const heightPct = Math.min(100, weight * 85 + 2);
+                          return (
+                            <div key={m} className="flex flex-col items-center gap-1 w-4.5">
+                              <div className="w-full bg-gradient-to-t from-violet-600 to-cyan-400 rounded-t-sm transition-all duration-100" style={{ height: `${heightPct}%` }} />
+                              <span className="text-[7px] font-mono text-white/50">n{m}</span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                    <span className="text-[7px] text-white/40 text-center font-mono">Relative Mode Activation P(n)</span>
+                  </div>
+                )}
              </div>
           </div>
 
@@ -254,49 +500,74 @@ export const StandingWavesSimulator = () => {
                  
                  {/* Live Equation Box */}
                  <div className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col gap-2">
-                   <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Standing Wave Equation</div>
+                   <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                     {simMode === "harmonic" ? "Governing Wave Profile" : "Steady-State Superposition Matrix"}
+                   </div>
                    <div className="font-mono text-xs md:text-sm text-emerald-400 font-bold tracking-tight overflow-x-auto whitespace-nowrap pb-1 no-scrollbar">
-                     y(x,t) = { (amplitude * 2).toFixed(1) } {baseFuncStr}({k.toFixed(2)}x) cos({omega.toFixed(1)}t)
+                     {simMode === "harmonic" ? (
+                       <span>y(x,t) = { (amplitude * 2).toFixed(2) } e^(-{damping.toFixed(2)}t) {baseFuncStr}({k.toFixed(2)}x) cos({omega.toFixed(1)}t)</span>
+                     ) : (
+                       <span>y(x,t) = Re[ Y_re(x) cos({omega.toFixed(1)}t) - Y_im(x) sin({omega.toFixed(1)}t) ]</span>
+                     )}
                    </div>
                    {showComponents && (
-                     <div className="font-mono text-[10px] text-white/50 tracking-tight mt-1 flex flex-col gap-1">
-                       <span className="text-cyan-400">y₁(x,t) = {amplitude.toFixed(1)} {baseFuncStr}({k.toFixed(2)}x - {omega.toFixed(1)}t)</span>
-                       <span className="text-rose-400">y₂(x,t) = {amplitude.toFixed(1)} {baseFuncStr}({k.toFixed(2)}x + {omega.toFixed(1)}t)</span>
+                     <div className="font-mono text-[10px] text-white/50 tracking-tight mt-1 flex flex-col gap-1 border-t border-white/5 pt-1">
+                       <span className="text-cyan-400">y₁_fwd = A_d e^(-αx) {baseFuncStr}(kx - ωt)</span>
+                       <span className="text-rose-400">y₂_bwd = R A_d e^(-α(2L-x)) {baseFuncStr}(k(2L-x) - ωt)</span>
                      </div>
                    )}
                  </div>
+
+                 {/* Resonance Curve Graph (Driven Mode) */}
+                 {simMode === "driven" && (
+                   <div className="bg-black/50 p-4 rounded-2xl border border-white/5 flex flex-col gap-3 relative overflow-hidden">
+                     <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Amplitude vs. Driving Frequency (1 - 120 Hz)</span>
+                     <div className="w-full h-[100px] relative">
+                       <svg className="w-full h-full" viewBox="0 0 380 100">
+                         {/* Grid ticks */}
+                         <line x1="12" y1="88" x2="368" y2="88" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+                         {/* Resonance peak curve path */}
+                         <path d={pathD} fill="none" stroke="#10b981" strokeWidth="2.5" className="drop-shadow-[0_0_4px_rgba(16,185,129,0.3)]" />
+                         {/* Bandwidth fills and current indicator */}
+                         <line x1={indicatorX} y1="12" x2={indicatorX} y2="88" stroke="#38bdf8" strokeWidth="2" strokeDasharray="3 3" />
+                         <circle cx={indicatorX} cy={svgH - pad - (getResonanceAmplitude(drivingFrequency) / maxAxisVal) * graphH} r="4.5" fill="#38bdf8" />
+                       </svg>
+                     </div>
+                     <div className="flex justify-between items-center text-[8px] font-mono text-white/30 uppercase">
+                       <span>1.0 Hz</span>
+                       <span className="text-cyan-400 font-bold">Indicator: {drivingFrequency.toFixed(1)} Hz</span>
+                       <span>120.0 Hz</span>
+                     </div>
+                   </div>
+                 )}
 
                  {/* Wave Dynamics Matrix */}
                  <div className="grid grid-cols-2 gap-3">
                    <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-emerald-500/30 transition-colors">
                      <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Resonant Frequency (f)</span>
                      <span className="text-base font-mono font-black text-emerald-400">{frequency.toFixed(1)} <span className="text-xs text-emerald-500/50">Hz</span></span>
-                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">f = v / λ</span>
+                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">f_n = {simMode === 'driven' ? `f_d` : `nv / 2L`}</span>
                    </div>
                    <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-cyan-500/30 transition-colors">
                      <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wavelength (λ)</span>
-                     <span className="text-base font-mono font-black text-cyan-400">{lambda.toFixed(2)} <span className="text-xs text-cyan-500/50">m</span></span>
-                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">λ = {waveSpeed.toFixed(0)} / {frequency.toFixed(1)}</span>
+                     <span className="text-base font-mono font-black text-cyan-400">{lambda.toFixed(3)} <span className="text-xs text-cyan-500/50">m</span></span>
+                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">λ = 2π / k</span>
                    </div>
                    <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-violet-500/30 transition-colors">
                      <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wave Number (k)</span>
-                     <span className="text-base font-mono font-black text-violet-400">{k.toFixed(2)} <span className="text-xs text-violet-500/50">rad/m</span></span>
+                     <span className="text-base font-mono font-black text-violet-400">{k.toFixed(3)} <span className="text-xs text-violet-500/50">rad/m</span></span>
                      <span className="text-[8px] font-mono text-white/30 uppercase mt-1">k = 2π/λ</span>
                    </div>
-                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-amber-500/30 transition-colors">
-                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Angular Freq (ω)</span>
-                     <span className="text-base font-mono font-black text-amber-400">{omega.toFixed(1)} <span className="text-xs text-amber-500/50">rad/s</span></span>
-                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">ω = 2πf</span>
+                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-pink-500/30 transition-colors">
+                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Damping Q-Factor</span>
+                     <span className="text-base font-mono font-black text-pink-400">{qFactor === Infinity ? "∞" : qFactor.toFixed(1)} <span className="text-xs text-pink-500/50">dim</span></span>
+                     <span className="text-[8px] font-mono text-white/30 uppercase mt-1">Q = ω_0 / (2β)</span>
                    </div>
-                   {/* Resonance Condition Geometry */}
-                  <div className="col-span-2 bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between">
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Resonance Geometry</span>
-                    <span className="text-xs font-mono font-bold text-cyan-400">
-                      {boundaryType === "Fixed-Fixed" || boundaryType === "Free-Free" 
-                        ? `L = ${activeHarmonic}λ/2` 
-                        : `L = ${activeHarmonic}λ/4 (n odd)`}
-                    </span>
-                  </div>
+                   
+                   <div className="col-span-2 p-3 bg-black/40 rounded-xl border border-white/5 flex justify-between items-center text-[9px] font-mono text-white/40 uppercase">
+                     <span>Half-Power Bandwidth (Δf):</span>
+                     <span className="text-white/80 font-bold font-mono">{bandwidth.toFixed(3)} Hz</span>
+                   </div>
                  </div>
                </div>
             </div>
@@ -305,13 +576,13 @@ export const StandingWavesSimulator = () => {
               <div className="space-y-6">
                 <div className="flex flex-col gap-3">
                   <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Boundary Conditions</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["Fixed-Fixed", "Free-Free", "Fixed-Free"].map(mode => (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {["Fixed-Fixed", "Free-Free", "Fixed-Free", "Partially Reflective"].map(mode => (
                       <button 
                         key={mode}
                         onClick={() => handleBoundaryChange(mode as any)}
                         className={cn(
-                          "px-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border",
+                          "px-1 py-2.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all border",
                           boundaryType === mode 
                             ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50" 
                             : "bg-white/5 text-white/40 border-transparent hover:bg-white/10"
@@ -323,17 +594,43 @@ export const StandingWavesSimulator = () => {
                   </div>
                 </div>
 
-                <ClickableValue 
-                  label="Harmonic Mode (n)"
-                  value={harmonic}
-                  unit=""
-                  min={1}
-                  max={8}
-                  step={1}
-                  onChange={handleHarmonicChange}
-                  colorClass="text-emerald-400"
-                  format={(v) => `n = ${v}`}
-                />
+                {simMode === "harmonic" ? (
+                  <ClickableValue 
+                    label="Harmonic Mode (n)"
+                    value={harmonic}
+                    unit=""
+                    min={1}
+                    max={8}
+                    step={1}
+                    onChange={handleHarmonicChange}
+                    colorClass="text-emerald-400"
+                    format={(v) => `n = ${v}`}
+                  />
+                ) : (
+                  <ClickableValue 
+                    label="Driving Frequency (f_d)"
+                    value={drivingFrequency}
+                    unit="Hz"
+                    min={1.0}
+                    max={120.0}
+                    step={0.5}
+                    onChange={setDrivingFrequency}
+                    colorClass="text-cyan-400"
+                  />
+                )}
+
+                {boundaryType === "Partially Reflective" && (
+                  <ClickableValue 
+                    label="Boundary Impedance (Z₂)"
+                    value={boundaryImpedance}
+                    unit="kg/s"
+                    min={0.0}
+                    max={200.0}
+                    step={2.5}
+                    onChange={setBoundaryImpedance}
+                    colorClass="text-fuchsia-400"
+                  />
+                )}
 
                 <ClickableValue 
                   label="String Length (L)"
@@ -341,7 +638,7 @@ export const StandingWavesSimulator = () => {
                   unit="m"
                   min={1.0}
                   max={5.0}
-                  step={0.1}
+                  step={0.05}
                   onChange={setLength}
                   colorClass="text-emerald-400"
                 />
@@ -350,23 +647,35 @@ export const StandingWavesSimulator = () => {
 
             <ControlCard title="Medium Dynamics" icon={Waves} color="#3b82f6">
               <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4 border-b border-white/5 pb-4">
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Tension (T)</span>
+                    <span className="text-sm font-mono font-bold text-white">{tension.toFixed(0)} N</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5 text-right">
+                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Linear Density (μ)</span>
+                    <span className="text-sm font-mono font-bold text-white">{(density * 1000).toFixed(1)} g/m</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-black/30 border border-white/5 rounded-xl flex flex-col">
+                    <span className="text-[8px] font-bold uppercase text-white/40">Wave Speed (v)</span>
+                    <span className="text-xs font-mono font-black text-blue-400">{waveSpeed.toFixed(1)} m/s</span>
+                  </div>
+                  <div className="p-3 bg-black/30 border border-white/5 rounded-xl flex flex-col">
+                    <span className="text-[8px] font-bold uppercase text-white/40">Impedance (Z₁)</span>
+                    <span className="text-xs font-mono font-black text-blue-400">{Z1.toFixed(2)} kg/s</span>
+                  </div>
+                </div>
+
                 <ClickableValue 
-                  label="Wave Speed (v)"
-                  value={waveSpeed}
-                  unit="m/s"
-                  min={50}
-                  max={500}
-                  step={10}
-                  onChange={handleWaveSpeedChange}
-                  colorClass="text-blue-400"
-                />
-                <ClickableValue 
-                  label="Base Amplitude (A)"
+                  label="Generator Amplitude (A)"
                   value={amplitude}
                   unit="m"
                   min={0.1}
-                  max={2.0}
-                  step={0.1}
+                  max={1.5}
+                  step={0.05}
                   onChange={setAmplitude}
                   colorClass="text-blue-400"
                 />
@@ -442,12 +751,14 @@ export const StandingWavesSimulator = () => {
             setDensity={setDensity}
             damping={damping}
             setDamping={setDamping}
-            reflection={reflection}
-            setReflection={setReflection}
+            boundaryImpedance={boundaryImpedance}
+            setBoundaryImpedance={setBoundaryImpedance}
             preset={preset}
             setPreset={setPreset}
             length={length}
             boundaryType={boundaryType}
+            simMode={simMode}
+            setSimMode={setSimMode}
           />
         </div>
       )}
