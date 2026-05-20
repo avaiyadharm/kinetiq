@@ -106,13 +106,13 @@ export default function StandingWavesEnvironment({
             />
             
             <ParameterSlider
-              label="Spatial Attenuation (α)"
+              label="Temporal Damping (β)"
               value={damping}
               min={0} max={2.0} step={0.05}
-              unit="m⁻¹"
+              unit="s⁻¹"
               onChange={(v: number) => { setDamping(v); setPreset("Custom"); }}
               color="rose"
-              description="Energy dissipation rate over distance."
+              description="Energy dissipation rate over time."
             />
 
             <ParameterSlider
@@ -175,17 +175,17 @@ export default function StandingWavesEnvironment({
               <svg width="100%" height="100%" preserveAspectRatio="none">
                 <path 
                   d={`M 0,0 L ${Array.from({length: 100}).map((_, i) => {
-                    const x = i / 100;
-                    const y = Math.exp(-damping * x * length);
-                    return `${x * 100}%,${(1 - y) * 100}%`;
+                    const t = i / 100; // t from 0 to 1 normalized
+                    const y = Math.exp(-damping * t * 5); // display 5 seconds of decay
+                    return `${t * 100}%,${(1 - y) * 100}%`;
                   }).join(' L ')} L 100%,100% L 0,100% Z`}
                   fill="rgba(244, 63, 94, 0.1)"
                 />
                 <path 
                   d={`M 0,0 ${Array.from({length: 100}).map((_, i) => {
-                    const x = i / 100;
-                    const y = Math.exp(-damping * x * length);
-                    return `L ${x * 100}%,${(1 - y) * 100}%`;
+                    const t = i / 100;
+                    const y = Math.exp(-damping * t * 5);
+                    return `L ${t * 100}%,${(1 - y) * 100}%`;
                   }).join(' ')}`}
                   fill="none"
                   stroke="rgba(244, 63, 94, 0.8)"
@@ -193,7 +193,7 @@ export default function StandingWavesEnvironment({
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-white/30 pointer-events-none">
-                A(x) = A₀e^(-αx)
+                A(t) = A₀e^(-βt)
               </div>
             </div>
           </div>

@@ -79,53 +79,40 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
       }
 
       const omega = k * waveSpeed;
-      const A = amplitude * 80; // Visual scaling factor
-      const gamma = damping; // Spatial attenuation factor
-      const R = reflection;  // Reflection coefficient at boundary
-      const reflSign = boundaryType.endsWith("Fixed") ? -1 : 1;
+      const A_px = amplitude * 40; // Visual scaling factor
+      const beta = damping; // Temporal damping factor
+      const temporalDecay = Math.exp(-beta * time);
       const baseWaveFunc = boundaryType.startsWith("Free") ? Math.cos : Math.sin;
 
       // Travelling wave components
       // y1: Forward wave traveling to the right
-      const y1 = (x: number) => (A / 2) * Math.exp(-gamma * x) * baseWaveFunc(k * x - omega * time);
+      const y1 = (x: number) => A_px * temporalDecay * baseWaveFunc(k * x - omega * time);
 
-      // y2: Backward wave traveling to the left (reflected at x = L)
-      const y2 = (x: number) => {
-        const dist = 2 * length - x;
-        return reflSign * R * (A / 2) * Math.exp(-gamma * dist) * baseWaveFunc(k * dist - omega * time);
-      };
+      // y2: Backward wave traveling to the left
+      const y2 = (x: number) => A_px * temporalDecay * baseWaveFunc(k * x + omega * time);
 
       // Net displacement from superposition
       const y_net = (x: number) => y1(x) + y2(x);
 
-      // Derivatives for Energy Calculations (K = 0.5 * rho * dy/dt^2, U = 0.5 * T * dy/dx^2)
-      const dy1_dt = (x: number) => -omega * (A / 2) * Math.exp(-gamma * x) * (boundaryType.startsWith("Free") ? -Math.sin(k * x - omega * time) : Math.cos(k * x - omega * time));
-      const dy2_dt = (x: number) => {
-        const dist = 2 * length - x;
-        return -omega * reflSign * R * (A / 2) * Math.exp(-gamma * dist) * (boundaryType.startsWith("Free") ? -Math.sin(k * dist - omega * time) : Math.cos(k * dist - omega * time));
-      };
-
-      const dy1_dx = (x: number) => {
-        const exp = Math.exp(-gamma * x);
-        if (boundaryType.startsWith("Free")) {
-          return (A / 2) * exp * (-k * Math.sin(k * x - omega * time) - gamma * Math.cos(k * x - omega * time));
+      // Helper to compute derivatives accurately for energy calculations
+      const getDerivatives = (x: number, A_val: number) => {
+        let dt1, dt2, dx1, dx2;
+        if (baseWaveFunc === Math.sin) {
+          dt1 = A_val * temporalDecay * (-omega * Math.cos(k * x - omega * time) - beta * Math.sin(k * x - omega * time));
+          dt2 = A_val * temporalDecay * ( omega * Math.cos(k * x + omega * time) - beta * Math.sin(k * x + omega * time));
+          dx1 = A_val * temporalDecay * k * Math.cos(k * x - omega * time);
+          dx2 = A_val * temporalDecay * k * Math.cos(k * x + omega * time);
         } else {
-          return (A / 2) * exp * (k * Math.cos(k * x - omega * time) - gamma * Math.sin(k * x - omega * time));
+          dt1 = A_val * temporalDecay * ( omega * Math.sin(k * x - omega * time) - beta * Math.cos(k * x - omega * time));
+          dt2 = A_val * temporalDecay * (-omega * Math.sin(k * x + omega * time) - beta * Math.cos(k * x + omega * time));
+          dx1 = A_val * temporalDecay * (-k * Math.sin(k * x - omega * time));
+          dx2 = A_val * temporalDecay * (-k * Math.sin(k * x + omega * time));
         }
+        return { dy_dt: dt1 + dt2, dy_dx: dx1 + dx2 };
       };
 
-      const dy2_dx = (x: number) => {
-        const dist = 2 * length - x;
-        const exp = Math.exp(-gamma * dist);
-        if (boundaryType.startsWith("Free")) {
-          return reflSign * R * (A / 2) * exp * (k * Math.sin(k * dist - omega * time) + gamma * Math.cos(k * dist - omega * time));
-        } else {
-          return reflSign * R * (A / 2) * exp * (-k * Math.cos(k * dist - omega * time) + gamma * Math.sin(k * dist - omega * time));
-        }
-      };
-
-      const dy_dt = (x: number) => dy1_dt(x) + dy2_dt(x);
-      const dy_dx = (x: number) => dy1_dx(x) + dy2_dx(x);
+      const dy_dt = (x: number) => getDerivatives(x, A_px).dy_dt;
+      const dy_dx = (x: number) => getDerivatives(x, A_px).dy_dx;
 
       const isScientific = renderMode === "Scientific";
       const isEnergyMode = renderMode === "Energy";
@@ -269,8 +256,7 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
         } else if (boundaryType === "Fixed-Free") {
           const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
           for (let m = 0; (m * lambda) / 2 <= length + 0.01; m++) {
-            const pos = (m * lambda) / 2;
-            if (pos <= length - 0.01) nodes.push(pos);
+            nodes.push((m * lambda) / 2);
           }
           for (let m = 0; (m + 0.5) * lambda / 2 <= length + 0.01; m++) {
             antinodes.push(((m + 0.5) * lambda) / 2);
@@ -399,33 +385,38 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     }
 
     const omega = k * waveSpeed;
-    const A = amplitude * 80;
-    const gamma = damping;
-    const R = reflection;
-    const reflSign = boundaryType.endsWith("Fixed") ? -1 : 1;
+    const beta = damping;
+    const temporalDecay = Math.exp(-beta * time);
     const baseWaveFunc = boundaryType.startsWith("Free") ? Math.cos : Math.sin;
 
-    const y1_val = (A / 2) * Math.exp(-gamma * x) * baseWaveFunc(k * x - omega * time);
-    const y2_val = (A / 2) * Math.exp(-gamma * (2 * length - x)) * baseWaveFunc(k * (2 * length - x) - omega * time);
-    const z_scaled = y1_val + reflSign * R * y2_val;
-    const z = z_scaled / 80; // normalize back to physical units
+    // Use actual physical amplitude for telemetry readings
+    const A_real = amplitude;
+    
+    let y1_real = A_real * temporalDecay * baseWaveFunc(k * x - omega * time);
+    let y2_real = A_real * temporalDecay * baseWaveFunc(k * x + omega * time);
+    let z = y1_real + y2_real;
 
-    // Derivatives for local energy
-    const dy1_dt = -omega * (A / 2) * Math.exp(-gamma * x) * (boundaryType.startsWith("Free") ? -Math.sin(k * x - omega * time) : Math.cos(k * x - omega * time));
-    const dy2_dt = -omega * reflSign * R * (A / 2) * Math.exp(-gamma * (2 * length - x)) * (boundaryType.startsWith("Free") ? -Math.sin(k * (2 * length - x) - omega * time) : Math.cos(k * (2 * length - x) - omega * time));
-    const dy_dt = dy1_dt + dy2_dt;
+    let dt1, dt2, dx1, dx2;
+    if (baseWaveFunc === Math.sin) {
+      dt1 = A_real * temporalDecay * (-omega * Math.cos(k * x - omega * time) - beta * Math.sin(k * x - omega * time));
+      dt2 = A_real * temporalDecay * ( omega * Math.cos(k * x + omega * time) - beta * Math.sin(k * x + omega * time));
+      dx1 = A_real * temporalDecay * k * Math.cos(k * x - omega * time);
+      dx2 = A_real * temporalDecay * k * Math.cos(k * x + omega * time);
+    } else {
+      dt1 = A_real * temporalDecay * ( omega * Math.sin(k * x - omega * time) - beta * Math.cos(k * x - omega * time));
+      dt2 = A_real * temporalDecay * (-omega * Math.sin(k * x + omega * time) - beta * Math.cos(k * x + omega * time));
+      dx1 = A_real * temporalDecay * (-k * Math.sin(k * x - omega * time));
+      dx2 = A_real * temporalDecay * (-k * Math.sin(k * x + omega * time));
+    }
+    
+    const dy_dt_real = dt1 + dt2;
+    const dy_dx_real = dx1 + dx2;
 
-    const dy1_dx = (A / 2) * Math.exp(-gamma * x) * (boundaryType.startsWith("Free") ? (-k * Math.sin(k * x - omega * time) - gamma * Math.cos(k * x - omega * time)) : (k * Math.cos(k * x - omega * time) - gamma * Math.sin(k * x - omega * time)));
-    const dy2_dx = reflSign * R * (A / 2) * Math.exp(-gamma * (2 * length - x)) * (boundaryType.startsWith("Free") ? (k * Math.sin(k * (2 * length - x) - omega * time) + gamma * Math.cos(k * (2 * length - x) - omega * time)) : (-k * Math.cos(k * (2 * length - x) - omega * time) + gamma * Math.sin(k * (2 * length - x) - omega * time)));
-    const dy_dx = dy1_dx + dy2_dx;
+    const real_K = 0.5 * density * Math.pow(dy_dt_real, 2);
+    const real_U = 0.5 * tension * Math.pow(dy_dx_real, 2);
+    const localEnergy = real_K + real_U;
 
-    // Local energy density
-    const scale = 0.08 / (tension * 0.01 + 1);
-    const K = 0.5 * density * Math.pow(dy_dt, 2) * scale;
-    const U = 0.5 * tension * Math.pow(dy_dx, 2) * scale;
-    const localEnergy = K + U;
-
-    // Node / Antinode classification
+    // Node / Antinode classification based on exact analytical envelope
     const envelope = Math.abs(baseWaveFunc(k * x));
     let nodeType = "Intermediate Node";
     let definition = "Medium oscillates between minimum and maximum limits. Superposition of traveling waves creates varying local displacement.";
