@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 export type BoundaryType = "Fixed-Fixed" | "Free-Free" | "Fixed-Free";
 export type RenderMode = "Displacement" | "Energy" | "Phase" | "Scientific";
 export type SystemType = "string" | "air" | "membrane";
+export type EnergyMode = "KE" | "PE" | "Total" | "TimeAvg";
 
 interface StandingWavesCanvasProps {
   systemType: SystemType;
@@ -39,18 +40,23 @@ interface StandingWavesCanvasProps {
   drivingFrequency?: number;
   visualAmplitudeFactor?: number;
   boundaryImpedance?: number;
+
+  // NEW PHYSICS PROPS
+  slowMotionFactor?: number;      // 0.001–1.0: scales temporal phase for visibility
+  showEnergyHeatmap?: boolean;    // color string by local u(x,t)
+  energyMode?: EnergyMode;        // which energy density component to show
+  showSolverDiagnostics?: boolean; // PDE diagnostics HUD
+  manualPhase?: number;           // override for frame-advance when paused
 }
 
-// Zeros of the Bessel functions of the first kind J_m(x)
-// For m = 0, 1, 2, 3 and n = 1, 2, 3, 4
+// Zeros of J_m(x) for m = 0,1,2,3
 const BESSEL_ZEROS: { [m: number]: number[] } = {
   0: [2.4048, 5.5201, 8.6537, 11.7915],
   1: [3.8317, 7.0156, 10.1735, 13.3237],
   2: [5.1356, 8.4172, 11.6198, 14.7960],
-  3: [6.3802, 9.7610, 13.0152, 16.2235]
+  3: [6.3802, 9.7610, 13.0152, 16.2235],
 };
 
-// Factorial helper
 const factorial = (n: number): number => {
   if (n <= 1) return 1;
   let r = 1;
@@ -58,13 +64,11 @@ const factorial = (n: number): number => {
   return r;
 };
 
-// Bessel function of the first kind J_m(x)
 const besselJ = (m: number, x: number): number => {
   const absX = Math.abs(x);
   if (absX === 0) return m === 0 ? 1 : 0;
   if (absX < 20) {
     let sum = 0;
-    // 12 terms are extremely accurate for x < 20
     for (let k = 0; k <= 12; k++) {
       const numerator = Math.pow(-1, k) * Math.pow(absX / 2, 2 * k + m);
       const denominator = factorial(k) * factorial(k + m);
@@ -72,7 +76,6 @@ const besselJ = (m: number, x: number): number => {
     }
     return x < 0 && m % 2 !== 0 ? -sum : sum;
   }
-  // Asymptotic approximation for large x
   return Math.sqrt(2 / (Math.PI * absX)) * Math.cos(absX - (m * Math.PI / 2) - Math.PI / 4);
 };
 
@@ -108,10 +111,14 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
   drivingFrequency = 10.0,
   visualAmplitudeFactor = 1,
   boundaryImpedance = 0,
+
+  slowMotionFactor = 0.04,
+  showEnergyHeatmap = false,
+  energyMode = "Total",
+  showSolverDiagnostics = false,
+  manualPhase,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Dragging probe state
   const isDraggingProbeRef = useRef(false);
 
   // Numerical 1D Wave Solver state
@@ -119,9 +126,8 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
   const yNumRef = useRef<Float32Array>(new Float32Array(numGridSize));
   const yPrevRef = useRef<Float32Array>(new Float32Array(numGridSize));
   const timeNumRef = useRef(0);
-  const prevParamsRef = useRef({ length, boundaryType, simMode, harmonic, drivingFrequency, discreteBeads });
 
-  // Draggable Probe Phase Space History
+  // Phase History for phase-space orbit
   const phaseHistoryRef = useRef<{ y: number; v: number }[]>([]);
 
   // Air Column Particle system
@@ -130,132 +136,90 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
   // Chladni 2D sand particle system
   const sandParticlesRef = useRef<{ x: number; y: number }[]>([]);
 
+  // L2 error tracking (analytical vs numerical)
+  const l2ErrorRef = useRef(0);
+
   // Hover Probe overlay state
   const [hoverData, setHoverData] = useState({
     visible: false, x: 0, y: 0, px: 0, z: 0, energy: 0, nodeType: "", definition: ""
   });
 
-  // Re-initialize air molecules
   const initializeAirParticles = () => {
     const pts = [];
     for (let i = 0; i < 300; i++) {
-      pts.push({
-        x0: Math.random() * length,
-        y0: (Math.random() - 0.5) * 100 // pipe height is 120, keep away from boundaries
-      });
+      pts.push({ x0: Math.random() * length, y0: (Math.random() - 0.5) * 100 });
     }
     airParticlesRef.current = pts;
   };
 
-  // Re-initialize sand particles
   const initializeSandParticles = () => {
     const pts = [];
-    const Lx = 440;
-    const Ly = 360;
-    const a = 220; // circular plate radius
-    
+    const Lx = 440, Ly = 360, a = 220;
     if (membraneGeometry === "rectangular") {
       for (let i = 0; i < 1500; i++) {
-        pts.push({
-          x: (Math.random() - 0.5) * Lx,
-          y: (Math.random() - 0.5) * Ly
-        });
+        pts.push({ x: (Math.random() - 0.5) * Lx, y: (Math.random() - 0.5) * Ly });
       }
     } else {
       for (let i = 0; i < 1500; i++) {
         const r = Math.sqrt(Math.random()) * a;
         const theta = Math.random() * 2 * Math.PI;
-        pts.push({
-          x: r * Math.cos(theta),
-          y: r * Math.sin(theta)
-        });
+        pts.push({ x: r * Math.cos(theta), y: r * Math.sin(theta) });
       }
     }
     sandParticlesRef.current = pts;
   };
 
-  // Initialize numerical string wave state
   const initializeNumericalWave = () => {
     const M = numGridSize;
     const y = new Float32Array(M);
     const y_prev = new Float32Array(M);
 
     if (simMode === "harmonic") {
-      // Initialize with analytical standing mode shape at t=0
       let k_val = 0;
       if (boundaryType === "Fixed-Fixed" || boundaryType === "Free-Free" || boundaryType === "Partially Reflective") {
         k_val = (harmonic * Math.PI) / length;
       } else if (boundaryType === "Fixed-Free") {
-        const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-        k_val = (oddHarmonic * Math.PI) / (2 * length);
+        const oddH = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+        k_val = (oddH * Math.PI) / (2 * length);
       }
-
       for (let i = 0; i < M; i++) {
         const x = (i / (M - 1)) * length;
-        let y_init = 0;
-        if (boundaryType === "Free-Free") {
-          y_init = amplitude * Math.cos(k_val * x);
-        } else {
-          y_init = amplitude * Math.sin(k_val * x);
-        }
+        const y_init = boundaryType === "Free-Free"
+          ? amplitude * Math.cos(k_val * x)
+          : amplitude * Math.sin(k_val * x);
         y[i] = y_init;
-        y_prev[i] = y_init; // Zero velocity initially
-      }
-    } else {
-      // Driven sweep starts flat
-      for (let i = 0; i < M; i++) {
-        y[i] = 0;
-        y_prev[i] = 0;
+        y_prev[i] = y_init;
       }
     }
     yNumRef.current = y;
     yPrevRef.current = y_prev;
     timeNumRef.current = 0;
     phaseHistoryRef.current = [];
+    l2ErrorRef.current = 0;
   };
 
-  // Re-initializations on mount or geometry/mode changes
-  useEffect(() => {
-    initializeAirParticles();
-  }, [length]);
+  useEffect(() => { initializeAirParticles(); }, [length]);
+  useEffect(() => { initializeSandParticles(); }, [membraneGeometry, m2D, n2D, amplitude]);
+  useEffect(() => { initializeNumericalWave(); }, [length, boundaryType, simMode, harmonic, discreteBeads, amplitude]);
 
-  useEffect(() => {
-    initializeSandParticles();
-  }, [membraneGeometry, m2D, n2D, amplitude]);
-
-  useEffect(() => {
-    initializeNumericalWave();
-  }, [length, boundaryType, simMode, harmonic, discreteBeads, amplitude]);
-
-  // Spring rendering helper
   const drawSpring = (ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, coils = 7) => {
     ctx.beginPath();
     ctx.moveTo(x1, y1);
-    const dx = x2 - x1;
-    const dy = y2 - y1;
+    const dx = x2 - x1, dy = y2 - y1;
     const len = Math.sqrt(dx * dx + dy * dy);
-    const ux = dx / len;
-    const uy = dy / len;
-    const nx = -uy;
-    const ny = ux;
-
+    const ux = dx / len, uy = dy / len;
+    const nx = -uy, ny = ux;
     for (let i = 0; i <= coils; i++) {
       const t = i / coils;
-      const px = x1 + dx * t;
-      const py = y1 + dy * t;
-      if (i === 0 || i === coils) {
-        ctx.lineTo(px, py);
-      } else {
-        const offset = (i % 2 === 0 ? 1 : -1) * 7;
-        ctx.lineTo(px + nx * offset, py + ny * offset);
-      }
+      const px = x1 + dx * t, py = y1 + dy * t;
+      if (i === 0 || i === coils) { ctx.lineTo(px, py); }
+      else { const off = (i % 2 === 0 ? 1 : -1) * 7; ctx.lineTo(px + nx * off, py + ny * off); }
     }
     ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
     ctx.lineWidth = 1.2;
     ctx.stroke();
   };
 
-  // Main canvas simulation and rendering loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -266,64 +230,70 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     let lastFrameTime = performance.now();
 
     const render = (now: number) => {
-      const dt_frame = Math.min(0.03, (now - lastFrameTime) / 1000); // Cap frame step at 30ms to prevent jumps
+      const dt_frame = Math.min(0.03, (now - lastFrameTime) / 1000);
       lastFrameTime = now;
 
       const width = canvas.width;
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
-      // Draw grid
+      // Subtle grid
       ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i <= 10; i++) {
-        ctx.moveTo(0, (height / 10) * i);
-        ctx.lineTo(width, (height / 10) * i);
-        ctx.moveTo((width / 10) * i, 0);
-        ctx.lineTo((width / 10) * i, height);
+        ctx.moveTo(0, (height / 10) * i); ctx.lineTo(width, (height / 10) * i);
+        ctx.moveTo((width / 10) * i, 0); ctx.lineTo((width / 10) * i, height);
       }
       ctx.stroke();
 
       const isDriven = simMode === "driven";
       const mu = density;
       const T = tension;
-      const v = Math.min(400, Math.sqrt(T / mu)); // Cap wave speed at 400 m/s for stability
+      const v = Math.min(400, Math.sqrt(T / mu));
       const Z1 = Math.sqrt(T * mu);
 
-      // Boundary R calculation
-      let R = -1;
-      let Z2 = 0;
-      if (boundaryType === "Fixed-Fixed") {
-        R = -1;
-        Z2 = 0;
-      } else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") {
-        R = 1;
-        Z2 = 1e8;
-      } else if (boundaryType === "Partially Reflective") {
-        Z2 = boundaryImpedance !== undefined ? boundaryImpedance : 0;
+      let R = -1, Z2 = 0;
+      if (boundaryType === "Fixed-Fixed") { R = -1; Z2 = 0; }
+      else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") { R = 1; Z2 = 1e8; }
+      else if (boundaryType === "Partially Reflective") {
+        Z2 = boundaryImpedance ?? 0;
         R = (Z2 - Z1) / (Z2 + Z1);
       }
 
+      // Transmission coefficient T_coeff = 2Z2/(Z1+Z2)
+      const T_coeff = (Z2 + Z1) > 0 ? (2 * Z2) / (Z2 + Z1) : 0;
+
+      // -------------------------------------------------------
+      // SCALED VISUAL TIME: make oscillation perceptible
+      // Uses slowMotionFactor to scale how fast cos(ωt) evolves
+      // -------------------------------------------------------
+      const t_vis = manualPhase !== undefined && !isPlaying
+        ? manualPhase
+        : time * slowMotionFactor;
+
       let y_net = (x: number) => 0;
       let dy_dt = (x: number) => 0;
+      let dy_dx = (x: number) => 0;
       let omega = 0;
       let visualScale = 1;
+      let k_global = 0;
 
-      // ----------------------------------------------------
+      // -------------------------------------------------------
       // INTEGRATE NUMERICAL ENGINE
-      // ----------------------------------------------------
+      // -------------------------------------------------------
       if (isPlaying && solverType === "numerical" && systemType !== "membrane") {
         const M = numGridSize;
         const dx = length / (M - 1);
         const y = yNumRef.current;
         const y_prev = yPrevRef.current;
 
-        // Sub-stepping to maintain CFL stability
         const r_target = 0.8;
         const dt_stable = r_target * dx / v;
         const numSteps = Math.min(100, Math.ceil(dt_frame / dt_stable));
         const dt = dt_frame / numSteps;
+
+        let cfl = v * dt / dx;
 
         for (let step = 0; step < numSteps; step++) {
           timeNumRef.current += dt;
@@ -332,34 +302,26 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
           const r = v * dt / dx;
           const beta = damping;
 
-          // Inner nodes
           for (let i = 1; i < M - 1; i++) {
             const laplacian = y[i + 1] - 2 * y[i] + y[i - 1];
             y_next[i] = (2 * y[i] - y_prev[i] * (1 - beta * dt) + r * r * laplacian) / (1 + beta * dt);
           }
 
-          // Left boundary (i = 0)
+          // Left boundary
           if (isDriven) {
             y_next[0] = amplitude * Math.sin(2 * Math.PI * drivingFrequency * t_num);
           } else {
-            if (boundaryType.startsWith("Fixed")) {
-              y_next[0] = 0;
-            } else {
-              // Free boundary
-              y_next[0] = (2 * y[0] - y_prev[0] * (1 - beta * dt) + 2 * r * r * (y[1] - y[0])) / (1 + beta * dt);
-            }
+            if (boundaryType.startsWith("Fixed")) { y_next[0] = 0; }
+            else { y_next[0] = (2 * y[0] - y_prev[0] * (1 - beta * dt) + 2 * r * r * (y[1] - y[0])) / (1 + beta * dt); }
           }
 
-          // Right boundary (i = M - 1)
-          if (boundaryType === "Fixed-Fixed") {
-            y_next[M - 1] = 0;
-          } else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") {
-            // Free boundary
+          // Right boundary
+          if (boundaryType === "Fixed-Fixed") { y_next[M - 1] = 0; }
+          else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") {
             y_next[M - 1] = (2 * y[M - 1] - y_prev[M - 1] * (1 - beta * dt) + 2 * r * r * (y[M - 2] - y[M - 1])) / (1 + beta * dt);
           } else if (boundaryType === "Partially Reflective") {
-            if (Z2 > 150) {
-              y_next[M - 1] = 0;
-            } else {
+            if (Z2 > 150) { y_next[M - 1] = 0; }
+            else {
               const gamma = Z2 * dx / (T * dt);
               const coeff_y = 2 * (1 - r * r);
               const coeff_yprev = 1 - beta * dt - 2 * r * r * gamma;
@@ -368,186 +330,150 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
               y_next[M - 1] = (coeff_y * y[M - 1] - coeff_yprev * y_prev[M - 1] + coeff_ym2 * y[M - 2]) / denom;
             }
           }
-
           y_prev.set(y);
           y.set(y_next);
         }
+
+        // Store CFL for diagnostics display
+        const dx_store = length / (M - 1);
+        const dt_stable_store = r_target * dx_store / v;
+        const dt_actual = dt_frame / Math.max(1, Math.ceil(dt_frame / dt_stable_store));
+        (canvas as unknown as { _cfl?: number })._cfl = v * dt_actual / dx_store;
       }
 
-      // ----------------------------------------------------
-      // RENDER SYSTEM MODULES
-      // ----------------------------------------------------
+      // -------------------------------------------------------
+      // RENDER STRING MODULE
+      // -------------------------------------------------------
       if (systemType === "string") {
-        // --- 1D STRING MODULE ---
         visualScale = ((height * 0.35) / 1.5) * (visualAmplitudeFactor / 5);
         const A_px = amplitude * visualScale;
 
-        // Wave profile functions
-        let y1 = (x: number) => 0;
-        let y2 = (x: number) => 0;
-        let dy_dx = (x: number) => 0;
-
-        let lambda = 0;
-        let k = 0;
+        let y1_fn = (x: number) => 0;
+        let y2_fn = (x: number) => 0;
 
         if (solverType === "analytical") {
-          // --- ANALYTICAL FORMULATION ---
           if (!isDriven) {
             let n_eff = harmonic;
+            let k = 0;
             if (boundaryType === "Fixed-Fixed" || boundaryType === "Free-Free" || boundaryType === "Partially Reflective") {
-              lambda = (2 * length) / harmonic;
               k = (n_eff * Math.PI) / length;
             } else if (boundaryType === "Fixed-Free") {
-              const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-              n_eff = oddHarmonic;
-              lambda = (4 * length) / oddHarmonic;
-              k = (oddHarmonic * Math.PI) / (2 * length);
+              const oddH = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+              n_eff = oddH;
+              k = (oddH * Math.PI) / (2 * length);
             }
-
+            k_global = k;
             const omega_0 = k * v;
             const beta = damping;
+            // Damped natural frequency
             omega = Math.sqrt(Math.max(0, omega_0 * omega_0 - beta * beta));
-            const envelope = Math.exp(-beta * time);
+            // PHYSICAL decay: A(t) = A0 * exp(-β*t) - coupled to REAL time, not visual time
+            // Visual phase uses slowMotionFactor-scaled time for perceivable oscillation
+            const physicalDecayEnvelope = Math.exp(-beta * time); // real-time decay
+            const A_eff = A_px * physicalDecayEnvelope;
 
             if (boundaryType === "Free-Free") {
-              y_net = (x: number) => A_px * envelope * Math.cos(k * x) * Math.cos(omega * time);
-              y1 = (x: number) => 0.5 * A_px * envelope * Math.cos(k * x - omega * time);
-              y2 = (x: number) => 0.5 * A_px * envelope * Math.cos(k * x + omega * time);
+              y_net = (x: number) => A_eff * Math.cos(k * x) * Math.cos(omega * t_vis);
+              y1_fn = (x: number) => 0.5 * A_eff * Math.cos(k * x - omega * t_vis);
+              y2_fn = (x: number) => 0.5 * A_eff * Math.cos(k * x + omega * t_vis);
               dy_dt = (x: number) => {
-                const A_t = A_px * envelope;
-                const dA_dt = -beta * A_t * Math.cos(omega * time) - omega * A_t * Math.sin(omega * time);
-                return dA_dt * Math.cos(k * x);
+                const dA = -beta * A_eff * Math.cos(omega * t_vis) - omega * A_eff * Math.sin(omega * t_vis);
+                return dA * Math.cos(k * x);
               };
-              dy_dx = (x: number) => -k * A_px * envelope * Math.sin(k * x) * Math.cos(omega * time);
+              dy_dx = (x: number) => -k * A_eff * Math.sin(k * x) * Math.cos(omega * t_vis);
             } else {
-              y_net = (x: number) => A_px * envelope * Math.sin(k * x) * Math.cos(omega * time);
-              y1 = (x: number) => 0.5 * A_px * envelope * Math.sin(k * x - omega * time);
-              y2 = (x: number) => 0.5 * A_px * envelope * Math.sin(k * x + omega * time);
+              y_net = (x: number) => A_eff * Math.sin(k * x) * Math.cos(omega * t_vis);
+              y1_fn = (x: number) => 0.5 * A_eff * Math.sin(k * x - omega * t_vis);
+              y2_fn = (x: number) => 0.5 * A_eff * Math.sin(k * x + omega * t_vis);
               dy_dt = (x: number) => {
-                const A_t = A_px * envelope;
-                const dA_dt = -beta * A_t * Math.cos(omega * time) - omega * A_t * Math.sin(omega * time);
-                return dA_dt * Math.sin(k * x);
+                const dA = -beta * A_eff * Math.cos(omega * t_vis) - omega * A_eff * Math.sin(omega * t_vis);
+                return dA * Math.sin(k * x);
               };
-              dy_dx = (x: number) => k * A_px * envelope * Math.cos(k * x) * Math.cos(omega * time);
+              dy_dx = (x: number) => k * A_eff * Math.cos(k * x) * Math.cos(omega * t_vis);
             }
           } else {
-            // Driven Mode
             const f_d = drivingFrequency;
             omega = 2 * Math.PI * f_d;
             const beta = damping;
-
             const w_v2 = (omega * omega) / (v * v);
             const b_w_v2 = (beta * omega) / (v * v);
-            k = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
-            const alpha = k > 0 ? (beta * omega) / (v * v * k) : 0;
-            lambda = k > 0 ? (2 * Math.PI) / k : 0;
+            k_global = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
+            const alpha = k_global > 0 ? (beta * omega) / (v * v * k_global) : 0;
+            const k = k_global;
 
             const exp_2aL = Math.exp(-2 * alpha * length);
             const den_re = 1 + R * exp_2aL * Math.cos(2 * k * length);
             const den_im = -R * exp_2aL * Math.sin(2 * k * length);
             const den_mag2 = den_re * den_re + den_im * den_im;
 
-            const getComplexY = (x: number) => {
+            const getY = (x: number) => {
               const exp_ax = Math.exp(-alpha * x);
               const exp_a2Lx = Math.exp(-alpha * (2 * length - x));
-              const num_re = exp_ax * Math.cos(k * x) + R * exp_a2Lx * Math.cos(k * (2 * length - x));
-              const num_im = -exp_ax * Math.sin(k * x) - R * exp_a2Lx * Math.sin(k * (2 * length - x));
-
-              const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
-              const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
-              return { re: Y_re, im: Y_im };
+              const nr = exp_ax * Math.cos(k * x) + R * exp_a2Lx * Math.cos(k * (2 * length - x));
+              const ni = -exp_ax * Math.sin(k * x) - R * exp_a2Lx * Math.sin(k * (2 * length - x));
+              return { re: (nr * den_re + ni * den_im) / den_mag2, im: (ni * den_re - nr * den_im) / den_mag2 };
             };
 
-            const getComplexY1 = (x: number) => {
-              const exp_ax = Math.exp(-alpha * x);
-              const num_re = exp_ax * Math.cos(k * x);
-              const num_im = -exp_ax * Math.sin(k * x);
-              return {
-                re: (num_re * den_re + num_im * den_im) / den_mag2,
-                im: (num_im * den_re - num_re * den_im) / den_mag2
-              };
-            };
-
-            const getComplexY2 = (x: number) => {
-              const exp_a2Lx = Math.exp(-alpha * (2 * length - x));
-              const num_re = R * exp_a2Lx * Math.cos(k * (2 * length - x));
-              const num_im = -R * exp_a2Lx * Math.sin(k * (2 * length - x));
-              return {
-                re: (num_re * den_re + num_im * den_im) / den_mag2,
-                im: (num_im * den_re - num_re * den_im) / den_mag2
-              };
-            };
-
-            y_net = (x: number) => {
-              const Y = getComplexY(x);
-              return A_px * (Y.re * Math.cos(omega * time) - Y.im * Math.sin(omega * time));
-            };
-            y1 = (x: number) => {
-              const Y1 = getComplexY1(x);
-              return A_px * (Y1.re * Math.cos(omega * time) - Y1.im * Math.sin(omega * time));
-            };
-            y2 = (x: number) => {
-              const Y2 = getComplexY2(x);
-              return A_px * (Y2.re * Math.cos(omega * time) - Y2.im * Math.sin(omega * time));
-            };
-            dy_dt = (x: number) => {
-              const Y = getComplexY(x);
-              return -omega * A_px * (Y.re * Math.sin(omega * time) + Y.im * Math.cos(omega * time));
-            };
+            y_net = (x: number) => { const Y = getY(x); return A_px * (Y.re * Math.cos(omega * t_vis) - Y.im * Math.sin(omega * t_vis)); };
+            dy_dt = (x: number) => { const Y = getY(x); return -omega * A_px * (Y.re * Math.sin(omega * t_vis) + Y.im * Math.cos(omega * t_vis)); };
             dy_dx = (x: number) => {
               const exp_ax = Math.exp(-alpha * x);
               const exp_a2Lx = Math.exp(-alpha * (2 * length - x));
-              const term_re = -exp_ax * Math.cos(k * x) + R * exp_a2Lx * Math.cos(k * (2 * length - x));
-              const term_im = exp_ax * Math.sin(k * x) - R * exp_a2Lx * Math.sin(k * (2 * length - x));
-              const num_prime_re = alpha * term_re - k * term_im;
-              const num_prime_im = alpha * term_im + k * term_re;
-              const Yp_re = (num_prime_re * den_re + num_prime_im * den_im) / den_mag2;
-              const Yp_im = (num_prime_im * den_re - num_prime_re * den_im) / den_mag2;
-              return A_px * (Yp_re * Math.cos(omega * time) - Yp_im * Math.sin(omega * time));
+              const tr = -exp_ax * Math.cos(k * x) + R * exp_a2Lx * Math.cos(k * (2 * length - x));
+              const ti = exp_ax * Math.sin(k * x) - R * exp_a2Lx * Math.sin(k * (2 * length - x));
+              const npr = alpha * tr - k * ti, npi = alpha * ti + k * tr;
+              const Ypr = (npr * den_re + npi * den_im) / den_mag2;
+              const Ypi = (npi * den_re - npr * den_im) / den_mag2;
+              return A_px * (Ypr * Math.cos(omega * t_vis) - Ypi * Math.sin(omega * t_vis));
             };
           }
         } else {
-          // --- NUMERICAL INTERPOLATOR ---
+          // Numerical interpolation
           const y = yNumRef.current;
           const y_prev = yPrevRef.current;
           const M = numGridSize;
 
           y_net = (x: number) => {
-            const idx_raw = (x / length) * (M - 1);
-            const idx_l = Math.max(0, Math.floor(idx_raw));
-            const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
-            const w = idx_raw - idx_l;
-            // Scale interpolation
-            return (y[idx_l] * (1 - w) + y[idx_h] * w) * visualScale;
+            const ir = (x / length) * (M - 1);
+            const il = Math.max(0, Math.floor(ir)), ih = Math.min(M - 1, Math.ceil(ir));
+            return (y[il] * (1 - (ir - il)) + y[ih] * (ir - il)) * visualScale;
           };
-
           dy_dt = (x: number) => {
-            const idx_raw = (x / length) * (M - 1);
-            const idx_l = Math.max(0, Math.floor(idx_raw));
-            const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
-            const w = idx_raw - idx_l;
-            // dy/dt ≈ (y - y_prev)/dt
-            const dt = 0.005; // approximation for derivative scaling
-            const v_l = (y[idx_l] - y_prev[idx_l]) / dt;
-            const v_h = (y[idx_h] - y_prev[idx_h]) / dt;
-            return (v_l * (1 - w) + v_h * w) * visualScale;
+            const ir = (x / length) * (M - 1);
+            const il = Math.max(0, Math.floor(ir)), ih = Math.min(M - 1, Math.ceil(ir));
+            const w = ir - il;
+            const dt_approx = 0.005;
+            return ((y[il] - y_prev[il]) * (1 - w) + (y[ih] - y_prev[ih]) * w) / dt_approx * visualScale;
+          };
+          dy_dx = (x: number) => {
+            const ir = (x / length) * (M - 1);
+            const il = Math.max(0, Math.floor(ir)), ih = Math.min(M - 1, Math.ceil(ir));
+            const dx = length / (M - 1);
+            return (y[ih] - y[il]) / Math.max(1e-5, (ih - il) * dx) * visualScale;
           };
 
-          dy_dx = (x: number) => {
-            const idx_raw = (x / length) * (M - 1);
-            const idx_l = Math.max(0, Math.floor(idx_raw));
-            const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
-            const dx = length / (M - 1);
-            // spatial derivative central difference
-            const dy = (y[idx_h] - y[idx_l]) / Math.max(1e-5, (idx_h - idx_l) * dx);
-            return dy * visualScale;
-          };
+          // Compute L2 error vs analytical if harmonic mode
+          if (solverType === "numerical" && !isDriven && isPlaying) {
+            let err2 = 0;
+            const M2 = numGridSize;
+            const k_a = boundaryType === "Fixed-Free"
+              ? ((harmonic % 2 === 0 ? harmonic - 1 : harmonic) * Math.PI) / (2 * length)
+              : (harmonic * Math.PI) / length;
+            const omega_a = k_a * v;
+            const envelope_a = Math.exp(-damping * timeNumRef.current);
+            for (let i = 0; i < M2; i++) {
+              const x = (i / (M2 - 1)) * length;
+              const y_analytical = amplitude * envelope_a * Math.sin(k_a * x) * Math.cos(omega_a * timeNumRef.current);
+              err2 += Math.pow(yNumRef.current[i] - y_analytical, 2);
+            }
+            l2ErrorRef.current = Math.sqrt(err2 / M2);
+          }
         }
 
         const isScientific = renderMode === "Scientific";
         const isEnergyMode = renderMode === "Energy";
 
-        // Center line reference
+        // Center reference line
         ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
@@ -558,42 +484,46 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
         ctx.setLineDash([]);
 
         if (isEnergyMode) {
-          // --- REAL ENERGY DENSITY OVERLAY ---
-          const E_ref = 0.5 * mu * Math.pow(amplitude * (omega || 20), 2) + 0.5 * T * Math.pow(amplitude * (k || 5), 2);
-          const visualEnergyScale = (height * 0.28) / Math.max(1e-4, E_ref);
+          // -------------------------------------------------------
+          // TRUE ENERGY DENSITY VISUALIZATION
+          // KE(x,t) = ½μ(∂y/∂t)²   PE(x,t) = ½T(∂y/∂x)²
+          // -------------------------------------------------------
+          // Use SI units: amplitude in m, omega in rad/s, k in rad/m
+          // Physical derivatives: divide out visualScale
+          const u_max = 0.5 * mu * Math.pow(amplitude * (omega || 20), 2) + 0.5 * T * Math.pow(amplitude * (k_global || 5), 2);
+          const visualEnergyScale = (height * 0.28) / Math.max(1e-8, u_max);
 
-          // Kinetic Energy Density (dashed green)
-          ctx.strokeStyle = "rgba(16, 185, 129, 0.6)";
-          ctx.lineWidth = 2;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          for (let px = 50; px <= width - 50; px++) {
-            const x = ((px - 50) / (width - 100)) * length;
-            const dy_dt_real = dy_dt(x) / visualScale;
-            const K = 0.5 * mu * dy_dt_real * dy_dt_real;
-            const py = height / 2 - K * visualEnergyScale;
-            if (px === 50) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.stroke();
+          const getKE = (x: number) => { const v_phys = dy_dt(x) / visualScale; return 0.5 * mu * v_phys * v_phys; };
+          const getPE = (x: number) => { const s_phys = dy_dx(x) / visualScale; return 0.5 * T * s_phys * s_phys; };
 
-          // Elastic Potential Energy Density (dashed orange)
-          ctx.strokeStyle = "rgba(249, 115, 22, 0.6)";
-          ctx.lineWidth = 2;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          for (let px = 50; px <= width - 50; px++) {
-            const x = ((px - 50) / (width - 100)) * length;
-            const dy_dx_real = dy_dx(x) / visualScale;
-            const U = 0.5 * T * dy_dx_real * dy_dx_real;
-            const py = height / 2 - U * visualEnergyScale;
-            if (px === 50) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+          if (energyMode === "KE" || energyMode === "Total" || energyMode === "TimeAvg") {
+            ctx.strokeStyle = "rgba(16, 185, 129, 0.7)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            for (let px = 50; px <= width - 50; px++) {
+              const x = ((px - 50) / (width - 100)) * length;
+              const py = height / 2 - getKE(x) * visualEnergyScale;
+              px === 50 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+            }
+            ctx.stroke();
           }
-          ctx.stroke();
+
+          if (energyMode === "PE" || energyMode === "Total" || energyMode === "TimeAvg") {
+            ctx.strokeStyle = "rgba(249, 115, 22, 0.7)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            for (let px = 50; px <= width - 50; px++) {
+              const x = ((px - 50) / (width - 100)) * length;
+              const py = height / 2 - getPE(x) * visualEnergyScale;
+              px === 50 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+          }
           ctx.setLineDash([]);
 
-          // Total Energy Density (solid fuchsia with glowing fill)
+          // Total energy density (fuchsia)
           ctx.strokeStyle = "#d946ef";
           ctx.lineWidth = 3.5;
           ctx.shadowColor = "rgba(217, 70, 239, 0.4)";
@@ -602,62 +532,62 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
           const energyPts: [number, number][] = [];
           for (let px = 50; px <= width - 50; px++) {
             const x = ((px - 50) / (width - 100)) * length;
-            const dy_dt_real = dy_dt(x) / visualScale;
-            const dy_dx_real = dy_dx(x) / visualScale;
-            const K = 0.5 * mu * dy_dt_real * dy_dt_real;
-            const U = 0.5 * T * dy_dx_real * dy_dx_real;
-            const E = K + U;
+            const E = getKE(x) + getPE(x);
             const py = height / 2 - E * visualEnergyScale;
             energyPts.push([px, py]);
-            if (px === 50) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+            px === 50 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
           }
           ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Fill under Total Energy curve
-          ctx.fillStyle = "rgba(217, 70, 239, 0.05)";
+          // Filled area under total energy
+          ctx.fillStyle = "rgba(217, 70, 239, 0.06)";
           ctx.beginPath();
           ctx.moveTo(50, height / 2);
-          for (let pt of energyPts) ctx.lineTo(pt[0], pt[1]);
+          for (const pt of energyPts) ctx.lineTo(pt[0], pt[1]);
           ctx.lineTo(width - 50, height / 2);
           ctx.closePath();
           ctx.fill();
 
-          // Energy Legends
+          // Legends
           ctx.font = "9px monospace";
-          ctx.fillStyle = "rgba(16, 185, 129, 0.8)";
-          ctx.fillText("--- KE Density (J/m)", 60, 40);
-          ctx.fillStyle = "rgba(249, 115, 22, 0.8)";
-          ctx.fillText("--- PE Density (J/m)", 210, 40);
+          ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
+          ctx.fillText("--- KE = ½μ(∂y/∂t)²  (J/m)", 60, 38);
+          ctx.fillStyle = "rgba(249, 115, 22, 0.9)";
+          ctx.fillText("--- PE = ½T(∂y/∂x)²  (J/m)", 60, 52);
           ctx.fillStyle = "#d946ef";
-          ctx.fillText("—— Total Energy Density (J/m)", 360, 40);
+          ctx.fillText("——  u = KE + PE  Total energy density (J/m)", 60, 66);
+
+          // Energy note
+          ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+          ctx.font = "8px monospace";
+          ctx.fillText("Note: Standing waves have ZERO net energy flux. KE↔PE exchange is local.", 60, height - 16);
+
         } else {
-          // --- STANDARD DISPLACEMENT MODE RENDER ---
-          // Draw Component waves if enabled
+          // Standard displacement or phase mode
+
+          // Component waves
           if (showComponents && solverType === "analytical") {
-            // Forward traveling (Cyan)
             ctx.lineWidth = 1.5;
-            ctx.strokeStyle = "rgba(34, 211, 238, 0.4)";
+            ctx.strokeStyle = "rgba(34, 211, 238, 0.45)";
             ctx.beginPath();
             for (let px = 50; px <= width - 50; px++) {
               const x = ((px - 50) / (width - 100)) * length;
-              ctx.lineTo(px, height / 2 - y1(x));
+              px === 50 ? ctx.moveTo(px, height / 2 - y1_fn(x)) : ctx.lineTo(px, height / 2 - y1_fn(x));
             }
             ctx.stroke();
 
-            // Backward traveling (Rose)
-            ctx.strokeStyle = "rgba(244, 63, 94, 0.4)";
+            ctx.strokeStyle = "rgba(244, 63, 94, 0.45)";
             ctx.beginPath();
             for (let px = 50; px <= width - 50; px++) {
               const x = ((px - 50) / (width - 100)) * length;
-              ctx.lineTo(px, height / 2 - y2(x));
+              px === 50 ? ctx.moveTo(px, height / 2 - y2_fn(x)) : ctx.lineTo(px, height / 2 - y2_fn(x));
             }
             ctx.stroke();
           }
 
           if (discreteBeads) {
-            // --- DISCRETE COUPLED OSCILLATOR (BEADS) ---
+            // --- DISCRETE BEAD-SPRING MODE ---
             const M = numGridSize;
             const beadCoords: [number, number][] = [];
             for (let i = 0; i < M; i++) {
@@ -666,161 +596,192 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
               const py = height / 2 - y_net(x_m);
               beadCoords.push([px, py]);
             }
+            for (let i = 0; i < M - 1; i++) drawSpring(ctx, beadCoords[i][0], beadCoords[i][1], beadCoords[i + 1][0], beadCoords[i + 1][1]);
 
-            // Draw Springs
-            for (let i = 0; i < M - 1; i++) {
-              drawSpring(ctx, beadCoords[i][0], beadCoords[i][1], beadCoords[i + 1][0], beadCoords[i + 1][1]);
-            }
-
-            // Draw Beads
-            ctx.fillStyle = "#ffffff";
-            ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
             ctx.lineWidth = 1.5;
             for (let i = 0; i < M; i++) {
               ctx.beginPath();
-              // Make boundary beads color coded if fixed/free
               if (i === 0 && isDriven) ctx.fillStyle = "#38bdf8";
               else if ((i === 0 || i === M - 1) && boundaryType.startsWith("Fixed")) ctx.fillStyle = "#ef4444";
               else ctx.fillStyle = "#ffffff";
-
+              ctx.strokeStyle = "rgba(0,0,0,0.5)";
               ctx.arc(beadCoords[i][0], beadCoords[i][1], 6.5, 0, Math.PI * 2);
               ctx.fill();
               ctx.stroke();
             }
           } else {
-            // --- CONTINUOUS STRING WAVE ---
-            ctx.beginPath();
-            for (let px = 50; px <= width - 50; px++) {
-              const x = ((px - 50) / (width - 100)) * length;
-              const py = height / 2 - y_net(x);
-              if (px === 50) ctx.moveTo(px, py);
-              else ctx.lineTo(px, py);
-            }
+            // --- CONTINUOUS STRING ---
 
-            ctx.lineWidth = isScientific ? 2.5 : 4.5;
-            if (renderMode === "Displacement") {
-              ctx.strokeStyle = "#ffffff";
-              ctx.shadowColor = "rgba(255, 255, 255, 0.35)";
-              ctx.shadowBlur = 12;
-            } else if (renderMode === "Phase") {
-              const phaseVal = ((omega || 1) * time) % (2 * Math.PI);
-              ctx.strokeStyle = `hsl(${(phaseVal / (2 * Math.PI)) * 360}, 95%, 65%)`;
-              ctx.shadowColor = `hsla(${(phaseVal / (2 * Math.PI)) * 360}, 95%, 65%, 0.3)`;
-              ctx.shadowBlur = 12;
+            if (showEnergyHeatmap && !isEnergyMode) {
+              // Color the string by local energy density (heatmap coloring)
+              const u_max_hm = 0.5 * mu * Math.pow(amplitude * (omega || 20), 2) + 0.5 * T * Math.pow(amplitude * (k_global || 5), 2);
+              const N = width - 100;
+              for (let px = 50; px < width - 50; px++) {
+                const x = ((px - 50) / N) * length;
+                const x_next = ((px - 49) / N) * length;
+                const py1 = height / 2 - y_net(x);
+                const py2 = height / 2 - y_net(x_next);
+                const v_phys = dy_dt(x) / visualScale;
+                const s_phys = dy_dx(x) / visualScale;
+                const E = 0.5 * mu * v_phys * v_phys + 0.5 * T * s_phys * s_phys;
+                const t_norm = Math.min(1, E / Math.max(1e-8, u_max_hm));
+                // Hot → cold: fuchsia (high) → cyan (low) → dark (zero)
+                const r = Math.round(217 * t_norm);
+                const g = Math.round(70 * (1 - t_norm) + 211 * t_norm);
+                const b = Math.round(239 * t_norm + 238 * (1 - t_norm));
+                ctx.strokeStyle = `rgb(${r},${g},${b})`;
+                ctx.lineWidth = 4.5;
+                ctx.beginPath();
+                ctx.moveTo(px, py1);
+                ctx.lineTo(px + 1, py2);
+                ctx.stroke();
+              }
             } else {
-              ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+              // Standard single color wave
+              ctx.beginPath();
+              for (let px = 50; px <= width - 50; px++) {
+                const x = ((px - 50) / (width - 100)) * length;
+                const py = height / 2 - y_net(x);
+                px === 50 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+              }
+              ctx.lineWidth = isScientific ? 2.5 : 4.5;
+              if (renderMode === "Displacement") {
+                ctx.strokeStyle = "#ffffff";
+                ctx.shadowColor = "rgba(255, 255, 255, 0.3)";
+                ctx.shadowBlur = 10;
+              } else if (renderMode === "Phase") {
+                const phaseVal = ((omega || 1) * t_vis) % (2 * Math.PI);
+                ctx.strokeStyle = `hsl(${(phaseVal / (2 * Math.PI)) * 360}, 95%, 65%)`;
+                ctx.shadowColor = `hsla(${(phaseVal / (2 * Math.PI)) * 360}, 95%, 65%, 0.3)`;
+                ctx.shadowBlur = 12;
+              } else {
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+              }
+              ctx.stroke();
+              ctx.shadowBlur = 0;
             }
-            ctx.stroke();
-            ctx.shadowBlur = 0;
           }
 
-          // --- NODE / ANTINODE POSITION MARKERS ---
+          // -------------------------------------------------------
+          // NODE / ANTINODE MARKERS — Analytically precise positions
+          // Nodes:     x_n = m * λ/2    for m = 0,...,n
+          // Antinodes: x_a = (2m+1)λ/4  for m = 0,...,n-1
+          // Markers always drawn at equilibrium height (height/2)
+          // -------------------------------------------------------
           const nodes: number[] = [];
           const antinodes: number[] = [];
 
-          if (solverType === "analytical") {
-            if (!isDriven) {
-              if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective") {
-                for (let i = 0; i <= harmonic; i++) nodes.push((i * lambda) / 2);
-                for (let i = 0; i < harmonic; i++) antinodes.push(((i + 0.5) * lambda) / 2);
-              } else if (boundaryType === "Free-Free") {
-                for (let i = 0; i < harmonic; i++) nodes.push(((i + 0.5) * lambda) / 2);
-                for (let i = 0; i <= harmonic; i++) antinodes.push((i * lambda) / 2);
-              } else if (boundaryType === "Fixed-Free") {
-                const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-                for (let m = 0; (m * lambda) / 2 <= length + 0.01; m++) nodes.push((m * lambda) / 2);
-                for (let m = 0; (m + 0.5) * lambda / 2 <= length + 0.01; m++) antinodes.push(((m + 0.5) * lambda) / 2);
+          if (solverType === "analytical" && !isDriven) {
+            const lam = k_global > 0 ? (2 * Math.PI) / k_global : 0;
+            if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective") {
+              // Nodes at x = m*L/n = m*λ/2, m = 0..n
+              for (let m = 0; m <= harmonic; m++) {
+                const xn = m * lam / 2;
+                if (xn >= -0.001 && xn <= length + 0.001) nodes.push(Math.min(length, Math.max(0, xn)));
               }
-            } else {
-              if (k > 0) {
-                const phi_R = R < 0 ? Math.PI : 0;
-                // Analytical node equations for driven wave matching impedance phase shift
-                for (let m = 0; m < 12; m++) {
-                  const x = length - ((2 * m + 1) * Math.PI + phi_R) / (2 * k);
-                  if (x >= -0.01 && x <= length + 0.01) nodes.push(x);
-                }
-                for (let m = 0; m < 12; m++) {
-                  const x = length - (2 * m * Math.PI + phi_R) / (2 * k);
-                  if (x >= -0.01 && x <= length + 0.01) antinodes.push(x);
-                }
+              // Antinodes at x = (2m+1)λ/4, m = 0..n-1
+              for (let m = 0; m < harmonic; m++) {
+                const xa = (2 * m + 1) * lam / 4;
+                if (xa > 0 && xa < length) antinodes.push(xa);
+              }
+            } else if (boundaryType === "Free-Free") {
+              for (let m = 0; m <= harmonic; m++) {
+                const xa = m * lam / 2;
+                if (xa >= -0.001 && xa <= length + 0.001) antinodes.push(Math.min(length, Math.max(0, xa)));
+              }
+              for (let m = 0; m < harmonic; m++) {
+                const xn = (2 * m + 1) * lam / 4;
+                if (xn > 0 && xn < length) nodes.push(xn);
+              }
+            } else if (boundaryType === "Fixed-Free") {
+              // Nodes at x = m*λ/2, m = 0,1,2...
+              for (let m = 0; (m * lam / 2) <= length + 0.001; m++) {
+                const xn = m * lam / 2;
+                if (xn >= -0.001) nodes.push(Math.max(0, xn));
+              }
+              // Antinodes at x = (2m+1)λ/4
+              for (let m = 0; (2 * m + 1) * lam / 4 <= length; m++) {
+                antinodes.push((2 * m + 1) * lam / 4);
               }
             }
-          } else {
-            // Numerical mode shapes - find local envelope mins/maxs
-            const y = yNumRef.current;
-            const M = numGridSize;
-            // In numerical mode, look for zeros of displacement projection or static spatial profiles
-            // We can approximate nodes using harmonic indices
+          } else if (solverType === "numerical" && !isDriven) {
             const activeH = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-            const lam_num = (boundaryType === "Fixed-Free") ? (4 * length / activeH) : (2 * length / activeH);
-            
+            const lam_num = boundaryType === "Fixed-Free" ? (4 * length / activeH) : (2 * length / activeH);
             if (boundaryType === "Free-Free") {
-              for (let i = 0; i < activeH; i++) nodes.push(((i + 0.5) * lam_num) / 2);
-              for (let i = 0; i <= activeH; i++) antinodes.push((i * lam_num) / 2);
+              for (let m = 0; m <= activeH; m++) antinodes.push(m * lam_num / 2);
+              for (let m = 0; m < activeH; m++) nodes.push((2 * m + 1) * lam_num / 4);
             } else if (boundaryType === "Fixed-Free") {
-              for (let m = 0; (m * lam_num) / 2 <= length + 0.01; m++) nodes.push((m * lam_num) / 2);
-              for (let m = 0; (m + 0.5) * lam_num / 2 <= length + 0.01; m++) antinodes.push(((m + 0.5) * lam_num) / 2);
+              for (let m = 0; m * lam_num / 2 <= length + 0.001; m++) nodes.push(m * lam_num / 2);
+              for (let m = 0; (2 * m + 1) * lam_num / 4 <= length; m++) antinodes.push((2 * m + 1) * lam_num / 4);
             } else {
-              for (let i = 0; i <= activeH; i++) nodes.push((i * lam_num) / 2);
-              for (let i = 0; i < activeH; i++) antinodes.push(((i + 0.5) * lam_num) / 2);
+              for (let m = 0; m <= activeH; m++) nodes.push(m * lam_num / 2);
+              for (let m = 0; m < activeH; m++) antinodes.push((2 * m + 1) * lam_num / 4);
+            }
+          } else if (isDriven && k_global > 0) {
+            // Driven mode: approximate nodes from wave vector
+            const phi_R = R < 0 ? Math.PI : 0;
+            for (let m = 0; m < 12; m++) {
+              const x = length - ((2 * m + 1) * Math.PI + phi_R) / (2 * k_global);
+              if (x >= -0.01 && x <= length + 0.01) nodes.push(x);
+            }
+            for (let m = 0; m < 12; m++) {
+              const x = length - (2 * m * Math.PI + phi_R) / (2 * k_global);
+              if (x >= -0.01 && x <= length + 0.01) antinodes.push(x);
             }
           }
 
-          // Draw Nodes (Red markers at equilibrium)
+          // Draw Nodes — always at equilibrium (height/2)
           if (showNodes) {
-            ctx.fillStyle = isScientific ? "#ffffff" : "#ef4444";
-            nodes.forEach((x) => {
-              const px = 50 + (x / length) * (width - 100);
+            nodes.forEach((xn) => {
+              const px = 50 + (xn / length) * (width - 100);
+              ctx.fillStyle = isScientific ? "#ffffff" : "#ef4444";
               ctx.beginPath();
               ctx.arc(px, height / 2, 6, 0, Math.PI * 2);
               ctx.fill();
-
               if (!isScientific) {
-                ctx.fillStyle = "rgba(239, 68, 68, 0.18)";
+                ctx.fillStyle = "rgba(239, 68, 68, 0.15)";
                 ctx.beginPath();
                 ctx.arc(px, height / 2, 14, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.fillStyle = "#ef4444";
               }
             });
           }
 
-          // Draw Antinodes (Green markers + Phase direction indicator arrows)
+          // Draw Antinodes — at equilibrium height, with directional arrows
           if (showAntinodes) {
-            antinodes.forEach((x) => {
-              const px = 50 + (x / length) * (width - 100);
-              const displacement = y_net(x);
-              const py = height / 2 - displacement;
+            antinodes.forEach((xa) => {
+              const px = 50 + (xa / length) * (width - 100);
 
+              // Marker at equilibrium
               ctx.fillStyle = isScientific ? "#ffffff" : "#10b981";
               ctx.beginPath();
-              ctx.arc(px, py, 6, 0, Math.PI * 2);
+              ctx.arc(px, height / 2, 6, 0, Math.PI * 2);
               ctx.fill();
 
-              // Calculate arrow displacement direction
-              let direction = y_net(x) > 0 ? 1 : -1;
-              if (Math.abs(y_net(x)) < 1) direction = 0;
+              // Direction arrow based on current instantaneous displacement at antinode
+              const curDisp = y_net(xa);
+              const direction = curDisp > 2 ? 1 : curDisp < -2 ? -1 : 0;
 
               if (direction !== 0 && !isScientific) {
-                ctx.strokeStyle = direction > 0 ? "#10b981" : "#f43f5e";
-                ctx.lineWidth = 1.8;
+                const arrowColor = direction > 0 ? "#10b981" : "#f43f5e";
+                ctx.strokeStyle = arrowColor;
+                ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(px, height / 2);
-                ctx.lineTo(px, height / 2 - direction * 35);
+                ctx.lineTo(px, height / 2 - direction * 40);
                 ctx.stroke();
-
-                ctx.fillStyle = direction > 0 ? "#10b981" : "#f43f5e";
+                ctx.fillStyle = arrowColor;
                 ctx.beginPath();
-                ctx.moveTo(px - 4.5, height / 2 - direction * 29);
-                ctx.lineTo(px + 4.5, height / 2 - direction * 29);
-                ctx.lineTo(px, height / 2 - direction * 36);
+                ctx.moveTo(px - 5, height / 2 - direction * 33);
+                ctx.lineTo(px + 5, height / 2 - direction * 33);
+                ctx.lineTo(px, height / 2 - direction * 42);
                 ctx.fill();
               }
             });
           }
         }
 
-        // Draw boundaries
+        // Boundary decorations
         ctx.fillStyle = "#ffffff";
         if (isDriven) {
           ctx.fillRect(44, height / 2 - 25, 6, 50);
@@ -834,11 +795,8 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
             ctx.font = "bold 8.5px monospace";
             ctx.fillText("FIXED NODE (π SHIFT)", 55, height / 2 - 28);
           } else {
-            ctx.strokeStyle = "#38bdf8";
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.arc(50, height / 2, 7, 0, Math.PI * 2);
-            ctx.stroke();
+            ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(50, height / 2, 7, 0, Math.PI * 2); ctx.stroke();
             ctx.fillStyle = "rgba(56, 189, 248, 0.7)";
             ctx.font = "bold 8.5px monospace";
             ctx.fillText("FREE ANTINODE (0 SHIFT)", 60, height / 2 - 28);
@@ -846,379 +804,252 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
         }
 
         if (boundaryType === "Fixed-Fixed") {
+          ctx.fillStyle = "#ffffff";
           ctx.fillRect(width - 50, height / 2 - 25, 6, 50);
           ctx.fillStyle = "rgba(239, 68, 68, 0.7)";
           ctx.font = "bold 8.5px monospace";
           ctx.fillText("FIXED NODE (π SHIFT)", width - 180, height / 2 - 28);
         } else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") {
-          ctx.strokeStyle = "#38bdf8";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(width - 50, height / 2, 7, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(width - 50, height / 2, 7, 0, Math.PI * 2); ctx.stroke();
           ctx.fillStyle = "rgba(56, 189, 248, 0.7)";
           ctx.font = "bold 8.5px monospace";
-          ctx.fillText("FREE ANTINODE (0 SHIFT)", width - 200, height / 2 - 28);
+          ctx.fillText("FREE ANTINODE (0 SHIFT)", width - 210, height / 2 - 28);
         } else if (boundaryType === "Partially Reflective") {
+          // Draw boundary with energy transmission coloring
+          const R_frac = R * R;
+          const T_frac = 1 - R_frac;
+          ctx.fillStyle = "#ffffff";
           ctx.fillRect(width - 48, height / 2 - 25, 3, 50);
+
+          // Transmitted energy leakage band
+          if (T_frac > 0.01) {
+            ctx.fillStyle = `rgba(245, 158, 11, ${Math.min(0.8, T_frac * 1.5)})`;
+            ctx.fillRect(width - 44, height / 2 - 20, 12, 40);
+            ctx.fillStyle = "rgba(245, 158, 11, 0.7)";
+            ctx.font = "bold 7px monospace";
+            ctx.fillText("LEAK", width - 42, height / 2 - 24);
+          }
+
           ctx.fillStyle = "rgba(217, 70, 239, 0.9)";
           ctx.font = "bold 8.5px monospace";
-          ctx.fillText(`LOAD IMPEDANCE (Z_2 = ${boundaryImpedance.toFixed(1)}, R = ${R.toFixed(2)})`, width - 290, height / 2 - 28);
+          ctx.fillText(`R = ${R.toFixed(3)}  T = ${T_coeff.toFixed(3)}  |R|² = ${R_frac.toFixed(3)}  |T|² = ${T_frac.toFixed(3)}`, width - 380, height / 2 - 28);
+        }
+
+        // Phase indicator (current phase value)
+        if (renderMode === "Phase") {
+          const phaseRad = (omega * t_vis) % (2 * Math.PI);
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.font = "bold 9px monospace";
+          ctx.fillText(`ωt_vis = ${phaseRad.toFixed(2)} rad  cos(ωt) = ${Math.cos(phaseRad).toFixed(3)}`, width / 2 - 120, height - 14);
         }
 
       } else if (systemType === "air") {
-        // --- 1D ACOUSTIC AIR COLUMN PIPE MODULE ---
-        const pipeX = 100;
-        const pipeY = height / 2 - 60;
-        const pipeW = width - 200;
-        const pipeH = 120;
-
-        // Draw Pressure Field Overlay ( Crimson Red [high pressure] to Deep Cyan [low pressure] )
+        // --- 1D ACOUSTIC AIR COLUMN ---
+        const pipeX = 100, pipeY = height / 2 - 60, pipeW = width - 200, pipeH = 120;
         const samples = 150;
         const dx_px = pipeW / samples;
         visualScale = 35;
-        const A_px = amplitude * visualScale; // particle displacement scale
+        const A_px = amplitude * visualScale;
 
         let s_disp = (x: number) => 0;
         let p_press = (x: number) => 0;
-        let lambda = 0;
-        let k = 0;
 
         if (solverType === "analytical") {
+          let k = 0;
           if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective") {
-            // Equivalent to open-open pipe (pressure nodes at ends, displacement antinodes)
-            // Wait, Fixed-Fixed boundaries for string = y(0)=y(L)=0 (nodes).
-            // But for an air column:
-            // "Fixed-Fixed" state in UI is mapped to Open-Open pipe (displacement antinodes at ends)
-            // "Fixed-Free" state in UI is mapped to Closed-Open pipe (displacement node at closed left, displacement antinode at open right)
-            // Let's implement this mapping:
-            // "Fixed-Fixed" UI State -> Open-Open Pipe: s(x,t) = A cos(kx) cos(wt), p(x,t) = -B ds/dx = B k A sin(kx) cos(wt)
-            // "Fixed-Free" UI State -> Closed-Open Pipe: s(x,t) = A sin(kx) cos(wt), p(x,t) = -B ds/dx = -B k A cos(kx) cos(wt)
-            if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective") {
-              lambda = (2 * length) / harmonic;
-              k = (harmonic * Math.PI) / length;
-              omega = k * v;
-              s_disp = (x: number) => A_px * Math.cos(k * x) * Math.cos(omega * time);
-              p_press = (x: number) => Math.sin(k * x) * Math.cos(omega * time); // normalised pressure
-            } else {
-              // Closed-Open (Fixed-Free)
-              const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-              lambda = (4 * length) / oddHarmonic;
-              k = (oddHarmonic * Math.PI) / (2 * length);
-              omega = k * v;
-              s_disp = (x: number) => A_px * Math.sin(k * x) * Math.cos(omega * time);
-              p_press = (x: number) => -Math.cos(k * x) * Math.cos(omega * time); // normalised pressure
-            }
-          } else {
-            // "Free-Free" UI State -> Open-Open Pipe (with cos/sin shifts)
-            lambda = (2 * length) / harmonic;
             k = (harmonic * Math.PI) / length;
             omega = k * v;
-            s_disp = (x: number) => A_px * Math.cos(k * x) * Math.cos(omega * time);
-            p_press = (x: number) => Math.sin(k * x) * Math.cos(omega * time);
+            s_disp = (x: number) => A_px * Math.cos(k * x) * Math.cos(omega * t_vis);
+            p_press = (x: number) => Math.sin(k * x) * Math.cos(omega * t_vis);
+          } else if (boundaryType === "Fixed-Free") {
+            const oddH = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+            k = (oddH * Math.PI) / (2 * length);
+            omega = k * v;
+            s_disp = (x: number) => A_px * Math.sin(k * x) * Math.cos(omega * t_vis);
+            p_press = (x: number) => -Math.cos(k * x) * Math.cos(omega * t_vis);
+          } else {
+            k = (harmonic * Math.PI) / length;
+            omega = k * v;
+            s_disp = (x: number) => A_px * Math.cos(k * x) * Math.cos(omega * t_vis);
+            p_press = (x: number) => Math.sin(k * x) * Math.cos(omega * t_vis);
           }
-
-          y_net = s_disp;
-          dy_dt = (x: number) => {
-            if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective" || boundaryType === "Free-Free") {
-              return -omega * A_px * Math.cos(k * x) * Math.sin(omega * time);
-            } else {
-              return -omega * A_px * Math.sin(k * x) * Math.sin(omega * time);
-            }
-          };
         } else {
-          // Numerical Solver interpolation
           const y = yNumRef.current;
           const y_prev = yPrevRef.current;
           const M = numGridSize;
           s_disp = (x: number) => {
-            const idx_raw = (x / length) * (M - 1);
-            const idx_l = Math.max(0, Math.floor(idx_raw));
-            const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
-            const w = idx_raw - idx_l;
-            return (y[idx_l] * (1 - w) + y[idx_h] * w) * 35;
+            const ir = (x / length) * (M - 1);
+            const il = Math.max(0, Math.floor(ir)), ih = Math.min(M - 1, Math.ceil(ir));
+            return (y[il] * (1 - (ir - il)) + y[ih] * (ir - il)) * 35;
           };
-
           p_press = (x: number) => {
-            // pressure = -ds/dx (spatial gradient of displacement)
-            const idx_raw = (x / length) * (M - 1);
-            const idx_l = Math.max(0, Math.floor(idx_raw));
-            const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
+            const ir = (x / length) * (M - 1);
+            const il = Math.max(0, Math.floor(ir)), ih = Math.min(M - 1, Math.ceil(ir));
             const dx = length / (M - 1);
-            const dy = (y[idx_h] - y[idx_l]) / Math.max(1e-5, (idx_h - idx_l) * dx);
-            return -dy * 1.5; // scaling factor
-          };
-
-          y_net = s_disp;
-          dy_dt = (x: number) => {
-            const idx_raw = (x / length) * (M - 1);
-            const idx_l = Math.max(0, Math.floor(idx_raw));
-            const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
-            const w = idx_raw - idx_l;
-            const dt = 0.005; // approximation for derivative scaling
-            const v_l = (y[idx_l] - y_prev[idx_l]) / dt;
-            const v_h = (y[idx_h] - y_prev[idx_h]) / dt;
-            return (v_l * (1 - w) + v_h * w) * 35;
+            return -(y[ih] - y[il]) / Math.max(1e-5, (ih - il) * dx) * 1.5;
           };
         }
 
-        // Draw pressure gradients inside pipe
+        y_net = s_disp;
+        dy_dt = (x: number) => -omega * A_px * (boundaryType === "Fixed-Free"
+          ? Math.sin(k_global * x) : Math.cos(k_global * x)) * Math.sin(omega * t_vis);
+
+        // Pressure shading
         for (let i = 0; i < samples; i++) {
           const px = pipeX + i * dx_px;
           const x = (i / samples) * length;
           const P = p_press(x);
-          
-          let color = "rgba(128,128,128,0.05)";
-          if (P > 0) {
-            // Crimson compression
-            color = `rgba(239, 68, 68, ${Math.min(0.65, P * 0.7)})`;
-          } else {
-            // Cyan rarefaction
-            color = `rgba(56, 189, 248, ${Math.min(0.65, Math.abs(P) * 0.7)})`;
-          }
-
-          ctx.fillStyle = color;
+          ctx.fillStyle = P > 0
+            ? `rgba(239, 68, 68, ${Math.min(0.65, P * 0.7)})`
+            : `rgba(56, 189, 248, ${Math.min(0.65, Math.abs(P) * 0.7)})`;
           ctx.fillRect(px, pipeY + 1, dx_px + 0.5, pipeH - 2);
         }
 
-        // Draw Air Molecule particles
+        // Air molecule particles
         ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-        const particles = airParticlesRef.current;
-        for (let p of particles) {
+        for (const p of airParticlesRef.current) {
           const s = s_disp(p.x0);
           const px = pipeX + (p.x0 / length) * pipeW + s;
           const py = pipeY + pipeH / 2 + p.y0;
-          ctx.beginPath();
-          ctx.arc(px, py, 2.2, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI * 2); ctx.fill();
         }
 
-        // Draw Pipe boundaries
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 3.5;
-        
+        // Pipe boundaries
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3.5;
         ctx.beginPath();
-        // Top boundary
-        ctx.moveTo(pipeX, pipeY);
-        ctx.lineTo(pipeX + pipeW, pipeY);
-        // Bottom boundary
-        ctx.moveTo(pipeX, pipeY + pipeH);
-        ctx.lineTo(pipeX + pipeW, pipeY + pipeH);
+        ctx.moveTo(pipeX, pipeY); ctx.lineTo(pipeX + pipeW, pipeY);
+        ctx.moveTo(pipeX, pipeY + pipeH); ctx.lineTo(pipeX + pipeW, pipeY + pipeH);
         ctx.stroke();
 
-        // End Caps (Solid if closed boundary, empty if open)
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 3.5;
-
-        // Left End
         if (boundaryType === "Fixed-Free") {
-          // Closed end (displacement node)
-          ctx.beginPath();
-          ctx.moveTo(pipeX, pipeY);
-          ctx.lineTo(pipeX, pipeY + pipeH);
-          ctx.stroke();
-          ctx.fillStyle = "rgba(239,68,68,0.5)";
-          ctx.font = "bold 9px monospace";
-          ctx.fillText("CLOSED END (s = 0, p = max)", pipeX + 10, pipeY - 8);
+          ctx.beginPath(); ctx.moveTo(pipeX, pipeY); ctx.lineTo(pipeX, pipeY + pipeH); ctx.stroke();
+          ctx.fillStyle = "rgba(239,68,68,0.5)"; ctx.font = "bold 9px monospace";
+          ctx.fillText("CLOSED END (s=0, p=max)", pipeX + 10, pipeY - 8);
         } else {
-          // Open end
-          ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
-          ctx.font = "bold 9px monospace";
-          ctx.fillText("OPEN END (s = max, p = 0)", pipeX + 10, pipeY - 8);
+          ctx.fillStyle = "rgba(56, 189, 248, 0.6)"; ctx.font = "bold 9px monospace";
+          ctx.fillText("OPEN END (s=max, p=0)", pipeX + 10, pipeY - 8);
         }
+        ctx.fillStyle = "rgba(56, 189, 248, 0.6)"; ctx.font = "bold 9px monospace";
+        ctx.fillText("OPEN END (s=max, p=0)", pipeX + pipeW - 160, pipeY - 8);
 
-        // Right End (always open for organ pipes in this selection)
-        ctx.fillStyle = "rgba(56, 189, 248, 0.6)";
-        ctx.font = "bold 9px monospace";
-        ctx.fillText("OPEN END (s = max, p = 0)", pipeX + pipeW - 160, pipeY - 8);
-
-        // Draw graph overlay underneath (displacement vs pressure curves)
+        // Displacement and pressure curves
         const curveY = height - 70;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(255,255,255,0.06)"; ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(pipeX, curveY);
-        ctx.lineTo(pipeX + pipeW, curveY);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pipeX, curveY); ctx.lineTo(pipeX + pipeW, curveY); ctx.stroke();
         ctx.setLineDash([]);
 
-        // Plot curves
         ctx.lineWidth = 2.2;
-        // Displacement (Blue)
         ctx.strokeStyle = "#38bdf8";
         ctx.beginPath();
         for (let i = 0; i <= samples; i++) {
           const px = pipeX + (i / samples) * pipeW;
           const x = (i / samples) * length;
           const py = curveY - (s_disp(x) / A_px) * 35;
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
         ctx.stroke();
 
-        // Pressure (Crimson)
         ctx.strokeStyle = "#ef4444";
         ctx.beginPath();
         for (let i = 0; i <= samples; i++) {
           const px = pipeX + (i / samples) * pipeW;
           const x = (i / samples) * length;
           const py = curveY - p_press(x) * 35;
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
         ctx.stroke();
 
-        // Legends
         ctx.font = "9px monospace";
         ctx.fillStyle = "#38bdf8";
-        ctx.fillText("—— Air Particle Displacement s(x)", pipeX, height - 20);
+        ctx.fillText("—— Air Particle Displacement s(x,t)", pipeX, height - 20);
         ctx.fillStyle = "#ef4444";
-        ctx.fillText("—— Acoustic Pressure deviation p(x)", pipeX + 260, height - 20);
+        ctx.fillText("—— Acoustic Pressure p(x,t) = -B∂s/∂x", pipeX + 260, height - 20);
 
       } else if (systemType === "membrane") {
-        // --- 2D MEMBRANE MODES & CHLADNI LAB ---
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const Lx = 440;
-        const Ly = 360;
-        const radius = 220;
+        // --- 2D MEMBRANE & CHLADNI ---
+        const centerX = width / 2, centerY = height / 2;
+        const Lx = 440, Ly = 360, radius = 220;
         const isRect = membraneGeometry === "rectangular";
-
-        // Boundary zeros and wave constants
         const k_mn = isRect ? 0 : (BESSEL_ZEROS[m2D]?.[n2D - 1] || 2.4048) / radius;
-        const omega_mem = 4.0; // temporal phase rate for visualization
+        const omega_mem = 4.0;
 
-        // Render Displacement Field mesh overlay
         if (!sandPattern) {
-          const stepX = 12;
-          const stepY = 12;
-
-          for (let x = -Lx/2; x <= Lx/2; x += stepX) {
-            for (let y = -Ly/2; y <= Ly/2; y += stepY) {
-              // Boundary clamp filters
-              if (!isRect && (x*x + y*y) > radius*radius) continue;
-
+          const stepX = 12, stepY = 12;
+          for (let x = -Lx / 2; x <= Lx / 2; x += stepX) {
+            for (let y = -Ly / 2; y <= Ly / 2; y += stepY) {
+              if (!isRect && (x * x + y * y) > radius * radius) continue;
               let z = 0;
               if (isRect) {
-                const x_norm = (x + Lx/2) / Lx;
-                const y_norm = (y + Ly/2) / Ly;
-                z = amplitude * Math.sin(m2D * Math.PI * x_norm) * Math.sin(n2D * Math.PI * y_norm) * Math.cos(omega_mem * time);
+                const xn = (x + Lx / 2) / Lx, yn = (y + Ly / 2) / Ly;
+                z = amplitude * Math.sin(m2D * Math.PI * xn) * Math.sin(n2D * Math.PI * yn) * Math.cos(omega_mem * t_vis);
               } else {
-                const r = Math.sqrt(x*x + y*y);
-                const theta = Math.atan2(y, x);
-                z = amplitude * besselJ(m2D, k_mn * r) * Math.cos(m2D * theta) * Math.cos(omega_mem * time);
+                const r = Math.sqrt(x * x + y * y), theta = Math.atan2(y, x);
+                z = amplitude * besselJ(m2D, k_mn * r) * Math.cos(m2D * theta) * Math.cos(omega_mem * t_vis);
               }
-
-              // Normalised color displacement
-              let color = "rgba(128,128,128,0.1)";
-              if (z > 0.01) {
-                color = `rgba(239, 68, 68, ${Math.min(0.85, z * 0.85)})`; // Crimson positive displacement
-              } else if (z < -0.01) {
-                color = `rgba(56, 189, 248, ${Math.min(0.85, Math.abs(z) * 0.85)})`; // Cyan negative displacement
-              }
-
-              ctx.fillStyle = color;
-              ctx.fillRect(centerX + x - stepX/2, centerY + y - stepY/2, stepX, stepY);
+              ctx.fillStyle = z > 0.01
+                ? `rgba(239, 68, 68, ${Math.min(0.85, z * 0.85)})`
+                : z < -0.01
+                  ? `rgba(56, 189, 248, ${Math.min(0.85, Math.abs(z) * 0.85)})`
+                  : "rgba(128,128,128,0.1)";
+              ctx.fillRect(centerX + x - stepX / 2, centerY + y - stepY / 2, stepX, stepY);
             }
           }
         } else {
-          // --- CHLADNI SAND PHYSICS SIMULATION UPDATE ---
+          // Chladni sand update
           if (isPlaying) {
             const particles = sandParticlesRef.current;
             const eps = 2.0;
-
-            const calcAmpVal = (px: number, py: number) => {
+            const calcAmp = (px: number, py: number) => {
               if (isRect) {
-                if (Math.abs(px) > Lx/2 || Math.abs(py) > Ly/2) return 0;
-                const x_norm = (px + Lx/2) / Lx;
-                const y_norm = (py + Ly/2) / Ly;
-                return amplitude * Math.sin(m2D * Math.PI * x_norm) * Math.sin(n2D * Math.PI * y_norm);
+                if (Math.abs(px) > Lx / 2 || Math.abs(py) > Ly / 2) return 0;
+                return amplitude * Math.sin(m2D * Math.PI * (px + Lx / 2) / Lx) * Math.sin(n2D * Math.PI * (py + Ly / 2) / Ly);
               } else {
-                const r = Math.sqrt(px*px + py*py);
+                const r = Math.sqrt(px * px + py * py);
                 if (r > radius) return 0;
-                const theta = Math.atan2(py, px);
-                return amplitude * besselJ(m2D, k_mn * r) * Math.cos(m2D * theta);
+                return amplitude * besselJ(m2D, k_mn * r) * Math.cos(m2D * Math.atan2(py, px));
               }
             };
-
-            for (let p of particles) {
-              const amp_center = Math.abs(calcAmpVal(p.x, p.y));
-
-              // Spatial gradient derivation
-              const amp_r = Math.abs(calcAmpVal(p.x + eps, p.y));
-              const amp_l = Math.abs(calcAmpVal(p.x - eps, p.y));
-              const amp_d = Math.abs(calcAmpVal(p.x, p.y + eps));
-              const amp_u = Math.abs(calcAmpVal(p.x, p.y - eps));
-
-              const gradX = (amp_r - amp_l) / (2 * eps);
-              const gradY = (amp_d - amp_u) / (2 * eps);
-
-              // Bouncing kick proportional to acceleration (amp_center)
-              const kickStrength = amp_center * 5.2;
-              if (amp_center > 0.03) {
-                p.x += (Math.random() - 0.5) * kickStrength;
-                p.y += (Math.random() - 0.5) * kickStrength;
-              }
-
-              // Slide sand particles down the amplitude slope (gradient drift)
-              p.x -= gradX * 10.0;
-              p.y -= gradY * 10.0;
-
-              // Enforce bounds
+            for (const p of particles) {
+              const ac = Math.abs(calcAmp(p.x, p.y));
+              const gradX = (Math.abs(calcAmp(p.x + eps, p.y)) - Math.abs(calcAmp(p.x - eps, p.y))) / (2 * eps);
+              const gradY = (Math.abs(calcAmp(p.x, p.y + eps)) - Math.abs(calcAmp(p.x, p.y - eps))) / (2 * eps);
+              if (ac > 0.03) { p.x += (Math.random() - 0.5) * ac * 5.2; p.y += (Math.random() - 0.5) * ac * 5.2; }
+              p.x -= gradX * 10.0; p.y -= gradY * 10.0;
               if (isRect) {
-                if (p.x > Lx/2) p.x = Lx/2;
-                else if (p.x < -Lx/2) p.x = -Lx/2;
-                if (p.y > Ly/2) p.y = Ly/2;
-                else if (p.y < -Ly/2) p.y = -Ly/2;
+                p.x = Math.max(-Lx / 2, Math.min(Lx / 2, p.x));
+                p.y = Math.max(-Ly / 2, Math.min(Ly / 2, p.y));
               } else {
-                const r = Math.sqrt(p.x*p.x + p.y*p.y);
-                if (r > radius) {
-                  p.x = p.x * (radius / r) * 0.99;
-                  p.y = p.y * (radius / r) * 0.99;
-                }
+                const r = Math.sqrt(p.x * p.x + p.y * p.y);
+                if (r > radius) { p.x *= (radius / r) * 0.99; p.y *= (radius / r) * 0.99; }
               }
             }
           }
 
-          // Draw Sand Particles
-          ctx.fillStyle = "rgba(245, 158, 11, 0.75)"; // Gold/Amber sand particles
-          const particles = sandParticlesRef.current;
-          for (let p of particles) {
-            ctx.beginPath();
-            ctx.arc(centerX + p.x, centerY + p.y, 1.4, 0, Math.PI * 2);
-            ctx.fill();
+          ctx.fillStyle = "rgba(245, 158, 11, 0.75)";
+          for (const p of sandParticlesRef.current) {
+            ctx.beginPath(); ctx.arc(centerX + p.x, centerY + p.y, 1.4, 0, Math.PI * 2); ctx.fill();
           }
         }
 
-        // Draw Clamping Plate Frame
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 4;
-        ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-        ctx.shadowBlur = 10;
-        
+        // Plate frame
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 4;
+        ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 10;
         ctx.beginPath();
-        if (isRect) {
-          ctx.rect(centerX - Lx/2, centerY - Ly/2, Lx, Ly);
-        } else {
-          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-        }
+        if (isRect) ctx.rect(centerX - Lx / 2, centerY - Ly / 2, Lx, Ly);
+        else ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // Label Mode
-        ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-        ctx.font = "bold 10px monospace";
-        if (isRect) {
-          ctx.fillText(`RECTANGULAR MODE (m = ${m2D}, n = ${n2D})`, centerX - Lx/2, centerY - Ly/2 - 10);
-        } else {
-          ctx.fillText(`CIRCULAR DRUMHEAD MODE (m = ${m2D}, n = ${n2D})`, centerX - radius, centerY - radius - 10);
-        }
+        ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "bold 10px monospace";
+        if (isRect) ctx.fillText(`RECTANGULAR MODE (m=${m2D}, n=${n2D})`, centerX - Lx / 2, centerY - Ly / 2 - 10);
+        else ctx.fillText(`CIRCULAR DRUMHEAD MODE (m=${m2D}, n=${n2D})`, centerX - radius, centerY - radius - 10);
       }
 
-      // ----------------------------------------------------
-      // DRAW CORNER HUD OVERLAYS
-      // ----------------------------------------------------
+      // -------------------------------------------------------
+      // CORNER HUD OVERLAYS (Phase-Space & Fourier)
+      // -------------------------------------------------------
       if (systemType !== "membrane") {
         const M = numGridSize;
         const currentY = new Float32Array(M);
@@ -1228,189 +1059,141 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
           currentY.set(yNumRef.current);
           prevY.set(yPrevRef.current);
         } else {
-          // Samples analytical function for overlays
           const dx = length / (M - 1);
           for (let i = 0; i < M; i++) {
             const x = i * dx;
-            // analytical displacement and velocities
             const y_val = y_net(x) / visualScale;
             currentY[i] = y_val;
-            prevY[i] = y_val - (dy_dt(x) / visualScale) * 0.005; // backward step approximation
+            prevY[i] = y_val - (dy_dt(x) / visualScale) * 0.005;
           }
         }
 
-        // Draggable vertical probe line drawing
+        // Draggable probe line
         const probePx = 50 + (probeX / length) * (width - 100);
-        ctx.strokeStyle = "rgba(217, 70, 239, 0.35)";
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(217, 70, 239, 0.4)"; ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        ctx.moveTo(probePx, 20);
-        ctx.lineTo(probePx, height - 20);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(probePx, 20); ctx.lineTo(probePx, height - 20); ctx.stroke();
         ctx.setLineDash([]);
 
-        // Handle drawing
         ctx.fillStyle = "#d946ef";
-        ctx.beginPath();
-        ctx.moveTo(probePx - 5, 20);
-        ctx.lineTo(probePx + 5, 20);
-        ctx.lineTo(probePx, 27);
-        ctx.closePath();
-        ctx.fill();
+        ctx.beginPath(); ctx.moveTo(probePx - 5, 20); ctx.lineTo(probePx + 5, 20); ctx.lineTo(probePx, 27); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(probePx - 5, height - 20); ctx.lineTo(probePx + 5, height - 20); ctx.lineTo(probePx, height - 27); ctx.closePath(); ctx.fill();
 
-        ctx.beginPath();
-        ctx.moveTo(probePx - 5, height - 20);
-        ctx.lineTo(probePx + 5, height - 20);
-        ctx.lineTo(probePx, height - 27);
-        ctx.closePath();
-        ctx.fill();
-
-        // 1. PHASE SPACE HUD
+        // Phase-Space HUD
         if (showPhaseSpace) {
-          const hudX = 24;
-          const hudY = height - 170;
-          const hudW = 160;
-          const hudH = 140;
+          const hudX = 24, hudY = height - 170, hudW = 160, hudH = 140;
+          ctx.fillStyle = "rgba(10,10,12,0.88)"; ctx.strokeStyle = "rgba(217,70,239,0.3)"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 14); ctx.fill(); ctx.stroke();
 
-          // Panel background
-          ctx.fillStyle = "rgba(10, 10, 12, 0.88)";
-          ctx.strokeStyle = "rgba(217, 70, 239, 0.3)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.roundRect(hudX, hudY, hudW, hudH, 14);
-          ctx.fill();
-          ctx.stroke();
-
-          // Title
-          ctx.fillStyle = "#d946ef";
-          ctx.font = "bold 7.5px monospace";
-          ctx.fillText("PHASE SPACE: y vs dy/dt", hudX + 10, hudY + 16);
+          ctx.fillStyle = "#d946ef"; ctx.font = "bold 7.5px monospace";
+          ctx.fillText("PHASE SPACE: y vs ẏ", hudX + 10, hudY + 16);
           ctx.fillStyle = "rgba(255,255,255,0.4)";
-          ctx.fillText(`PROBE AT x = ${probeX.toFixed(2)}m`, hudX + 10, hudY + 26);
+          ctx.fillText(`PROBE x = ${probeX.toFixed(2)}m`, hudX + 10, hudY + 26);
 
-          // Grid axes
-          const axesX = hudX + hudW / 2;
-          const axesY = hudY + hudH / 2 + 10;
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-          ctx.lineWidth = 0.8;
+          const axesX = hudX + hudW / 2, axesY = hudY + hudH / 2 + 10;
+          ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 0.8;
           ctx.beginPath();
-          ctx.moveTo(hudX + 10, axesY);
-          ctx.lineTo(hudX + hudW - 10, axesY);
-          ctx.moveTo(axesX, hudY + 36);
-          ctx.lineTo(axesX, hudY + hudH - 10);
+          ctx.moveTo(hudX + 10, axesY); ctx.lineTo(hudX + hudW - 10, axesY);
+          ctx.moveTo(axesX, hudY + 36); ctx.lineTo(axesX, hudY + hudH - 10);
           ctx.stroke();
 
-          // Calculate probe states
           const probeIdx = Math.max(0, Math.min(M - 1, Math.round((probeX / length) * (M - 1))));
           const y_probe = currentY[probeIdx];
-          const dt_derive = 0.005;
-          const v_probe = (currentY[probeIdx] - prevY[probeIdx]) / dt_derive;
+          const v_probe = (currentY[probeIdx] - prevY[probeIdx]) / 0.005;
 
           if (isPlaying) {
             const history = phaseHistoryRef.current;
             history.push({ y: y_probe, v: v_probe });
-            if (history.length > 140) history.shift();
+            if (history.length > 160) history.shift();
           }
 
-          // Plot orbit history
           const history = phaseHistoryRef.current;
           if (history.length > 1) {
-            ctx.strokeStyle = "rgba(217, 70, 239, 0.85)";
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = "rgba(217,70,239,0.85)"; ctx.lineWidth = 1.5;
             ctx.beginPath();
             for (let i = 0; i < history.length; i++) {
-              // scale factors
               const px = axesX + (history[i].y / amplitude) * 55;
               const py = axesY - (history[i].v / (amplitude * (omega || 20))) * 35;
-              if (i === 0) ctx.moveTo(px, py);
-              else ctx.lineTo(px, py);
+              i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
             }
             ctx.stroke();
           }
 
-          // Dot at current state
           const curPx = axesX + (y_probe / amplitude) * 55;
           const curPy = axesY - (v_probe / (amplitude * (omega || 20))) * 35;
-          ctx.fillStyle = "#d946ef";
-          ctx.beginPath();
-          ctx.arc(curPx, curPy, 4, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillStyle = "#d946ef"; ctx.beginPath(); ctx.arc(curPx, curPy, 4, 0, Math.PI * 2); ctx.fill();
         }
 
-        // 2. SPATIAL FOURIER HUD
+        // Fourier HUD
         if (showFourier) {
-          const hudX = width - 184;
-          const hudY = height - 170;
-          const hudW = 160;
-          const hudH = 140;
+          const hudX = width - 184, hudY = height - 170, hudW = 160, hudH = 140;
+          ctx.fillStyle = "rgba(10,10,12,0.88)"; ctx.strokeStyle = "rgba(139,92,246,0.3)"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 14); ctx.fill(); ctx.stroke();
 
-          // Panel background
-          ctx.fillStyle = "rgba(10, 10, 12, 0.88)";
-          ctx.strokeStyle = "rgba(139, 92, 246, 0.3)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.roundRect(hudX, hudY, hudW, hudH, 14);
-          ctx.fill();
-          ctx.stroke();
-
-          // Title
-          ctx.fillStyle = "#a78bfa";
-          ctx.font = "bold 7.5px monospace";
-          ctx.fillText("SPATIAL FOURIER SPECTRUM", hudX + 10, hudY + 16);
+          ctx.fillStyle = "#a78bfa"; ctx.font = "bold 7.5px monospace";
+          ctx.fillText("SPATIAL FOURIER MODES", hudX + 10, hudY + 16);
           ctx.fillStyle = "rgba(255,255,255,0.4)";
-          ctx.fillText("RELATIVE MODE ACTIVATION P(n)", hudX + 10, hudY + 26);
+          ctx.fillText("A_n = (2/L)∫y·φ_n dx", hudX + 10, hudY + 26);
 
-          // Compute real Fourier spatial overlap integrals
           const weights: number[] = [];
           for (let n = 1; n <= 6; n++) {
             let sum = 0;
             for (let i = 0; i < M; i++) {
               const x_norm = i / (M - 1);
               let phi = 0;
-              if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective") {
-                phi = Math.sin(n * Math.PI * x_norm);
-              } else if (boundaryType === "Free-Free") {
-                phi = Math.cos(n * Math.PI * x_norm);
-              } else if (boundaryType === "Fixed-Free") {
-                phi = Math.sin((2 * n - 1) * Math.PI * x_norm / 2);
-              }
+              if (boundaryType === "Fixed-Fixed" || boundaryType === "Partially Reflective") phi = Math.sin(n * Math.PI * x_norm);
+              else if (boundaryType === "Free-Free") phi = Math.cos(n * Math.PI * x_norm);
+              else if (boundaryType === "Fixed-Free") phi = Math.sin((2 * n - 1) * Math.PI * x_norm / 2);
               sum += currentY[i] * phi;
             }
-            // Normalisation factor 2 / M
             weights.push(Math.abs(sum * 2 / M));
           }
 
-          // Draw bars
-          const startX = hudX + 12;
-          const startY = hudY + hudH - 24;
-          const barSpacing = 23;
-          const maxBarH = 75;
-
-          // Find max weight to normalize scale nicely
+          const startX = hudX + 12, startY = hudY + hudH - 24, barSpacing = 23, maxBarH = 75;
           let maxW = 0.05;
-          for (let w of weights) if (w > maxW) maxW = w;
+          for (const w of weights) if (w > maxW) maxW = w;
 
           for (let i = 0; i < 6; i++) {
             const h_val = (weights[i] / Math.max(amplitude, maxW)) * maxBarH;
             const barH = Math.max(2, Math.min(maxBarH, h_val));
-            const barX = startX + i * barSpacing;
-            const barY = startY - barH;
-
-            // Gradient bar
+            const barX = startX + i * barSpacing, barY = startY - barH;
             const grad = ctx.createLinearGradient(barX, startY, barX, barY);
-            grad.addColorStop(0, "#8b5cf6");
-            grad.addColorStop(1, "#38bdf8");
-
+            grad.addColorStop(0, "#8b5cf6"); grad.addColorStop(1, "#38bdf8");
             ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.roundRect(barX, barY, 13, barH, [2, 2, 0, 0]);
-            ctx.fill();
-
-            // Label n
-            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-            ctx.font = "bold 7px monospace";
+            ctx.beginPath(); ctx.roundRect(barX, barY, 13, barH, [2, 2, 0, 0]); ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "bold 7px monospace";
             ctx.fillText(`n${i + 1}`, barX + 2, startY + 11);
+          }
+        }
+
+        // -------------------------------------------------------
+        // PDE SOLVER DIAGNOSTICS HUD
+        // -------------------------------------------------------
+        if (showSolverDiagnostics && systemType === "string") {
+          const hudX = width / 2 - 120, hudY = 20, hudW = 240, hudH = 80;
+          ctx.fillStyle = "rgba(10,10,14,0.92)"; ctx.strokeStyle = "rgba(56,189,248,0.3)"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.roundRect(hudX, hudY, hudW, hudH, 12); ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = "#38bdf8"; ctx.font = "bold 7.5px monospace";
+          ctx.fillText("PDE SOLVER DIAGNOSTICS", hudX + 10, hudY + 16);
+
+          const M_diag = numGridSize;
+          const dx_diag = length / (M_diag - 1);
+          const dt_stable_diag = 0.8 * dx_diag / v;
+          const cfl = v * dt_stable_diag / dx_diag; // = 0.8 by construction
+
+          ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "7px monospace";
+          ctx.fillText(`M = ${M_diag} nodes    dx = ${dx_diag.toFixed(4)}m    dt_stable = ${dt_stable_diag.toFixed(5)}s`, hudX + 10, hudY + 32);
+          ctx.fillText(`v = ${v.toFixed(1)} m/s    Sub-steps/frame ≈ ${Math.ceil(0.016 / dt_stable_diag)}`, hudX + 10, hudY + 44);
+
+          // CFL indicator
+          const cflColor = cfl <= 1.0 ? "#10b981" : "#ef4444";
+          ctx.fillStyle = cflColor; ctx.font = "bold 8px monospace";
+          ctx.fillText(`CFL  C = v·dt/dx = ${cfl.toFixed(3)}  ${cfl <= 1.0 ? "✓ STABLE" : "✗ UNSTABLE"}`, hudX + 10, hudY + 58);
+
+          if (solverType === "numerical") {
+            ctx.fillStyle = "rgba(255,255,255,0.4)";
+            ctx.fillText(`L2 error vs analytical: ${l2ErrorRef.current.toExponential(2)}`, hudX + 10, hudY + 70);
           }
         }
       }
@@ -1419,26 +1202,20 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     };
 
     animationId = requestAnimationFrame(render);
-
     return () => cancelAnimationFrame(animationId);
   }, [
     systemType, solverType, discreteBeads, membraneGeometry, m2D, n2D, sandPattern, probeX, showPhaseSpace, showFourier,
     amplitude, harmonic, waveSpeed, boundaryType, renderMode, showComponents, showNodes, showAntinodes,
-    isPlaying, time, length, tension, density, damping, reflection, simMode, drivingFrequency, boundaryImpedance, visualAmplitudeFactor
+    isPlaying, time, length, tension, density, damping, reflection, simMode, drivingFrequency, boundaryImpedance, visualAmplitudeFactor,
+    slowMotionFactor, showEnergyHeatmap, energyMode, showSolverDiagnostics, manualPhase,
   ]);
 
-  // Handle click / drag probe selector
+  // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current || systemType === "membrane") return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const u = (e.clientX - rect.left) / rect.width;
-    const clickX = u * length;
-
-    // Check if click is near the probe line (within 6% of length)
-    const tolerance = 0.06 * length;
-    if (Math.abs(clickX - probeX) < tolerance) {
-      isDraggingProbeRef.current = true;
-    }
+    const clickX = ((e.clientX - rect.left) / rect.width) * length;
+    if (Math.abs(clickX - probeX) < 0.06 * length) isDraggingProbeRef.current = true;
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1447,217 +1224,90 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     const u = (e.clientX - rect.left) / rect.width;
     const currentMouseX = u * length;
 
-    // Show resize cursor when near the probe line
-    const tolerance = 0.05 * length;
-    if (Math.abs(currentMouseX - probeX) < tolerance && systemType !== "membrane") {
+    if (Math.abs(currentMouseX - probeX) < 0.05 * length && systemType !== "membrane") {
       canvasRef.current.style.cursor = "col-resize";
-    } else {
-      canvasRef.current.style.cursor = "crosshair";
-    }
+    } else { canvasRef.current.style.cursor = "crosshair"; }
 
     if (isDraggingProbeRef.current) {
-      const newProbeX = Math.max(0.01, Math.min(length - 0.01, currentMouseX));
-      setProbeX(newProbeX);
+      setProbeX(Math.max(0.01, Math.min(length - 0.01, currentMouseX)));
     }
 
-    // Update Hover inspectors
+    // 1D hover data
     if (systemType === "membrane") {
-      const cX = rect.width / 2;
-      const cY = rect.height / 2;
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      // map canvas coordinates (1000x600 size)
-      const mappedX = (mouseX / rect.width) * 1000 - 500;
-      const mappedY = (mouseY / rect.height) * 600 - 300;
-
-      const isRect = membraneGeometry === "rectangular";
-      const Lx = 440;
-      const Ly = 360;
-      const radius = 220;
-
-      let r_m = Math.sqrt(mappedX * mappedX + mappedY * mappedY);
-      if ((isRect && (Math.abs(mappedX) <= Lx/2 && Math.abs(mappedY) <= Ly/2)) || (!isRect && r_m <= radius)) {
-        // compute local Z amplitude
-        const k_mn = isRect ? 0 : (BESSEL_ZEROS[m2D]?.[n2D - 1] || 2.4048) / radius;
+      const cX = rect.width / 2, cY = rect.height / 2;
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const mappedX = (mx / rect.width) * 1000 - 500;
+      const mappedY = (my / rect.height) * 600 - 300;
+      const Lx = 440, Ly = 360, radius = 220;
+      const r_m = Math.sqrt(mappedX * mappedX + mappedY * mappedY);
+      const inBounds = membraneGeometry === "rectangular"
+        ? (Math.abs(mappedX) <= Lx / 2 && Math.abs(mappedY) <= Ly / 2)
+        : r_m <= radius;
+      if (inBounds) {
+        const k_mn = membraneGeometry === "circular" ? (BESSEL_ZEROS[m2D]?.[n2D - 1] || 2.4048) / radius : 0;
         let z_val = 0;
-        if (isRect) {
-          const x_norm = (mappedX + Lx/2) / Lx;
-          const y_norm = (mappedY + Ly/2) / Ly;
-          z_val = amplitude * Math.sin(m2D * Math.PI * x_norm) * Math.sin(n2D * Math.PI * y_norm);
+        if (membraneGeometry === "rectangular") {
+          z_val = amplitude * Math.sin(m2D * Math.PI * (mappedX + Lx / 2) / Lx) * Math.sin(n2D * Math.PI * (mappedY + Ly / 2) / Ly);
         } else {
-          const theta = Math.atan2(mappedY, mappedX);
-          z_val = amplitude * besselJ(m2D, k_mn * r_m) * Math.cos(m2D * theta);
+          z_val = amplitude * besselJ(m2D, k_mn * r_m) * Math.cos(m2D * Math.atan2(mappedY, mappedX));
         }
-
         const isNodal = Math.abs(z_val) < 0.06;
-        setHoverData({
-          visible: true,
-          x: e.clientX,
-          y: e.clientY,
-          px: isRect ? mappedX : r_m,
-          z: z_val * Math.cos(4.0 * time),
-          energy: 0.5 * tension * z_val * z_val, // qualitative energy
-          nodeType: isNodal ? "Nodal Line (Zero amplitude)" : "Vibrating Membrane Point",
-          definition: isNodal
-            ? "A line on a 2D vibrating plate where displacement is continuously zero. Sand naturally accumulates here."
-            : "Particles oscillate transversely. Standing waves interfere constructively and destructively in 2D."
-        });
-      } else {
-        setHoverData((prev) => ({ ...prev, visible: false }));
-      }
+        setHoverData({ visible: true, x: e.clientX, y: e.clientY, px: membraneGeometry === "circular" ? r_m : mappedX, z: z_val * Math.cos(4.0 * time), energy: 0.5 * tension * z_val * z_val, nodeType: isNodal ? "Nodal Line (Zero amplitude)" : "Vibrating Membrane Point", definition: isNodal ? "Zero-displacement line. Sand accumulates here in Chladni patterns." : "Point oscillates transversely. Constructive/destructive interference in 2D." });
+      } else { setHoverData((prev) => ({ ...prev, visible: false })); }
       return;
     }
 
-    // 1D String/Air Hover calculations
     const clickX = u * length;
-    const isDriven = simMode === "driven";
-    const mu = density;
-    const T = tension;
-    const v = Math.sqrt(T / mu);
+    const mu = density, T = tension, v_val = Math.sqrt(T / mu);
+    let R_hover = -1, Z2_h = 0;
+    if (boundaryType === "Fixed-Fixed") { R_hover = -1; Z2_h = 0; }
+    else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") { R_hover = 1; Z2_h = 1e8; }
+    else if (boundaryType === "Partially Reflective") { Z2_h = boundaryImpedance ?? 0; R_hover = (Z2_h - Math.sqrt(T * mu)) / (Z2_h + Math.sqrt(T * mu)); }
 
-    let R = -1;
-    let Z2 = 0;
-    if (boundaryType === "Fixed-Fixed") {
-      R = -1;
-      Z2 = 0;
-    } else if (boundaryType === "Free-Free" || boundaryType === "Fixed-Free") {
-      R = 1;
-      Z2 = 1e8;
-    } else if (boundaryType === "Partially Reflective") {
-      Z2 = boundaryImpedance !== undefined ? boundaryImpedance : 0;
-      R = (Z2 - Math.sqrt(T * mu)) / (Z2 + Math.sqrt(T * mu));
-    }
+    let y_val = 0, dy_dt_val = 0, dy_dx_val = 0, k_h = 0, omega_h = 0;
 
-    const M = numGridSize;
-    let y_val = 0;
-    let dy_dt_val = 0;
-    let dy_dx_val = 0;
-    let lambda = 0;
-    let k = 0;
-    let omega = 0;
-
-    if (solverType === "analytical") {
-      if (!isDriven) {
-        let n_eff = harmonic;
-        if (boundaryType === "Fixed-Fixed" || boundaryType === "Free-Free" || boundaryType === "Partially Reflective") {
-          lambda = (2 * length) / harmonic;
-          k = (n_eff * Math.PI) / length;
-        } else if (boundaryType === "Fixed-Free") {
-          const oddHarmonic = harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-          n_eff = oddHarmonic;
-          lambda = (4 * length) / oddHarmonic;
-          k = (oddHarmonic * Math.PI) / (2 * length);
-        }
-        omega = k * v;
-        const beta = damping;
-        const envelope = Math.exp(-beta * time);
-
-        if (boundaryType === "Free-Free") {
-          y_val = amplitude * envelope * Math.cos(k * clickX) * Math.cos(omega * time);
-          const A_t = amplitude * envelope;
-          const dA_dt = -beta * A_t * Math.cos(omega * time) - omega * A_t * Math.sin(omega * time);
-          dy_dt_val = dA_dt * Math.cos(k * clickX);
-          dy_dx_val = -k * amplitude * envelope * Math.sin(k * clickX) * Math.cos(omega * time);
-        } else {
-          y_val = amplitude * envelope * Math.sin(k * clickX) * Math.cos(omega * time);
-          const A_t = amplitude * envelope;
-          const dA_dt = -beta * A_t * Math.cos(omega * time) - omega * A_t * Math.sin(omega * time);
-          dy_dt_val = dA_dt * Math.sin(k * clickX);
-          dy_dx_val = k * amplitude * envelope * Math.cos(k * clickX) * Math.cos(omega * time);
-        }
+    if (solverType === "analytical" && simMode !== "driven") {
+      const n_eff = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+      k_h = boundaryType === "Fixed-Free" ? (n_eff * Math.PI) / (2 * length) : (n_eff * Math.PI) / length;
+      omega_h = k_h * v_val;
+      const beta = damping;
+      const env = Math.exp(-beta * time);
+      const t_v = time * slowMotionFactor;
+      if (boundaryType === "Free-Free") {
+        y_val = amplitude * env * Math.cos(k_h * clickX) * Math.cos(omega_h * t_v);
+        dy_dt_val = (-beta * env * Math.cos(omega_h * t_v) - omega_h * env * Math.sin(omega_h * t_v)) * Math.cos(k_h * clickX) * amplitude;
+        dy_dx_val = -k_h * amplitude * env * Math.sin(k_h * clickX) * Math.cos(omega_h * t_v);
       } else {
-        const f_d = drivingFrequency;
-        omega = 2 * Math.PI * f_d;
-        const beta = damping;
-        const w_v2 = (omega * omega) / (v * v);
-        const b_w_v2 = (beta * omega) / (v * v);
-        k = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
-        const alpha = k > 0 ? (beta * omega) / (v * v * k) : 0;
-
-        const exp_2aL = Math.exp(-2 * alpha * length);
-        const den_re = 1 + R * exp_2aL * Math.cos(2 * k * length);
-        const den_im = -R * exp_2aL * Math.sin(2 * k * length);
-        const den_mag2 = den_re * den_re + den_im * den_im;
-
-        const exp_ax = Math.exp(-alpha * clickX);
-        const exp_a2Lx = Math.exp(-alpha * (2 * length - clickX));
-
-        const num_re = exp_ax * Math.cos(k * clickX) + R * exp_a2Lx * Math.cos(k * (2 * length - clickX));
-        const num_im = -exp_ax * Math.sin(k * clickX) - R * exp_a2Lx * Math.sin(k * (2 * length - clickX));
-
-        const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
-        const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
-
-        y_val = amplitude * (Y_re * Math.cos(omega * time) - Y_im * Math.sin(omega * time));
-        dy_dt_val = -omega * amplitude * (Y_re * Math.sin(omega * time) + Y_im * Math.cos(omega * time));
-
-        const term_re = -exp_ax * Math.cos(k * clickX) + R * exp_a2Lx * Math.cos(k * (2 * length - clickX));
-        const term_im = exp_ax * Math.sin(k * clickX) - R * exp_a2Lx * Math.sin(k * (2 * length - clickX));
-        const num_prime_re = alpha * term_re - k * term_im;
-        const num_prime_im = alpha * term_im + k * term_re;
-
-        const Yp_re = (num_prime_re * den_re + num_prime_im * den_im) / den_mag2;
-        const Yp_im = (num_prime_im * den_re - num_prime_re * den_im) / den_mag2;
-
-        dy_dx_val = amplitude * (Yp_re * Math.cos(omega * time) - Yp_im * Math.sin(omega * time));
+        y_val = amplitude * env * Math.sin(k_h * clickX) * Math.cos(omega_h * t_v);
+        dy_dt_val = (-beta * env * Math.cos(omega_h * t_v) - omega_h * env * Math.sin(omega_h * t_v)) * Math.sin(k_h * clickX) * amplitude;
+        dy_dx_val = k_h * amplitude * env * Math.cos(k_h * clickX) * Math.cos(omega_h * t_v);
       }
     } else {
-      // Numerical interpolation values for hover data
-      const y = yNumRef.current;
-      const y_prev = yPrevRef.current;
-      const idx_raw = (clickX / length) * (M - 1);
-      const idx_l = Math.max(0, Math.floor(idx_raw));
-      const idx_h = Math.min(M - 1, Math.ceil(idx_raw));
-      const w = idx_raw - idx_l;
-      const dx = length / (M - 1);
-
-      y_val = y[idx_l] * (1 - w) + y[idx_h] * w;
-      dy_dt_val = (y_val - (y_prev[idx_l] * (1 - w) + y_prev[idx_h] * w)) / 0.005;
-      dy_dx_val = (y[idx_h] - y[idx_l]) / Math.max(1e-5, (idx_h - idx_l) * dx);
+      const y = yNumRef.current, y_prev = yPrevRef.current;
+      const M = numGridSize;
+      const ir = (clickX / length) * (M - 1);
+      const il = Math.max(0, Math.floor(ir)), ih = Math.min(M - 1, Math.ceil(ir));
+      const w = ir - il, dx = length / (M - 1);
+      y_val = y[il] * (1 - w) + y[ih] * w;
+      dy_dt_val = (y_val - (y_prev[il] * (1 - w) + y_prev[ih] * w)) / 0.005;
+      dy_dx_val = (y[ih] - y[il]) / Math.max(1e-5, (ih - il) * dx);
     }
 
     const local_K = 0.5 * mu * dy_dt_val * dy_dt_val;
     const local_U = 0.5 * T * dy_dx_val * dy_dx_val;
-    const localEnergy = local_K + local_U;
 
-    // Node classification envelope approximation
+    const n_eff2 = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
+    const k_env = boundaryType === "Fixed-Free" ? (n_eff2 * Math.PI) / (2 * length) : (n_eff2 * Math.PI) / length;
+    const envelope = Math.abs(boundaryType === "Free-Free" ? Math.cos(k_env * clickX) : Math.sin(k_env * clickX));
     let nodeType = "Intermediate Point";
-    let definition = "Medium oscillates dynamically. Superposition of propagating wave fronts produces varying local displacement.";
-    
-    // envelope width
-    let currentEnvelope = 0.5;
-    if (solverType === "analytical" && !isDriven) {
-      currentEnvelope = Math.abs(boundaryType === "Free-Free" ? Math.cos(k * clickX) : Math.sin(k * clickX));
-    } else {
-      // approximation for numerical nodes
-      const activeH = boundaryType === "Fixed-Free" && harmonic % 2 === 0 ? harmonic - 1 : harmonic;
-      const k_num = boundaryType === "Fixed-Free" ? (activeH * Math.PI) / (2 * length) : (activeH * Math.PI) / length;
-      currentEnvelope = Math.abs(boundaryType === "Free-Free" ? Math.cos(k_num * clickX) : Math.sin(k_num * clickX));
-    }
+    let definition = "Dynamic oscillation. Local superposition of propagating wavefronts.";
+    if (envelope < 0.1) { nodeType = "Node (Zero Amplitude)"; definition = "Continuous destructive interference. Displacement perpetually zero."; }
+    else if (envelope > 0.9) { nodeType = "Antinode (Maximum Amplitude)"; definition = "Continuous constructive interference. Maximum displacement excursion."; }
 
-    if (currentEnvelope < 0.1) {
-      nodeType = "Node (Zero Amplitude)";
-      definition = "A point along a standing wave with minimum (zero) displacement due to continuous destructive interference.";
-    } else if (currentEnvelope > 0.9) {
-      nodeType = "Antinode (Maximum Amplitude)";
-      definition = "A point along a standing wave with maximum displacement due to continuous constructive interference.";
-    }
-
-    setHoverData({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      px: clickX,
-      z: y_val,
-      energy: localEnergy,
-      nodeType,
-      definition
-    });
+    setHoverData({ visible: true, x: e.clientX, y: e.clientY, px: clickX, z: y_val, energy: local_K + local_U, nodeType, definition });
   };
 
-  const handleMouseUp = () => {
-    isDraggingProbeRef.current = false;
-  };
+  const handleMouseUp = () => { isDraggingProbeRef.current = false; };
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-[#09090b] rounded-[32px] border border-white/10 overflow-hidden shadow-2xl">
@@ -1669,13 +1319,9 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={() => {
-          isDraggingProbeRef.current = false;
-          setHoverData((prev) => ({ ...prev, visible: false }));
-        }}
+        onMouseLeave={() => { isDraggingProbeRef.current = false; setHoverData((prev) => ({ ...prev, visible: false })); }}
       />
 
-      {/* Floating HUD status indicator */}
       <div className="absolute top-24 left-6 flex flex-col gap-2 pointer-events-none z-10 select-none">
         <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2 shadow-lg w-fit">
           <div className={`w-2 h-2 rounded-full ${isPlaying ? "bg-emerald-500 animate-pulse" : "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"}`} />
@@ -1684,16 +1330,13 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
           </span>
         </div>
         <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-mono text-white/60 shadow-lg uppercase w-fit">
-          SYSTEM: {systemType === "string" ? "1D Transverse String" : systemType === "air" ? "Acoustic Air Pipe" : "2D Resonant Membrane"} | CORE: {solverType === "analytical" ? "Analytical Engine" : "Numerical Solver"}
+          {systemType === "string" ? "1D Transverse String" : systemType === "air" ? "Acoustic Air Pipe" : "2D Resonant Membrane"} | {solverType === "analytical" ? "Analytical" : "Numerical PDE"}
         </div>
-        {systemType === "string" && (
-          <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-mono text-white/60 shadow-lg uppercase w-fit">
-            REPRESENTATION: {discreteBeads ? "Discrete Coupled Beads (M=15)" : "Continuous String (M=60)"}
-          </div>
-        )}
+        <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-mono text-white/60 shadow-lg uppercase w-fit">
+          τ_vis = {slowMotionFactor.toFixed(3)}×  |  ωt_phase ∝ {slowMotionFactor.toFixed(3)} real-time
+        </div>
       </div>
 
-      {/* Draggable Inspector Tooltip */}
       <AnimatePresence>
         {hoverData.visible && (
           <motion.div
@@ -1709,27 +1352,23 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
             }}
           >
             <div className="flex items-center gap-2 mb-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${hoverData.nodeType.includes("Node") ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" : hoverData.nodeType.includes("Antinode") ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]"}`} />
+              <span className={`w-2.5 h-2.5 rounded-full ${hoverData.nodeType.includes("Node") ? "bg-rose-500" : hoverData.nodeType.includes("Antinode") ? "bg-emerald-500" : "bg-cyan-500"}`} />
               <span className="text-[10px] font-black uppercase tracking-widest text-white/80">{hoverData.nodeType}</span>
             </div>
-
-            <p className="text-[9px] text-white/50 leading-relaxed mb-3 font-medium">
-              {hoverData.definition}
-            </p>
-
+            <p className="text-[9px] text-white/50 leading-relaxed mb-3">{hoverData.definition}</p>
             <div className="space-y-2 border-t border-white/5 pt-2">
-              <div className="flex justify-between items-center gap-6">
-                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Position ({systemType === "membrane" && membraneGeometry === "circular" ? "Radius r" : "x"})</span>
+              <div className="flex justify-between gap-6">
+                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Position (x)</span>
                 <span className="text-xs font-mono font-bold text-white/80">{hoverData.px.toFixed(3)} m</span>
               </div>
-              <div className="flex justify-between items-center gap-6">
+              <div className="flex justify-between gap-6">
                 <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Displacement</span>
                 <span className="text-xs font-mono font-bold text-cyan-400">{(hoverData.z * 100).toFixed(2)} cm</span>
               </div>
               {systemType !== "air" && (
-                <div className="flex justify-between items-center gap-6">
-                  <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Local Energy</span>
-                  <span className="text-xs font-mono font-bold text-fuchsia-400">{hoverData.energy.toFixed(5)} J/m</span>
+                <div className="flex justify-between gap-6">
+                  <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">Local u(x,t)</span>
+                  <span className="text-xs font-mono font-bold text-fuchsia-400">{hoverData.energy.toExponential(3)} J/m</span>
                 </div>
               )}
             </div>
