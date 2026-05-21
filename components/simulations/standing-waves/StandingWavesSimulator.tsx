@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { StandingWavesCanvas, BoundaryType, RenderMode } from "./StandingWavesCanvas";
+import { StandingWavesCanvas, BoundaryType, RenderMode, SystemType } from "./StandingWavesCanvas";
 import { SimulationPageLayout, TabType } from "@/components/simulations/SimulationPageLayout";
-import { Play, Pause, Waves, Settings, Activity, Maximize2, Layers, HelpCircle, MousePointer2, Settings2, BookOpen } from "lucide-react";
+import { Play, Pause, Waves, Settings, Activity, Maximize2, Layers, HelpCircle, MousePointer2, Settings2, BookOpen, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StandingWavesTheory } from "./StandingWavesTheory";
 import StandingWavesEnvironment from "./StandingWavesEnvironment";
@@ -87,10 +87,27 @@ const ControlCard = ({ title, icon: Icon, children, color }: ControlCardProps) =
   </div>
 );
 
+const BESSEL_ZEROS: { [m: number]: number[] } = {
+  0: [2.4048, 5.5201, 8.6537, 11.7915],
+  1: [3.8317, 7.0156, 10.1735, 13.3237],
+  2: [5.1356, 8.4172, 11.6198, 14.7960],
+  3: [6.3802, 9.7610, 13.0152, 16.2235]
+};
+
 export const StandingWavesSimulator = () => {
   const [activeTab, setActiveTab] = useState<TabType>("canvas");
   const [isPlaying, setIsPlaying] = useState(true);
   const [time, setTime] = useState(0);
+
+  // Lab Modules State
+  const [systemType, setSystemType] = useState<SystemType>("string");
+  const [solverType, setSolverType] = useState<"analytical" | "numerical">("analytical");
+  const [discreteBeads, setDiscreteBeads] = useState(false);
+  const [membraneGeometry, setMembraneGeometry] = useState<"rectangular" | "circular">("rectangular");
+  const [m2D, setM2D] = useState(2);
+  const [n2D, setN2D] = useState(2);
+  const [sandPattern, setSandPattern] = useState(true);
+  const [probeX, setProbeX] = useState(1.0); // m
 
   // Physics parameters
   const [simMode, setSimMode] = useState<"harmonic" | "driven">("harmonic");
@@ -109,6 +126,13 @@ export const StandingWavesSimulator = () => {
   const [drivingFrequency, setDrivingFrequency] = useState(25.0); // f_d (Hz)
   const [amplitude, setAmplitude] = useState(1.3); // A (m) - displacement amplitude
   const [preset, setPreset] = useState("Nylon String");
+
+  // Synchronize probeX when length is changed
+  useEffect(() => {
+    if (probeX > length) {
+      setProbeX(length);
+    }
+  }, [length, probeX]);
 
   // Derived Physics
   const waveSpeed = Math.sqrt(tension / density); // v = √(T/μ)
@@ -207,6 +231,153 @@ export const StandingWavesSimulator = () => {
     bandwidth = damping / Math.PI;
   }
 
+  // Override telemetry values if active module is 2D membrane
+  if (systemType === "membrane") {
+    const Lx = 0.44; // m (scaled physical bounds matching canvas coordinates)
+    const Ly = 0.36; // m
+    const radius = 0.22; // m
+    if (membraneGeometry === "rectangular") {
+      k = Math.sqrt(Math.pow((m2D * Math.PI) / Lx, 2) + Math.pow((n2D * Math.PI) / Ly, 2));
+    } else {
+      const x_mn = BESSEL_ZEROS[m2D]?.[n2D - 1] || 2.4048;
+      k = x_mn / radius;
+    }
+    omega = waveSpeed * k;
+    frequency = omega / (2 * Math.PI);
+    lambda = (2 * Math.PI) / k;
+    qFactor = damping > 0 ? omega / (2 * damping) : Infinity;
+    bandwidth = damping / Math.PI;
+  }
+
+  // Damping Regime Detection
+  let omega0 = omega;
+  if (simMode === "driven" && systemType !== "membrane") {
+    const f1 = waveSpeed / (2 * length);
+    const harmonicEstimate = Math.max(1, Math.round(drivingFrequency / f1));
+    const resonantFreqEstimate = harmonicEstimate * f1;
+    omega0 = 2 * Math.PI * resonantFreqEstimate;
+  }
+  let dampingRegime: "Undamped" | "Underdamped" | "Critically Damped" | "Overdamped" = "Undamped";
+  if (damping === 0) {
+    dampingRegime = "Undamped";
+  } else if (damping < omega0) {
+    dampingRegime = "Underdamped";
+  } else if (Math.abs(damping - omega0) < 0.01 * omega0) {
+    dampingRegime = "Critically Damped";
+  } else {
+    dampingRegime = "Overdamped";
+  }
+
+  // Live dynamic LaTeX-like formatted equation renderer
+  const renderMathEquation = () => {
+    if (systemType === "string") {
+      if (simMode === "harmonic") {
+        return (
+          <div className="flex flex-col gap-2 font-serif text-sm text-emerald-400 bg-black/40 border border-white/5 p-4 rounded-2xl">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Governing Equation</div>
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap py-1 no-scrollbar text-base">
+              <span className="italic">y(x, t)</span>
+              <span>=</span>
+              <span>2A</span>
+              {damping > 0 && (
+                <span className="relative flex items-center">
+                  e<sup className="text-[10px] -top-2">-βt</sup>
+                </span>
+              )}
+              <span>{baseFuncStr}(kx)</span>
+              <span>cos(ωt)</span>
+            </div>
+            <div className="text-[10px] text-white/50 font-sans border-t border-white/5 pt-1 mt-1 grid grid-cols-2 gap-2">
+              <div>A = {amplitude.toFixed(2)} m</div>
+              <div>β = {damping.toFixed(2)} s⁻¹</div>
+              <div>k = {k.toFixed(2)} rad/m</div>
+              <div>ω = {omega.toFixed(1)} rad/s</div>
+            </div>
+          </div>
+        );
+      } else {
+        return (
+          <div className="flex flex-col gap-2 font-serif text-sm text-emerald-400 bg-black/40 border border-white/5 p-4 rounded-2xl">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Steady-State Wave Solution</div>
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap py-1 no-scrollbar text-xs md:text-sm">
+              <span className="italic">y(x, t)</span>
+              <span>=</span>
+              <span>Re [ Y(x) e<sup className="text-[10px] -top-2">iωt</sup> ]</span>
+            </div>
+            <div className="text-[10px] text-white/50 font-sans border-t border-white/5 pt-1 mt-1 flex flex-col gap-1">
+              <div className="overflow-x-auto whitespace-nowrap no-scrollbar py-0.5">Y(x) = A_d ( e<sup className="-top-1">-αx</sup>e<sup className="-top-1">-ikx</sup> + R e<sup className="-top-1">-α(2L-x)</sup>e<sup className="-top-1">-ik(2L-x)</sup> ) / ( 1 + R e<sup className="-top-1">-2αL</sup>e<sup className="-top-1">-2ikL</sup> )</div>
+              <div className="grid grid-cols-2 gap-1 mt-1">
+                <div>ω = {omega.toFixed(1)} rad/s</div>
+                <div>R = {R.toFixed(3)}</div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    } else if (systemType === "air") {
+      return (
+        <div className="flex flex-col gap-2 font-serif text-sm text-emerald-400 bg-black/40 border border-white/5 p-4 rounded-2xl">
+          <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Acoustic Pipe Wave Equations</div>
+          <div className="flex flex-col gap-2 py-1 text-xs">
+            <div className="flex items-center gap-1">
+              <span className="text-white/40 font-sans text-[9px] w-20">Displacement s:</span>
+              <span className="italic">s(x, t) = s₀ e<sup className="text-[8px] -top-1.5">-βt</sup> {baseFuncStr}(kx) cos(ωt)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-white/40 font-sans text-[9px] w-20">Pressure p:</span>
+              <span className="italic">p(x, t) = -B <sup>∂s</sup>/<sub>∂x</sub> = ∓ B k s₀ e<sup className="text-[8px] -top-1.5">-βt</sup> {baseFuncStr === "sin" ? "cos" : "sin"}(kx) cos(ωt)</span>
+            </div>
+          </div>
+          <div className="text-[10px] text-white/50 font-sans border-t border-white/5 pt-1 mt-1 grid grid-cols-2 gap-2">
+            <div>s₀ = {amplitude.toFixed(2)} m</div>
+            <div>k = {k.toFixed(2)} rad/m</div>
+            <div>B = ρ v² = {(density * waveSpeed * waveSpeed).toFixed(0)} Pa</div>
+            <div>ω = {omega.toFixed(1)} rad/s</div>
+          </div>
+        </div>
+      );
+    } else {
+      if (membraneGeometry === "rectangular") {
+        return (
+          <div className="flex flex-col gap-2 font-serif text-sm text-emerald-400 bg-black/40 border border-white/5 p-4 rounded-2xl">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Rectangular Membrane Mode (m, n)</div>
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap py-1 no-scrollbar text-xs">
+              <span className="italic">w(x, y, t)</span>
+              <span>=</span>
+              <span>A sin(<sup>mπx</sup>/<sub>L_x</sub>) sin(<sup>nπy</sup>/<sub>L_y</sub>) cos(ωt)</span>
+            </div>
+            <div className="text-[10px] text-white/50 font-sans border-t border-white/5 pt-1 mt-1 grid grid-cols-2 gap-2">
+              <div>Mode (m, n) = ({m2D}, {n2D})</div>
+              <div>A = {amplitude.toFixed(2)} m</div>
+              <div>ω = {omega.toFixed(1)} rad/s</div>
+              <div>v = {waveSpeed.toFixed(1)} m/s</div>
+            </div>
+          </div>
+        );
+      } else {
+        return (
+          <div className="flex flex-col gap-2 font-serif text-sm text-emerald-400 bg-black/40 border border-white/5 p-4 rounded-2xl">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Circular Bessel Mode (m, n)</div>
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap py-1 no-scrollbar text-xs">
+              <span className="italic">w(r, θ, t)</span>
+              <span>=</span>
+              <span>A J<sub>m</sub>(k<sub>mn</sub> r) cos(mθ) cos(ωt)</span>
+            </div>
+            <div className="text-[10px] text-white/50 font-sans border-t border-white/5 pt-1 mt-1 flex flex-col gap-1">
+              <div className="grid grid-cols-2 gap-2">
+                <div>Mode (m, n) = ({m2D}, {n2D})</div>
+                <div>A = {amplitude.toFixed(2)} m</div>
+              </div>
+              <div className="text-[9px] text-white/40 border-t border-white/5 pt-1 mt-0.5">
+                Bessel Root x<sub>mn</sub> = {BESSEL_ZEROS[m2D]?.[n2D - 1] || "N/A"}
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+  };
+
   // --- Real-time SVG Resonance Curve Solver ---
   const getResonanceAmplitude = (f_d: number) => {
     const w_d = 2 * Math.PI * f_d;
@@ -297,6 +468,14 @@ export const StandingWavesSimulator = () => {
     setBoundaryType("Fixed-Fixed");
     setRenderMode("Displacement");
     setSimMode("harmonic");
+    setSystemType("string");
+    setSolverType("analytical");
+    setDiscreteBeads(false);
+    setMembraneGeometry("rectangular");
+    setM2D(2);
+    setN2D(2);
+    setSandPattern(true);
+    setProbeX(1.0);
   };
 
   return (
@@ -345,6 +524,17 @@ export const StandingWavesSimulator = () => {
              
              <div className="flex-1 flex items-center justify-center p-4 relative">
                 <StandingWavesCanvas 
+                  systemType={systemType}
+                  solverType={solverType}
+                  discreteBeads={discreteBeads}
+                  membraneGeometry={membraneGeometry}
+                  m2D={m2D}
+                  n2D={n2D}
+                  sandPattern={sandPattern}
+                  probeX={probeX}
+                  setProbeX={setProbeX}
+                  showPhaseSpace={showPhaseSpace}
+                  showFourier={showFourier}
                   amplitude={amplitude}
                   harmonic={harmonic}
                   waveSpeed={waveSpeed}
@@ -365,138 +555,83 @@ export const StandingWavesSimulator = () => {
                   boundaryImpedance={boundaryImpedance}
                   visualAmplitudeFactor={visualAmplitudeFactor}
                 />
-
-                {/* --- ADVANCED MODE 1: PHASE SPACE PLOTTER OVERLAY --- */}
-                {showPhaseSpace && (
-                  <div className="absolute bottom-6 left-6 w-[180px] h-[150px] bg-black/95 backdrop-blur-md border border-fuchsia-500/30 p-3 rounded-2xl flex flex-col gap-1.5 shadow-2xl">
-                    <span className="text-[8px] font-black uppercase text-fuchsia-400 tracking-wider">Phase-Space Probe (x = L/2)</span>
-                    <div className="flex-1 border border-white/5 relative flex items-center justify-center overflow-hidden bg-black/40 rounded-lg">
-                      {/* Generates a parametric orbit of y vs y_dot */}
-                      <svg className="w-full h-full">
-                        <line x1="0" y1="58" x2="160" y2="58" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                        <line x1="77" y1="0" x2="77" y2="120" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                        {(() => {
-                          // Plot parametric spiral/orbit of y vs dy_dt
-                          const pts: string[] = [];
-                          const x_probe = length / 2;
-                          // Sample a loop backwards in time
-                          for (let i = 0; i <= 80; i++) {
-                            const t_past = time - (i * 0.04);
-                            if (t_past < 0) break;
-                            const envelope = simMode === "harmonic" ? Math.exp(-damping * t_past) : 1.0;
-                            let y_val = 0;
-                            let v_val = 0;
-                            if (simMode === "harmonic") {
-                              const k_val = (harmonic * Math.PI) / length;
-                              const w_0 = k_val * waveSpeed;
-                              const w_d = Math.sqrt(Math.max(0, w_0 * w_0 - damping * damping));
-                              y_val = amplitude * envelope * Math.sin(k_val * x_probe) * Math.cos(w_d * t_past);
-                              v_val = -damping * y_val - w_d * amplitude * envelope * Math.sin(k_val * x_probe) * Math.sin(w_d * t_past);
-                            } else {
-                              const w_d = 2 * Math.PI * drivingFrequency;
-                              const w_v2 = (w_d * w_d) / (waveSpeed * waveSpeed);
-                              const b_w_v2 = (damping * w_d) / (waveSpeed * waveSpeed);
-                              const k_val = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
-                              const alpha_val = k_val > 0 ? (damping * w_d) / (waveSpeed * waveSpeed * k_val) : 0;
-                              const exp_2aL = Math.exp(-2 * alpha_val * length);
-                              const den_re = 1 + R * exp_2aL * Math.cos(2 * k_val * length);
-                              const den_im = - R * exp_2aL * Math.sin(2 * k_val * length);
-                              const den_mag2 = den_re * den_re + den_im * den_im;
-                              const exp_ax = Math.exp(-alpha_val * x_probe);
-                              const exp_a2Lx = Math.exp(-alpha_val * (2 * length - x_probe));
-                              const num_re = exp_ax * Math.cos(k_val * x_probe) + R * exp_a2Lx * Math.cos(k_val * (2 * length - x_probe));
-                              const num_im = - exp_ax * Math.sin(k_val * x_probe) - R * exp_a2Lx * Math.sin(k_val * (2 * length - x_probe));
-                              const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
-                              const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
-                              y_val = amplitude * (Y_re * Math.cos(w_d * t_past) - Y_im * Math.sin(w_d * t_past));
-                              v_val = -w_d * amplitude * (Y_re * Math.sin(w_d * t_past) + Y_im * Math.cos(w_d * t_past));
-                            }
-                            // Scale
-                            const px = 77 + (y_val / amplitude) * 65;
-                            const py = 58 - (v_val / (amplitude * (omega || 10))) * 45;
-                            pts.push(`${x_probe > 0 ? (i === 0 ? "M" : "L") : "M"} ${px.toFixed(1)} ${py.toFixed(1)}`);
-                          }
-                          return <path d={pts.join(" ")} fill="none" stroke="#d946ef" strokeWidth="1.5" opacity="0.8" />;
-                        })()}
-                        {/* Dot at current state */}
-                        {(() => {
-                          const x_probe = length / 2;
-                          let y_val = 0;
-                          let v_val = 0;
-                          const envelope = simMode === "harmonic" ? Math.exp(-damping * time) : 1.0;
-                          if (simMode === "harmonic") {
-                            const k_val = (harmonic * Math.PI) / length;
-                            const w_0 = k_val * waveSpeed;
-                            const w_d = Math.sqrt(Math.max(0, w_0 * w_0 - damping * damping));
-                            y_val = amplitude * envelope * Math.sin(k_val * x_probe) * Math.cos(w_d * time);
-                            v_val = -damping * y_val - w_d * amplitude * envelope * Math.sin(k_val * x_probe) * Math.sin(w_d * time);
-                          } else {
-                            const w_d = 2 * Math.PI * drivingFrequency;
-                            const w_v2 = (w_d * w_d) / (waveSpeed * waveSpeed);
-                            const b_w_v2 = (damping * w_d) / (waveSpeed * waveSpeed);
-                            const k_val = Math.sqrt((w_v2 + Math.sqrt(w_v2 * w_v2 + 4 * b_w_v2 * b_w_v2)) / 2);
-                            const alpha_val = k_val > 0 ? (damping * w_d) / (waveSpeed * waveSpeed * k_val) : 0;
-                            const exp_2aL = Math.exp(-2 * alpha_val * length);
-                            const den_re = 1 + R * exp_2aL * Math.cos(2 * k_val * length);
-                            const den_im = - R * exp_2aL * Math.sin(2 * k_val * length);
-                            const den_mag2 = den_re * den_re + den_im * den_im;
-                            const exp_ax = Math.exp(-alpha_val * x_probe);
-                            const exp_a2Lx = Math.exp(-alpha_val * (2 * length - x_probe));
-                            const num_re = exp_ax * Math.cos(k_val * x_probe) + R * exp_a2Lx * Math.cos(k_val * (2 * length - x_probe));
-                            const num_im = - exp_ax * Math.sin(k_val * x_probe) - R * exp_a2Lx * Math.sin(k_val * (2 * length - x_probe));
-                            const Y_re = (num_re * den_re + num_im * den_im) / den_mag2;
-                            const Y_im = (num_im * den_re - num_re * den_im) / den_mag2;
-                            y_val = amplitude * (Y_re * Math.cos(w_d * time) - Y_im * Math.sin(w_d * time));
-                            v_val = -w_d * amplitude * (Y_re * Math.sin(w_d * time) + Y_im * Math.cos(w_d * time));
-                          }
-                          const px = 77 + (y_val / amplitude) * 65;
-                          const py = 58 - (v_val / (amplitude * (omega || 10))) * 45;
-                          return <circle cx={px} cy={py} r="4.5" fill="#d946ef" className="animate-ping" style={{ transformOrigin: `${px}px ${py}px` }} />;
-                        })()}
-                      </svg>
-                    </div>
-                    <span className="text-[7px] text-white/40 text-center font-mono">y(L/2) vs dy/dt(L/2)</span>
-                  </div>
-                )}
-
-                {/* --- ADVANCED MODE 2: REAL-TIME FOURIER ANALYSIS SPECTROGRAM --- */}
-                {showFourier && (
-                  <div className="absolute bottom-6 right-6 w-[180px] h-[150px] bg-black/95 backdrop-blur-md border border-violet-500/30 p-3 rounded-2xl flex flex-col gap-1.5 shadow-2xl">
-                    <span className="text-[8px] font-black uppercase text-violet-400 tracking-wider">Fourier Harmonic Spectrum</span>
-                    <div className="flex-1 border border-white/5 flex items-end justify-between p-2 bg-black/40 rounded-lg overflow-hidden">
-                      {/* Computes overlap of the current string state with the Fourier modes */}
-                      {(() => {
-                        const modes = [1, 2, 3, 4, 5, 6];
-                        return modes.map((m) => {
-                          let weight = 0;
-                          if (simMode === "harmonic") {
-                            // Weight is 1.0 for active mode, decaying with damping
-                            weight = harmonic === m ? Math.exp(-damping * time) : 0.005;
-                          } else {
-                            // In driven mode, weight is high if driving frequency is close to the mode resonance
-                            const f_m = m * (waveSpeed / (2 * length));
-                            const delta = Math.abs(drivingFrequency - f_m);
-                            weight = 1.0 / (1.0 + Math.pow(delta / (damping + 0.1), 2));
-                          }
-                          const heightPct = Math.min(100, weight * 85 + 2);
-                          return (
-                            <div key={m} className="flex flex-col items-center gap-1 w-4.5">
-                              <div className="w-full bg-gradient-to-t from-violet-600 to-cyan-400 rounded-t-sm transition-all duration-100" style={{ height: `${heightPct}%` }} />
-                              <span className="text-[7px] font-mono text-white/50">n{m}</span>
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                    <span className="text-[7px] text-white/40 text-center font-mono">Relative Mode Activation P(n)</span>
-                  </div>
-                )}
              </div>
           </div>
 
           {/* Configuration Panel Sidebar */}
           <div className="w-full xl:w-[460px] flex flex-col gap-6 overflow-y-auto pr-2 no-scrollbar">
             
+            {/* Laboratory Module Selector */}
+            <ControlCard title="Laboratory Module" icon={Settings2} color="#06b6d4">
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Active Medium</label>
+                  <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded-2xl border border-white/5">
+                    {[
+                      { id: "string", label: "String" },
+                      { id: "air", label: "Air Column" },
+                      { id: "membrane", label: "2D Membrane" }
+                    ].map(sys => (
+                      <button
+                        key={sys.id}
+                        onClick={() => {
+                          setSystemType(sys.id as SystemType);
+                          if (sys.id === "membrane") {
+                            setRenderMode("Displacement");
+                          }
+                        }}
+                        className={cn(
+                          "py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all",
+                          systemType === sys.id 
+                            ? "bg-cyan-500 text-black shadow-lg" 
+                            : "text-white/40 hover:bg-white/5 hover:text-white"
+                        )}
+                      >
+                        {sys.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {systemType !== "membrane" && (
+                  <div className="flex flex-col gap-2 pt-2 border-t border-white/5">
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Simulator Core Solver</label>
+                    <div className="grid grid-cols-2 gap-1 bg-black/40 p-1 rounded-xl border border-white/5">
+                      {[
+                        { id: "analytical", label: "Analytical Model" },
+                        { id: "numerical", label: "Numerical Lab (PDE)" }
+                      ].map((sol) => (
+                        <button
+                          key={sol.id}
+                          onClick={() => setSolverType(sol.id as "analytical" | "numerical")}
+                          className={cn(
+                            "py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border",
+                            solverType === sol.id
+                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50"
+                              : "text-white/40 hover:bg-white/5 hover:text-white border-transparent"
+                          )}
+                        >
+                          {sol.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {systemType === "string" && solverType === "numerical" && (
+                  <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                    <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Coupled Bead-Springs</span>
+                    <button
+                      onClick={() => setDiscreteBeads(!discreteBeads)}
+                      className={cn("w-10 h-5 rounded-full relative transition-colors", discreteBeads ? "bg-amber-500" : "bg-white/10")}
+                    >
+                      <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", discreteBeads ? "left-6" : "left-1")} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </ControlCard>
+
             {/* Live Scientific Telemetry & Equations */}
             <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-6 shadow-xl shrink-0 relative overflow-hidden group">
                <div className="absolute top-0 right-0 p-8 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity pointer-events-none">
@@ -504,33 +639,38 @@ export const StandingWavesSimulator = () => {
                </div>
                
                <div className="relative z-10 flex flex-col gap-4">
-                 <h3 className="text-xs font-black uppercase tracking-widest text-white/60 flex items-center gap-2">
-                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                   Resonance Telemetry
+                 <h3 className="text-xs font-black uppercase tracking-widest text-white/60 flex items-center gap-2 justify-between">
+                   <div className="flex items-center gap-2">
+                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                     Resonance Telemetry
+                   </div>
+                   <span className={cn(
+                     "px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider",
+                     dampingRegime === "Undamped" && "border-white/20 text-white/60 bg-white/5",
+                     dampingRegime === "Underdamped" && "border-emerald-500/30 text-emerald-400 bg-emerald-500/10",
+                     dampingRegime === "Critically Damped" && "border-amber-500/30 text-amber-400 bg-amber-500/10",
+                     dampingRegime === "Overdamped" && "border-rose-500/30 text-rose-400 bg-rose-500/10"
+                   )}>
+                     {dampingRegime}
+                   </span>
                  </h3>
                  
-                 {/* Live Equation Box */}
-                 <div className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col gap-2">
-                   <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                     {simMode === "harmonic" ? "Governing Wave Profile" : "Steady-State Superposition Matrix"}
-                   </div>
-                   <div className="font-mono text-xs md:text-sm text-emerald-400 font-bold tracking-tight overflow-x-auto whitespace-nowrap pb-1 no-scrollbar">
-                     {simMode === "harmonic" ? (
-                       <span>y(x,t) = { (amplitude * 2).toFixed(2) } e^(-{damping.toFixed(2)}t) {baseFuncStr}({k.toFixed(2)}x) cos({omega.toFixed(1)}t)</span>
-                     ) : (
-                       <span>y(x,t) = Re[ Y_re(x) cos({omega.toFixed(1)}t) - Y_im(x) sin({omega.toFixed(1)}t) ]</span>
-                     )}
-                   </div>
-                   {showComponents && (
-                     <div className="font-mono text-[10px] text-white/50 tracking-tight mt-1 flex flex-col gap-1 border-t border-white/5 pt-1">
-                       <span className="text-cyan-400">y₁_fwd = A_d e^(-αx) {baseFuncStr}(kx - ωt)</span>
-                       <span className="text-rose-400">y₂_bwd = R A_d e^(-α(2L-x)) {baseFuncStr}(k(2L-x) - ωt)</span>
+                 {/* Nonlinear Wave Warning */}
+                 {amplitude > 1.2 && (
+                   <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex gap-3 text-[10px] text-amber-400 leading-relaxed font-bold animate-pulse">
+                     <AlertCircle className="w-4 h-4 shrink-0" />
+                     <div>
+                       <span className="uppercase tracking-wider block mb-0.5">Nonlinear Wave Warning</span>
+                       Linear approximation breaking down. Second-order tension variations and dispersion effects become dominant.
                      </div>
-                   )}
-                 </div>
+                   </div>
+                 )}
+
+                 {/* Live Equation Box */}
+                 {renderMathEquation()}
 
                  {/* Resonance Curve Graph (Driven Mode) */}
-                 {simMode === "driven" && (
+                 {simMode === "driven" && systemType !== "membrane" && (
                    <div className="bg-black/50 p-4 rounded-2xl border border-white/5 flex flex-col gap-3 relative overflow-hidden">
                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Amplitude vs. Driving Frequency (1 - 120 Hz)</span>
                      <div className="w-full h-[100px] relative">
@@ -583,89 +723,169 @@ export const StandingWavesSimulator = () => {
                </div>
             </div>
 
-            <ControlCard title="Boundary & Topology" icon={Settings} color="#10b981">
-              <div className="space-y-6">
-                <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Boundary Conditions</label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {["Fixed-Fixed", "Free-Free", "Fixed-Free", "Partially Reflective"].map(mode => (
-                      <button 
-                        key={mode}
-                        onClick={() => handleBoundaryChange(mode as BoundaryType | "Partially Reflective")}
-                        className={cn(
-                          "px-1 py-2.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all border",
-                          boundaryType === mode 
-                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50" 
-                            : "bg-white/5 text-white/40 border-transparent hover:bg-white/10"
-                        )}
-                      >
-                        {mode.replace("-", "\n")}
-                      </button>
-                    ))}
+            {systemType !== "membrane" ? (
+              <ControlCard title="Boundary & Topology" icon={Settings} color="#10b981">
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-3">
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Boundary Conditions</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(systemType === "air" 
+                        ? ["Fixed-Fixed", "Free-Free", "Fixed-Free"] 
+                        : ["Fixed-Fixed", "Free-Free", "Fixed-Free", "Partially Reflective"]
+                      ).map(mode => (
+                        <button 
+                          key={mode}
+                          onClick={() => handleBoundaryChange(mode as BoundaryType | "Partially Reflective")}
+                          className={cn(
+                            "px-1 py-2.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all border whitespace-pre-line text-center",
+                            boundaryType === mode 
+                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50" 
+                              : "bg-white/5 text-white/40 border-transparent hover:bg-white/10"
+                          )}
+                        >
+                          {systemType === "air" ? (
+                            mode === "Fixed-Fixed" ? "Closed\nClosed" :
+                            mode === "Free-Free" ? "Open\nOpen" :
+                            mode === "Fixed-Free" ? "Closed\nOpen" : mode
+                          ) : mode.replace("-", "\n")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {simMode === "harmonic" ? (
+                    <ClickableValue 
+                      label="Harmonic Mode (n)"
+                      value={harmonic}
+                      unit=""
+                      min={1}
+                      max={8}
+                      step={1}
+                      onChange={handleHarmonicChange}
+                      colorClass="text-emerald-400"
+                      format={(v) => `n = ${v}`}
+                    />
+                  ) : (
+                    <ClickableValue 
+                      label="Driving Frequency (f_d)"
+                      value={drivingFrequency}
+                      unit="Hz"
+                      min={1.0}
+                      max={120.0}
+                      step={0.5}
+                      onChange={setDrivingFrequency}
+                      colorClass="text-cyan-400"
+                    />
+                  )}
+
+                  {boundaryType === "Partially Reflective" && systemType === "string" && (
+                    <ClickableValue 
+                      label="Boundary Impedance (Z₂)"
+                      value={boundaryImpedance}
+                      unit="kg/s"
+                      min={0.0}
+                      max={200.0}
+                      step={2.5}
+                      onChange={setBoundaryImpedance}
+                      colorClass="text-fuchsia-400"
+                    />
+                  )}
+
+                  <ClickableValue 
+                    label={systemType === "air" ? "Pipe Length (L)" : "String Length (L)"}
+                    value={length}
+                    unit="m"
+                    min={1.0}
+                    max={5.0}
+                    step={0.05}
+                    onChange={setLength}
+                    colorClass="text-emerald-400"
+                  />
+                </div>
+              </ControlCard>
+            ) : (
+              <ControlCard title="Membrane Geometry" icon={Settings} color="#10b981">
+                <div className="space-y-6">
+                  <div className="flex flex-col gap-3">
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Geometry Type</label>
+                    <div className="grid grid-cols-2 gap-2 bg-black/40 p-1 rounded-xl border border-white/5">
+                      {[
+                        { id: "rectangular", label: "Rectangular" },
+                        { id: "circular", label: "Circular" }
+                      ].map(geom => (
+                        <button
+                          key={geom.id}
+                          onClick={() => setMembraneGeometry(geom.id as "rectangular" | "circular")}
+                          className={cn(
+                            "py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border",
+                            membraneGeometry === geom.id
+                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50"
+                              : "text-white/40 hover:bg-white/5 hover:text-white border border-transparent"
+                          )}
+                        >
+                          {geom.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                    <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Chladni Sand Patterns</span>
+                    <button
+                      onClick={() => setSandPattern(!sandPattern)}
+                      className={cn("w-10 h-5 rounded-full relative transition-colors", sandPattern ? "bg-amber-500" : "bg-white/10")}
+                    >
+                      <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", sandPattern ? "left-6" : "left-1")} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 pt-2 border-t border-white/5">
+                    <ClickableValue
+                      label={membraneGeometry === "circular" ? "Azimuthal Mode (m)" : "X-Mode (m)"}
+                      value={m2D}
+                      unit=""
+                      min={membraneGeometry === "circular" ? 0 : 1}
+                      max={3}
+                      step={1}
+                      onChange={(v) => setM2D(Math.round(v))}
+                      colorClass="text-emerald-400"
+                      format={(v) => `m = ${v}`}
+                    />
+                    
+                    <ClickableValue
+                      label={membraneGeometry === "circular" ? "Radial Mode (n)" : "Y-Mode (n)"}
+                      value={n2D}
+                      unit=""
+                      min={1}
+                      max={4}
+                      step={1}
+                      onChange={(v) => setN2D(Math.round(v))}
+                      colorClass="text-emerald-400"
+                      format={(v) => `n = ${v}`}
+                    />
                   </div>
                 </div>
-
-                {simMode === "harmonic" ? (
-                  <ClickableValue 
-                    label="Harmonic Mode (n)"
-                    value={harmonic}
-                    unit=""
-                    min={1}
-                    max={8}
-                    step={1}
-                    onChange={handleHarmonicChange}
-                    colorClass="text-emerald-400"
-                    format={(v) => `n = ${v}`}
-                  />
-                ) : (
-                  <ClickableValue 
-                    label="Driving Frequency (f_d)"
-                    value={drivingFrequency}
-                    unit="Hz"
-                    min={1.0}
-                    max={120.0}
-                    step={0.5}
-                    onChange={setDrivingFrequency}
-                    colorClass="text-cyan-400"
-                  />
-                )}
-
-                {boundaryType === "Partially Reflective" && (
-                  <ClickableValue 
-                    label="Boundary Impedance (Z₂)"
-                    value={boundaryImpedance}
-                    unit="kg/s"
-                    min={0.0}
-                    max={200.0}
-                    step={2.5}
-                    onChange={setBoundaryImpedance}
-                    colorClass="text-fuchsia-400"
-                  />
-                )}
-
-                <ClickableValue 
-                  label="String Length (L)"
-                  value={length}
-                  unit="m"
-                  min={1.0}
-                  max={5.0}
-                  step={0.05}
-                  onChange={setLength}
-                  colorClass="text-emerald-400"
-                />
-              </div>
-            </ControlCard>
+              </ControlCard>
+            )}
 
             <ControlCard title="Medium Dynamics" icon={Waves} color="#3b82f6">
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4 border-b border-white/5 pb-4">
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Tension (T)</span>
-                    <span className="text-sm font-mono font-bold text-white">{tension.toFixed(0)} N</span>
+                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                      {systemType === "air" ? "Bulk Modulus (B)" : "Tension (T)"}
+                    </span>
+                    <span className="text-sm font-mono font-bold text-white">
+                      {systemType === "air" ? `${(tension * 1000).toFixed(0)} Pa` : `${tension.toFixed(0)} N`}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-1.5 text-right">
-                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Linear Density (μ)</span>
-                    <span className="text-sm font-mono font-bold text-white">{(density * 1000).toFixed(1)} g/m</span>
+                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                      {systemType === "air" ? "Volumetric Density (ρ)" : "Linear Density (μ)"}
+                    </span>
+                    <span className="text-sm font-mono font-bold text-white">
+                      {systemType === "air" ? `${(density * 100000).toFixed(1)} g/L` : `${(density * 1000).toFixed(1)} g/m`}
+                    </span>
                   </div>
                 </div>
 
@@ -681,9 +901,9 @@ export const StandingWavesSimulator = () => {
                 </div>
 
                 <ClickableValue 
-                  label="Generator Amplitude (A)"
+                  label={systemType === "air" ? "Pressure Amplitude (p₀)" : "Generator Amplitude (A)"}
                   value={amplitude}
-                  unit="m"
+                  unit={systemType === "air" ? "Pa" : "m"}
                   min={0.1}
                   max={1.5}
                   step={0.05}
@@ -698,7 +918,10 @@ export const StandingWavesSimulator = () => {
                 <div className="flex flex-col gap-3">
                   <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Rendering Mode</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {["Displacement", "Energy", "Phase", "Scientific"].map(mode => (
+                    {(systemType === "membrane" 
+                      ? ["Displacement", "Energy"] 
+                      : ["Displacement", "Energy", "Phase", "Scientific"]
+                    ).map(mode => (
                       <button 
                         key={mode}
                         onClick={() => setRenderMode(mode as RenderMode)}
@@ -715,37 +938,39 @@ export const StandingWavesSimulator = () => {
                   </div>
                 </div>
 
-                <div className="space-y-3 pt-2 border-t border-white/5">
-                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
-                    <span>Component Traveling Waves</span>
-                    <button 
-                      onClick={() => setShowComponents(!showComponents)}
-                      className={cn("w-10 h-5 rounded-full relative transition-colors", showComponents ? "bg-violet-500" : "bg-white/10")}
-                    >
-                      <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showComponents ? "left-6" : "left-1")} />
-                    </button>
-                  </label>
-                  
-                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
-                    <span>Show Nodes</span>
-                    <button 
-                      onClick={() => setShowNodes(!showNodes)}
-                      className={cn("w-10 h-5 rounded-full relative transition-colors", showNodes ? "bg-rose-500" : "bg-white/10")}
-                    >
-                      <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showNodes ? "left-6" : "left-1")} />
-                    </button>
-                  </label>
+                {systemType !== "membrane" && (
+                  <div className="space-y-3 pt-2 border-t border-white/5">
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
+                      <span>Component Traveling Waves</span>
+                      <button 
+                        onClick={() => setShowComponents(!showComponents)}
+                        className={cn("w-10 h-5 rounded-full relative transition-colors", showComponents ? "bg-violet-500" : "bg-white/10")}
+                      >
+                        <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showComponents ? "left-6" : "left-1")} />
+                      </button>
+                    </label>
+                    
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
+                      <span>Show Nodes</span>
+                      <button 
+                        onClick={() => setShowNodes(!showNodes)}
+                        className={cn("w-10 h-5 rounded-full relative transition-colors", showNodes ? "bg-rose-500" : "bg-white/10")}
+                      >
+                        <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showNodes ? "left-6" : "left-1")} />
+                      </button>
+                    </label>
 
-                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
-                    <span>Show Antinodes</span>
-                    <button 
-                      onClick={() => setShowAntinodes(!showAntinodes)}
-                      className={cn("w-10 h-5 rounded-full relative transition-colors", showAntinodes ? "bg-emerald-500" : "bg-white/10")}
-                    >
-                      <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showAntinodes ? "left-6" : "left-1")} />
-                    </button>
-                  </label>
-                </div>
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
+                      <span>Show Antinodes</span>
+                      <button 
+                        onClick={() => setShowAntinodes(!showAntinodes)}
+                        className={cn("w-10 h-5 rounded-full relative transition-colors", showAntinodes ? "bg-emerald-500" : "bg-white/10")}
+                      >
+                        <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showAntinodes ? "left-6" : "left-1")} />
+                      </button>
+                    </label>
+                  </div>
+                )}
               </div>
             </ControlCard>
 
