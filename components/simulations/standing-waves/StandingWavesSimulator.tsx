@@ -10,8 +10,6 @@ import {
 import { cn } from "@/lib/utils";
 import { StandingWavesTheory } from "./StandingWavesTheory";
 import StandingWavesEnvironment from "./StandingWavesEnvironment";
-
-// ─── ClickableValue ───────────────────────────────────────────────────────────
 interface ClickableValueProps {
   value: number;
   label: React.ReactNode;
