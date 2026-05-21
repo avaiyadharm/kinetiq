@@ -65,7 +65,14 @@ const ClickableValue = ({ value, label, unit, min, max, step, onChange, colorCla
   );
 };
 
-const ControlCard = ({ title, icon: Icon, children, color }: any) => (
+interface ControlCardProps {
+  title: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  children: React.ReactNode;
+  color?: string;
+}
+
+const ControlCard = ({ title, icon: Icon, children, color }: ControlCardProps) => (
   <div className="bg-[#18181b] rounded-[32px] p-6 border border-white/5 space-y-6 shadow-xl shrink-0 relative overflow-hidden group">
     <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
        <Icon className="w-24 h-24" style={{ color }} />
@@ -100,7 +107,7 @@ export const StandingWavesSimulator = () => {
   const [visualAmplitudeFactor, setVisualAmplitudeFactor] = useState(5); // visual scaling factor
   const [boundaryImpedance, setBoundaryImpedance] = useState(25.0); // Z_2 (kg/s)
   const [drivingFrequency, setDrivingFrequency] = useState(25.0); // f_d (Hz)
-  const [amplitude, setAmplitude] = useState(1.0); // A (m) - displacement amplitude
+  const [amplitude, setAmplitude] = useState(1.3); // A (m) - displacement amplitude
   const [preset, setPreset] = useState("Nylon String");
 
   // Derived Physics
@@ -116,7 +123,7 @@ export const StandingWavesSimulator = () => {
   }
 
   // Handlers for physical consistency
-  const handleBoundaryChange = (type: any) => {
+  const handleBoundaryChange = (type: BoundaryType | "Partially Reflective") => {
     setBoundaryType(type);
     if (type === "Fixed-Free" && harmonic % 2 === 0) {
       setHarmonic(Math.max(1, harmonic - 1));
@@ -286,7 +293,7 @@ export const StandingWavesSimulator = () => {
     setDrivingFrequency(25.0);
     setPreset("Nylon String");
     setLength(2.0);
-    setAmplitude(1.2);
+    setAmplitude(1.3);
     setBoundaryType("Fixed-Fixed");
     setRenderMode("Displacement");
     setSimMode("harmonic");
@@ -584,7 +591,7 @@ export const StandingWavesSimulator = () => {
                     {["Fixed-Fixed", "Free-Free", "Fixed-Free", "Partially Reflective"].map(mode => (
                       <button 
                         key={mode}
-                        onClick={() => handleBoundaryChange(mode as any)}
+                        onClick={() => handleBoundaryChange(mode as BoundaryType | "Partially Reflective")}
                         className={cn(
                           "px-1 py-2.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all border",
                           boundaryType === mode 
@@ -694,7 +701,7 @@ export const StandingWavesSimulator = () => {
                     {["Displacement", "Energy", "Phase", "Scientific"].map(mode => (
                       <button 
                         key={mode}
-                        onClick={() => setRenderMode(mode as any)}
+                        onClick={() => setRenderMode(mode as RenderMode)}
                         className={cn(
                           "px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all border",
                           renderMode === mode 

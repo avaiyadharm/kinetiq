@@ -25,6 +25,7 @@ interface StandingWavesCanvasProps {
   simMode?: "harmonic" | "driven";
   drivingFrequency?: number;
   visualAmplitudeFactor?: number;
+  boundaryImpedance?: number;
 }
 
 export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
@@ -102,8 +103,8 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
       let omega = 0;
 
       // Scaling for canvas (amplitude * visual scale)
-      const maxAxisVal = Math.max(1.5 * amplitude * visualAmplitudeFactor, 1.0);
-      const visualScale = (height * 0.4) / maxAxisVal;
+      // We scale using visualAmplitudeFactor, with 5 as the baseline factor
+      const visualScale = ((height * 0.35) / 1.5) * (visualAmplitudeFactor / 5);
       const A_px = amplitude * visualScale;
 
       if (!isDriven) {
@@ -377,8 +378,8 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
         ctx.shadowBlur = 0;
 
         // --- Analytical Node / Antinode Positions ---
-        let nodes: number[] = [];
-        let antinodes: number[] = [];
+        const nodes: number[] = [];
+        const antinodes: number[] = [];
 
         if (!isDriven) {
           if (boundaryType === "Fixed-Fixed") {
@@ -566,7 +567,8 @@ export const StandingWavesCanvas: React.FC<StandingWavesCanvasProps> = ({
     let alpha = 0;
     let exp_2aL = 0;
 
-    const A_px = amplitude * 45;
+    const visualScale = ((600 * 0.35) / 1.5) * (visualAmplitudeFactor / 5);
+    const A_px = amplitude * visualScale;
 
     if (!isDriven) {
       let n_eff = harmonic;

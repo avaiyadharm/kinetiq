@@ -285,8 +285,8 @@ export const WaveInterferenceCanvas: React.FC<WaveInterferenceCanvasProps> = ({
     const z2 = amplitude * atten2 * Math.sin(phase2);
     
     let z = z1;
-    let I1 = amplitude * atten1;
-    let I2 = amplitude * atten2;
+    const I1 = amplitude * atten1;
+    const I2 = amplitude * atten2;
     let I = I1 * I1;
     let deltaR = 0;
     let type = "Source 1 Only";
