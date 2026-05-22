@@ -167,8 +167,13 @@ export const StandingWavesSimulator = () => {
   const [visualAmplitudeFactor, setVisualAmplitudeFactor] = useState(5);
   const [boundaryImpedance, setBoundaryImpedance] = useState(25.0);
   const [drivingFrequency, setDrivingFrequency] = useState(25.0);
-  const [amplitude, setAmplitude] = useState(1.3);
+  const [amplitude, setAmplitude] = useState(0.08);  // SI: 8 cm — physical, keeps A/L ≪ 1
   const [preset, setPreset] = useState("Nylon String");
+
+  // Superposition mode: two harmonics
+  const [showSuperposition, setShowSuperposition] = useState(false);
+  const [harmonic2, setHarmonic2] = useState(4);
+  const [amplitude2, setAmplitude2] = useState(0.04);  // SI: 4 cm
 
   // NEW: Visualization controls
   const [showComponents, setShowComponents] = useState(false);
@@ -313,10 +318,11 @@ export const StandingWavesSimulator = () => {
     setDensity(p.density);
     const v_preset = Math.min(400, Math.sqrt(p.tension / p.density));
     if (p.damping === -1) {
-      // Critical: β = ω₀ (natural freq of fundamental mode)
+      // Critical damping: β = ω₀ (not ω₀/2)
+      // Q = ω₀/(2β) = 0.5 is the true critical damping criterion
       const k0 = Math.PI / length;
       const omega0_c = k0 * v_preset;
-      setDamping(omega0_c / 2);
+      setDamping(omega0_c);  // β = ω₀ → Q = 0.5 → critically damped
     } else {
       setDamping(p.damping);
     }
@@ -394,21 +400,23 @@ export const StandingWavesSimulator = () => {
       if (simMode === "harmonic") {
         return (
           <div className="flex flex-col gap-2 font-serif text-sm text-emerald-400 bg-black/40 border border-white/5 p-4 rounded-2xl">
-            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Governing PDE Solution</div>
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-sans">Governing PDE Solution — Unified Time Axis</div>
             <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap py-1 no-scrollbar text-base">
-              <span className="italic">y(x, t)</span>
+              <span className="italic">y(x, t_vis)</span>
               <span>=</span>
-              <span>A₀ e<sup className="text-[10px]">-βt</sup> {baseFuncStr}(kx) cos(ω_vis t)</span>
+              <span>A₀ e<sup className="text-[10px]">-β·t_vis</sup> {baseFuncStr}(kx) cos(ω·t_vis)</span>
             </div>
             <div className="text-[10px] text-white/50 font-sans border-t border-white/5 pt-2 mt-1 grid grid-cols-2 gap-2">
-              <div>A₀ = {amplitude.toFixed(2)} m</div>
+              <div>A₀ = {amplitude.toFixed(4)} m</div>
               <div>β = {damping.toFixed(3)} s⁻¹</div>
               <div>k = {k.toFixed(3)} rad/m</div>
               <div>ω = {omega.toFixed(2)} rad/s</div>
               <div>f₀ = {frequency.toFixed(2)} Hz</div>
               <div>λ = {lambda.toFixed(4)} m</div>
+              <div>v = {waveSpeed.toFixed(2)} m/s</div>
+              <div>Z = {Z1.toFixed(4)} kg/s</div>
             </div>
-            <div className="text-[9px] text-white/30 font-sans mt-1 italic">ω_vis = ω × τ_scale  (slowMotion factor applied to cos(ωt) only)</div>
+            <div className="text-[9px] text-white/30 font-sans mt-1 italic">t_vis = time × {slowMotionFactor} — BOTH decay e^(-βt_vis) AND oscillation cos(ωt_vis) use the same t_vis. This is a true PDE solution.</div>
           </div>
         );
       } else {
@@ -493,11 +501,12 @@ export const StandingWavesSimulator = () => {
     setTime(0); setManualPhase(0);
     setHarmonic(3); setTension(120); setDensity(0.003); setDamping(0.15);
     setBoundaryImpedance(25.0); setDrivingFrequency(25.0); setPreset("Nylon String");
-    setLength(2.0); setAmplitude(1.3); setBoundaryType("Fixed-Fixed");
+    setLength(2.0); setAmplitude(0.08); setBoundaryType("Fixed-Fixed");
     setRenderMode("Displacement"); setSimMode("harmonic"); setSystemType("string");
     setSolverType("analytical"); setDiscreteBeads(false); setMembraneGeometry("rectangular");
     setM2D(2); setN2D(2); setSandPattern(true); setProbeX(1.0);
     setSlowMotionFactor(0.04); setEnergyMode("Total"); setShowEnergyHeatmap(false); setShowSolverDiagnostics(false);
+    setShowSuperposition(false); setHarmonic2(4); setAmplitude2(0.04);
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -607,6 +616,9 @@ export const StandingWavesSimulator = () => {
                 energyMode={energyMode}
                 showSolverDiagnostics={showSolverDiagnostics}
                 manualPhase={isPlaying ? undefined : manualPhase}
+                showSuperposition={showSuperposition}
+                harmonic2={harmonic2}
+                amplitude2={amplitude2}
               />
             </div>
           </div>
@@ -697,13 +709,14 @@ export const StandingWavesSimulator = () => {
                   </span>
                 </h3>
 
-                {/* Nonlinear warning */}
-                {amplitude > 1.2 && (
+                {/* Nonlinear regime warning: A/L > 10% violates small-angle approximation */}
+                {amplitude / length > 0.10 && (
                   <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex gap-3 text-[10px] text-amber-400 leading-relaxed font-bold animate-pulse">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <div>
-                      <span className="uppercase tracking-wider block mb-0.5">Nonlinear Wave Warning</span>
-                      Linear approximation breaking down. Second-order tension variations and dispersion effects become dominant.
+                      <span className="uppercase tracking-wider block mb-0.5">Nonlinear Regime Warning</span>
+                      A/L = {(amplitude / length * 100).toFixed(1)}% {'>'} 10%. Small-angle (linear) approximation violated.
+                      Wave equation ∂²y/∂t² = v²∂²y/∂x² no longer valid. Tension variations and dispersion effects dominant.
                     </div>
                   </div>
                 )}
@@ -786,14 +799,26 @@ export const StandingWavesSimulator = () => {
                     <span className="text-[8px] font-mono text-white/30 mt-1">Δf = β/π = f₀/Q</span>
                   </div>
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-amber-500/30 transition-colors">
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Amplitude Decay τ</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Amp Decay τ (sim time)</span>
                     <span className="text-base font-mono font-black text-amber-400">{tauDecay === Infinity ? "∞" : tauDecay.toFixed(3)} <span className="text-xs text-amber-500/50">s</span></span>
-                    <span className="text-[8px] font-mono text-white/30 mt-1">τ = 1/β  (A→A/e)</span>
+                    <span className="text-[8px] font-mono text-white/30 mt-1">τ = 1/β (A→A/e in t_vis)</span>
                   </div>
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-rose-500/30 transition-colors">
                     <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Energy Lifetime τ_E</span>
                     <span className="text-base font-mono font-black text-rose-400">{tauEnergy === Infinity ? "∞" : tauEnergy.toFixed(4)} <span className="text-xs text-rose-500/50">s</span></span>
                     <span className="text-[8px] font-mono text-white/30 mt-1">τ_E = Q/ω₀ = 1/(2β)</span>
+                  </div>
+                  <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-indigo-500/30 transition-colors">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Visible Ring-Down Cycles</span>
+                    <span className="text-base font-mono font-black text-indigo-400">
+                      {qFactor === Infinity ? "∞" : (qFactor / Math.PI).toFixed(1)} <span className="text-xs text-indigo-500/50">cycles</span>
+                    </span>
+                    <span className="text-[8px] font-mono text-white/30 mt-1">N = Q/π  (to 1/e amplitude)</span>
+                  </div>
+                  <div className="p-3 bg-black/40 rounded-xl border border-white/5 flex flex-col gap-1 hover:border-teal-500/30 transition-colors">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">Wave Impedance Z</span>
+                    <span className="text-base font-mono font-black text-teal-400">{Z1.toFixed(4)} <span className="text-xs text-teal-500/50">kg/s</span></span>
+                    <span className="text-[8px] font-mono text-white/30 mt-1">Z = √(T·μ)</span>
                   </div>
                 </div>
 
@@ -912,10 +937,66 @@ export const StandingWavesSimulator = () => {
                 </div>
                 <ClickableValue label="Damping Coefficient (β)" value={damping} unit="s⁻¹" min={0} max={50} step={0.05}
                   onChange={setDamping} colorClass="text-rose-400" />
-                <ClickableValue label={systemType === "air" ? "Pressure Amplitude (p₀)" : "Generator Amplitude (A)"} value={amplitude} unit={systemType === "air" ? "Pa" : "m"} min={0.1} max={1.5} step={0.05}
-                  onChange={setAmplitude} colorClass="text-blue-400" />
+                <ClickableValue
+                  label={`${systemType === "air" ? "Pressure Amplitude (s₀)" : "Amplitude (A₀)"}  — display zoom ×${visualAmplitudeFactor} on canvas`}
+                  value={amplitude}
+                  unit={systemType === "air" ? "m" : "m"}
+                  min={0.005}
+                  max={0.30}
+                  step={0.005}
+                  onChange={setAmplitude}
+                  colorClass="text-blue-400"
+                  format={(v) => `${(v * 100).toFixed(2)} cm`}
+                />
+                {systemType !== "membrane" && (
+                  <div className="text-[8px] text-white/30 leading-relaxed border-t border-white/5 pt-2">
+                    A/L = {(amplitude / length * 100).toFixed(2)}%  (small-angle valid below 10%)
+                    &nbsp;&nbsp;|&nbsp;&nbsp;v = {waveSpeed.toFixed(2)} m/s = √(T/μ)
+                  </div>
+                )}
               </div>
             </ControlCard>
+
+            {/* Superposition Mode */}
+            {systemType === "string" && simMode === "harmonic" && solverType === "analytical" && (
+              <ControlCard title="Superposition & Beat Frequency" icon={Waves} color="#d946ef">
+                <div className="space-y-5">
+                  <div className="text-[9px] text-white/40 leading-relaxed">
+                    Superpose two harmonics: y = A₁ sin(k₁x) cos(ω₁ t) + A₂ sin(k₂x) cos(ω₂ t).
+                    When n₂ is close to n₁, the envelope creates a visible beat pattern.
+                  </div>
+                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest flex items-center justify-between">
+                    <span>Enable Superposition Mode</span>
+                    <button onClick={() => setShowSuperposition(!showSuperposition)} className={cn("w-10 h-5 rounded-full relative transition-colors", showSuperposition ? "bg-fuchsia-500" : "bg-white/10")}>
+                      <div className={cn("absolute top-1 w-3 h-3 rounded-full bg-white transition-all", showSuperposition ? "left-6" : "left-1")} />
+                    </button>
+                  </label>
+                  {showSuperposition && (
+                    <>
+                      <ClickableValue label="Second Harmonic (n₂)" value={harmonic2} unit="" min={1} max={8} step={1}
+                        onChange={(v) => setHarmonic2(Math.round(v))} colorClass="text-fuchsia-400" format={(v) => `n₂ = ${v}`} />
+                      <ClickableValue label="Second Amplitude (A₂)" value={amplitude2} unit="m" min={0.005} max={0.30} step={0.005}
+                        onChange={setAmplitude2} colorClass="text-pink-400" format={(v) => `${(v * 100).toFixed(2)} cm`} />
+                      <div className="p-3 bg-black/40 border border-fuchsia-500/20 rounded-xl text-[9px] text-white/50 space-y-1">
+                        <div className="font-bold text-fuchsia-400 uppercase tracking-wider">Beat Analysis</div>
+                        <div>f₁ = {frequency.toFixed(3)} Hz  (n={harmonic})</div>
+                        <div>f₂ = {(harmonic2 * waveSpeed / (2 * length)).toFixed(3)} Hz  (n₂={harmonic2})</div>
+                        <div className="font-bold text-amber-400">
+                          Δf (beat) = |f₂ - f₁| = {Math.abs(harmonic2 * waveSpeed / (2 * length) - frequency).toFixed(3)} Hz
+                        </div>
+                        <div className="text-[8px] text-white/30">T_beat = 1/Δf = {Math.abs(harmonic2 * waveSpeed / (2 * length) - frequency) > 1e-6 ? (1 / Math.abs(harmonic2 * waveSpeed / (2 * length) - frequency)).toFixed(3) : "∞"} s</div>
+                      </div>
+                      <button
+                        onClick={() => { setHarmonic(3); setHarmonic2(4); setAmplitude(0.08); setAmplitude2(0.08); }}
+                        className="w-full py-2 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-400 text-[10px] font-bold uppercase tracking-widest hover:bg-fuchsia-500/25 transition-all"
+                      >
+                        ⚡ Beat Frequency Preset (n=3 + n=4)
+                      </button>
+                    </>
+                  )}
+                </div>
+              </ControlCard>
+            )}
 
             {/* Visualization & Temporal Control */}
             <ControlCard title="Visualization Engine" icon={Layers} color="#8b5cf6">
