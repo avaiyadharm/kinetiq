@@ -16,6 +16,24 @@ const Sqrt: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </span>
 );
 
+const Var: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="font-serif italic text-white/95 mx-0.5 select-none">{children}</span>
+);
+
+const Dot: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-block relative">
+    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold select-none leading-none">.</span>
+    {children}
+  </span>
+);
+
+const DDot: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-block relative">
+    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold select-none leading-none">..</span>
+    {children}
+  </span>
+);
+
 const Integral: React.FC<{ lower?: React.ReactNode; upper?: React.ReactNode; expr: React.ReactNode }> = ({ lower, upper, expr }) => (
   <span className="inline-flex items-center mx-1 font-serif text-white/95">
     <span className="relative inline-flex flex-col items-center text-base md:text-lg font-light leading-none mr-1 select-none">
@@ -164,7 +182,7 @@ const PhasorWidget: React.FC<{ phi: number; w: number; dampingRatio: number }> =
       </div>
       <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-white/50">
         <div className="p-2 bg-black/20 rounded border border-white/5">
-          <span className="block text-white/30 mb-0.5">Live Driver Angle (ωt):</span>
+          <span className="block text-white/30 mb-0.5">Live Driver Angle (<Var>&omega;</Var><Var>t</Var>):</span>
           <span className="text-white font-bold">{time.toFixed(2)} rad</span>
         </div>
         <div className="p-2 bg-black/20 rounded border border-white/5">
@@ -352,7 +370,7 @@ const NonlinearWidget: React.FC<{ alpha: number; k: number; delta: number; epsil
       <div className="space-y-3">
         <div className="flex justify-between items-center text-[10px] text-white/50">
           <span>Stiffness Constant: k = {k.toFixed(1)} N/m</span>
-          <span>Duffing α = {alpha.toFixed(1)} N/m³ ({alpha > 0 ? "Hardening" : alpha < 0 ? "Softening" : "Linear"})</span>
+          <span>Duffing <Var>&alpha;</Var> = {alpha.toFixed(1)} N/m³ ({alpha > 0 ? "Hardening" : alpha < 0 ? "Softening" : "Linear"})</span>
         </div>
         <div className="bg-black/30 rounded-xl p-3 border border-white/5 flex justify-center">
           <svg width={width} height={height} className="overflow-visible">
@@ -373,8 +391,8 @@ const NonlinearWidget: React.FC<{ alpha: number; k: number; delta: number; epsil
             {/* Sliding Ball */}
             <circle cx={ballScreenX} cy={ballScreenY} r="5" fill="#f43f5e" stroke="white" strokeWidth="1" />
             
-            <text x="15" y="20" fill="#3b82f6" fontSize="7" opacity="0.7">Linear Spring Well V(x) = ½kx²</text>
-            <text x="15" y="32" fill="#10b981" fontSize="7">Duffing Well V(x) = ½kx² + ¼αx⁴</text>
+            <text x="15" y="20" fill="#3b82f6" fontSize="7" opacity="0.7">Linear Spring Well V(x) = (1/2)kx²</text>
+            <text x="15" y="32" fill="#10b981" fontSize="7">Duffing Well V(x) = (1/2)kx² + (1/4)αx⁴</text>
           </svg>
         </div>
       </div>
@@ -635,7 +653,7 @@ const IntegratorWidget: React.FC<{ timeStep: number }> = ({ timeStep }) => {
       <div className="flex justify-between items-center text-xs">
         <span className="text-white/60 font-semibold uppercase tracking-wider">Long-Term Numerical Energy Conservation</span>
         <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-mono text-[10px]">
-          dt = {timeStep.toFixed(3)}s
+          Δt = {timeStep.toFixed(3)}s
         </span>
       </div>
       <div className="bg-black/30 rounded-xl p-3 border border-white/5 flex justify-center">
@@ -658,14 +676,14 @@ const IntegratorWidget: React.FC<{ timeStep: number }> = ({ timeStep }) => {
           {/* Legend */}
           <g transform="translate(25, 10)">
             <rect x="0" y="0" width="6" height="6" fill="#10b981" />
-            <text x="10" y="6" fill="rgba(255,255,255,0.7)" fontSize="7">Velocity Verlet (Symplectic O(dt²))</text>
+            <text x="10" y="6" fill="rgba(255,255,255,0.7)" fontSize="7">Velocity Verlet (Symplectic O(Δt²))</text>
             
             <rect x="0" y="10" width="6" height="6" fill="#06b6d4" />
-            <text x="10" y="16" fill="rgba(255,255,255,0.7)" fontSize="7">Symplectic Euler (Symplectic O(dt))</text>
+            <text x="10" y="16" fill="rgba(255,255,255,0.7)" fontSize="7">Symplectic Euler (Symplectic O(Δt))</text>
             
             <rect x="0" y="20" width="6" height="6" fill="#f59e0b" />
             <text x="10" y="26" fill="rgba(255,255,255,0.7)" fontSize="7">
-              {isExploded ? "RK4 (Explodes for high dt!)" : "RK4 (Dumps/Drifts Energy O(dt⁴))"}
+              {isExploded ? "RK4 (Explodes for high Δt!)" : "RK4 (Dumps/Drifts Energy O(Δt⁴))"}
             </text>
           </g>
         </svg>
@@ -859,59 +877,59 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
               <div className="space-y-4 text-xs md:text-sm text-white/70 leading-relaxed">
                 <p>
                   Oscillatory systems are fundamental to physical systems where a restoring force acts to bring a displacement back to an equilibrium position.
-                  By Newton's Second Law, the dynamics of a single mass <span className="italic font-serif">m</span> (kg) subject to a spring restoring force (Hooke's Law <span className="italic font-serif">-kx</span>), viscous velocity damping damping force (<span className="italic font-serif">-bẋ</span>), and periodic external driving force is modeled as:
+                  By Newton's Second Law, the dynamics of a single mass <Var>m</Var> (kg) subject to a spring restoring force (Hooke's Law -<Var>k</Var><Var>x</Var>), viscous damping force (-<Var>b</Var><Dot><Var>x</Var></Dot>), and periodic external driving force is modeled as:
                 </p>
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Newtonian Derivation</h4>
                 <p>
                   Summing the mechanical forces:
-                  <span className="block my-2 text-center text-white font-mono">ΣF = F<sub>driver</sub> + F<sub>restoring</sub> + F<sub>damping</sub> = ma</span>
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">&sum;<Var>F</Var> = <Var>F</Var><sub>driver</sub> + <Var>F</Var><sub>restoring</sub> + <Var>F</Var><sub>damping</sub> = <Var>m</Var><Var>a</Var></span>
                   Substitute the forces:
-                  <span className="block my-2 text-center text-white font-mono">F₀ cos(ωt) - kx - bẋ = mẍ</span>
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm"><Var>F</Var><sub>0</sub> cos(<Var>&omega;</Var><Var>t</Var>) - <Var>k</Var><Var>x</Var> - <Var>b</Var><Dot><Var>x</Var></Dot> = <Var>m</Var><DDot><Var>x</Var></DDot></span>
                   Grouping terms gives the governing second-order inhomogeneous linear differential equation:
                 </p>
 
                 <EqBox>
-                  m ẍ + b ẋ + k x = F₀ cos(ω t)
+                  <Var>m</Var><DDot><Var>x</Var></DDot> + <Var>b</Var><Dot><Var>x</Var></Dot> + <Var>k</Var><Var>x</Var> = <Var>F</Var><sub>0</sub> cos(<Var>&omega;</Var><Var>t</Var>)
                 </EqBox>
 
                 <div className="p-4 bg-black/30 rounded-xl border border-white/5 text-[11px] font-mono text-white/60 space-y-2">
                   <span className="text-white font-bold block text-xs">Parameter Synchronization</span>
-                  <div>• Active Mass (<span className="italic">m</span>): <strong className="text-cyan-400">{m1.toFixed(2)} kg</strong></div>
-                  <div>• Active Stiffness (<span className="italic">k</span>): <strong className="text-cyan-400">{k1.toFixed(2)} N/m</strong></div>
-                  <div>• Active Damping (<span className="italic">b</span>): <strong className="text-cyan-400">{b1.toFixed(2)} N s/m</strong></div>
-                  <div>• Active Driver Force (<span className="italic">F₀</span>): <strong className="text-cyan-400">{F0.toFixed(2)} N</strong></div>
+                  <div>• Active Mass (<Var>m</Var>): <strong className="text-cyan-400">{m1.toFixed(2)} kg</strong></div>
+                  <div>• Active Stiffness (<Var>k</Var>): <strong className="text-cyan-400">{k1.toFixed(2)} N/m</strong></div>
+                  <div>• Active Damping (<Var>b</Var>): <strong className="text-cyan-400">{b1.toFixed(2)} N s/m</strong></div>
+                  <div>• Active Driver Force (<Var>F</Var><sub>0</sub>): <strong className="text-cyan-400">{F0.toFixed(2)} N</strong></div>
                 </div>
 
                 <p>
-                  To analyze this, we divide by mass <span className="italic font-serif">m</span> to find the normalized parameter form:
-                  <span className="block my-2 text-center text-white font-mono font-serif">
-                    ẍ + 2β ẋ + ω₀² x = f₀ cos(ω t)
+                  To analyze this, we divide by mass <Var>m</Var> to find the normalized parameter form:
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">
+                    <DDot><Var>x</Var></DDot> + 2<Var>&beta;</Var><Dot><Var>x</Var></Dot> + <Var>&omega;</Var><sub>0</sub><sup>2</sup><Var>x</Var> = <Var>f</Var><sub>0</sub> cos(<Var>&omega;</Var><Var>t</Var>)
                   </span>
                   where:
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-xs">
-                  <li>Natural angular frequency: <strong>ω₀ = <Sqrt><Frac num="k" den="m" /></Sqrt> = <span className="text-emerald-400 font-bold">{w0.toFixed(2)} rad/s</span></strong> (natural frequency: <strong>f₀ = {f0.toFixed(2)} Hz</strong>)</li>
-                  <li>Attenuation rate (damping factor): <strong>β = <Frac num="b" den="2m" /> = <span className="text-emerald-400 font-bold">{beta.toFixed(3)} s⁻¹</span></strong></li>
-                  <li>Normalized driver amplitude: <strong>f₀ = F₀/m = {(F0/m1).toFixed(2)} N/kg</strong></li>
+                  <li>Natural angular frequency: <strong><Var>&omega;</Var><sub>0</sub> = <Sqrt><Frac num={<Var>k</Var>} den={<Var>m</Var>} /></Sqrt> = <span className="text-emerald-400 font-bold">{w0.toFixed(2)} rad/s</span></strong> (natural frequency: <strong><Var>f</Var><sub>0</sub> = {f0.toFixed(2)} Hz</strong>)</li>
+                  <li>Attenuation rate (damping factor): <strong><Var>&beta;</Var> = <Frac num={<Var>b</Var>} den={<>2<Var>m</Var></>} /> = <span className="text-emerald-400 font-bold">{beta.toFixed(3)} s⁻¹</span></strong></li>
+                  <li>Normalized driver amplitude: <strong><Var>f</Var><sub>0</sub> = <Frac num={<><Var>F</Var><sub>0</sub></>} den={<Var>m</Var>} /> = {(F0/m1).toFixed(2)} N/kg</strong></li>
                 </ul>
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Natural Frequency vs. Damped Resonance</h4>
                 <p>
-                  For an undamped free oscillator (<span className="italic font-serif">b=0</span>), the system oscillates indefinitely at its natural frequency <span className="italic font-serif">ω₀</span>. Damping shifts the physical resonance frequency.
-                  For a driven system, the driver frequency which maximizes the steady-state displacement amplitude is the <strong>damped resonance frequency (ω<sub>r</sub>)</strong>, found by maximizing the amplitude denominator:
+                  For an undamped free oscillator (<Var>b</Var> = 0), the system oscillates indefinitely at its natural frequency <Var>&omega;</Var><sub>0</sub>. Damping shifts the physical resonance frequency.
+                  For a driven system, the driver frequency which maximizes the steady-state displacement amplitude is the <strong>damped resonance frequency (<Var>&omega;</Var><sub>r</sub>)</strong>, found by maximizing the amplitude denominator:
                 </p>
 
                 <EqBox>
-                  ω_r = <Sqrt>ω₀² - 2β²</Sqrt>
+                  <Var>&omega;</Var><sub>r</sub> = <Sqrt><Var>&omega;</Var><sub>0</sub><sup>2</sup> - 2<Var>&beta;</Var><sup>2</sup></Sqrt>
                 </EqBox>
 
                 <p>
                   Plugging in our synchronized parameters:
-                  <span className="block my-2 text-center text-white font-mono">
-                    f_r = <Frac num={<Sqrt>{(w0*w0).toFixed(2)} - 2({(beta*beta).toFixed(5)})</Sqrt>} den="2π" /> = <strong className="text-emerald-400 text-sm">{f_r.toFixed(3)} Hz</strong>
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">
+                    <Var>f</Var><sub>r</sub> = <Frac num={<Sqrt>{(w0*w0).toFixed(2)} - 2({(beta*beta).toFixed(5)})</Sqrt>} den={<>2<Var>&pi;</Var></>} /> = <strong className="text-emerald-400 text-sm">{f_r.toFixed(3)} Hz</strong>
                   </span>
-                  Notice that if the attenuation <span className="italic font-serif">β &gt; ω₀ / √2</span>, the resonance peak frequency becomes imaginary; the amplitude curve becomes monotonic, and maximum response occurs at <span className="italic font-serif">ω = 0</span>.
+                  Notice that if the attenuation <Var>&beta;</Var> &gt; <Frac num={<><Var>&omega;</Var><sub>0</sub></>} den={<Sqrt>2</Sqrt>} />, the resonance peak frequency becomes imaginary; the amplitude curve becomes monotonic, and maximum response occurs at <Var>&omega;</Var> = 0.
                 </p>
 
                 <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl flex gap-3 text-xs">
@@ -934,29 +952,29 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
               
               <div className="space-y-4 text-xs md:text-sm text-white/70 leading-relaxed">
                 <p>
-                  Driven oscillators do not respond instantly to the driver force. A phase lag <span className="italic font-serif">φ</span> develops.
-                  Using complex numbers, we express the forcing function as <span className="italic font-serif">F(t) = Re[F₀ e<sup>iωt</sup>]</span> and the displacement as <span className="italic font-serif">x(t) = Re[A e<sup>i(ωt - φ)</sup>]</span>.
+                  Driven oscillators do not respond instantly to the driver force. A phase lag <Var>&phi;</Var> develops.
+                  Using complex numbers, we express the forcing function as <Var>F</Var>(<Var>t</Var>) = Re[<Var>F</Var><sub>0</sub> <Var>e</Var><sup><Var>i</Var><Var>&omega;</Var><Var>t</Var></sup>] and the displacement as <Var>x</Var>(<Var>t</Var>) = Re[<Var>A</Var> <Var>e</Var><sup><Var>i</Var>(<Var>&omega;</Var><Var>t</Var> - <Var>&phi;</Var>)</sup>].
                   Substituting into the differential equation and solving yields:
                 </p>
 
                 <EqBox>
-                  tan(φ) = <Frac num="b ω" den="k - m ω²" /> = <Frac num="2 β ω" den="ω₀² - ω²" />
+                  tan(<Var>&phi;</Var>) = <Frac num={<><Var>b</Var><Var>&omega;</Var></>} den={<><Var>k</Var> - <Var>m</Var><Var>&omega;</Var><sup>2</sup></>} /> = <Frac num={<>2<Var>&beta;</Var><Var>&omega;</Var></>} den={<><Var>&omega;</Var><sub>0</sub><sup>2</sup> - <Var>&omega;</Var><sup>2</sup></>} />
                 </EqBox>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 my-2 text-[10px] font-mono text-center">
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5">
-                    <span className="text-white/40 block mb-0.5">Stiffness-Dominated (ω &lt;&lt; ω₀)</span>
-                    <span className="text-cyan-400 font-bold block">φ → 0</span>
+                    <span className="text-white/40 block mb-0.5">Stiffness-Dominated (<Var>&omega;</Var> &lt;&lt; <Var>&omega;</Var><sub>0</sub>)</span>
+                    <span className="text-cyan-400 font-bold block"><Var>&phi;</Var> &rarr; 0</span>
                     <span className="text-[9px] text-white/50">Displacement in-phase with driver</span>
                   </div>
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5">
-                    <span className="text-white/40 block mb-0.5">Damping-Dominated (ω = ω₀)</span>
-                    <span className="text-emerald-400 font-bold block">φ = π/2 (90°)</span>
+                    <span className="text-white/40 block mb-0.5">Damping-Dominated (<Var>&omega;</Var> = <Var>&omega;</Var><sub>0</sub>)</span>
+                    <span className="text-emerald-400 font-bold block"><Var>&phi;</Var> = <Frac num={<><Var>&pi;</Var></>} den="2" /> (90&deg;)</span>
                     <span className="text-[9px] text-white/50">Quadrature. Velocity in-phase (Max Power)</span>
                   </div>
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5">
-                    <span className="text-white/40 block mb-0.5">Inertia-Dominated (ω &gt;&gt; ω₀)</span>
-                    <span className="text-rose-400 font-bold block">φ → π (180°)</span>
+                    <span className="text-white/40 block mb-0.5">Inertia-Dominated (<Var>&omega;</Var> &gt;&gt; <Var>&omega;</Var><sub>0</sub>)</span>
+                    <span className="text-rose-400 font-bold block"><Var>&phi;</Var> &rarr; <Var>&pi;</Var> (180&deg;)</span>
                     <span className="text-[9px] text-white/50">Displacement anti-phase with driver</span>
                   </div>
                 </div>
@@ -965,27 +983,27 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">The Quality Factor (Q) & Bandwidth</h4>
                 <p>
-                  The Quality Factor <span className="italic font-serif">Q</span> represents energy conservation efficiency in resonance. It is defined as:
+                  The Quality Factor <Var>Q</Var> represents energy conservation efficiency in resonance. It is defined as:
                 </p>
 
                 <EqBox>
-                  Q = 2π × <Frac num="Energy Stored" den="Energy Dissipated per cycle" /> = <Frac num={<Sqrt>m k</Sqrt>} den="b" /> = <Frac num="f₀" den="Δf" />
+                  <Var>Q</Var> = 2<Var>&pi;</Var> &times; <Frac num="Energy Stored" den="Energy Dissipated per cycle" /> = <Frac num={<Sqrt><Var>m</Var><Var>k</Var></Sqrt>} den={<Var>b</Var>} /> = <Frac num={<><Var>f</Var><sub>0</sub></>} den={<Var>&Delta;f</Var>} />
                 </EqBox>
 
                 <p>
-                  For the current setup, <strong>Q = {Q === Infinity ? "∞" : Q.toFixed(2)}</strong>.
-                  The half-power bandwidth is <strong>Δf = {bandwidth.toFixed(3)} Hz</strong>.
-                  A high-Q system retains energy efficiently, creating a tall, narrow resonance peak, whereas a low-Q system broadens the peak and loses energy rapidly.
+                  For the current setup, <strong><Var>Q</Var> = {Q === Infinity ? "∞" : Q.toFixed(2)}</strong>.
+                  The half-power bandwidth is <strong><Var>&Delta;f</Var> = {bandwidth.toFixed(3)} Hz</strong>.
+                  A high-<Var>Q</Var> system retains energy efficiently, creating a tall, narrow resonance peak, whereas a low-<Var>Q</Var> system broadens the peak and loses energy rapidly.
                 </p>
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Thermodynamic Energy Flow & Power Transfer</h4>
                 <p>
-                  The instantaneous mechanical energy is the sum of Kinetic Energy (<span className="italic font-serif">KE = ½mv²</span>) and Potential Energy (<span className="italic font-serif">PE = ½kx²</span>).
+                  The instantaneous mechanical energy is the sum of Kinetic Energy (<span><Var>KE</Var> = <Frac num="1" den="2" /><Var>m</Var><Var>v</Var><sup>2</sup></span>) and Potential Energy (<span><Var>PE</Var> = <Frac num="1" den="2" /><Var>k</Var><Var>x</Var><sup>2</sup></span>).
                   The rate at which the driver injects power into the system is:
-                  <span className="block my-2 text-center text-white font-mono">P_in(t) = F_drive(t) · v(t) = F₀ cos(ω t) · ẋ(t)</span>
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm"><Var>P</Var><sub>in</sub>(<Var>t</Var>) = <Var>F</Var><sub>drive</sub>(<Var>t</Var>) &middot; <Var>v</Var>(<Var>t</Var>) = <Var>F</Var><sub>0</sub> cos(<Var>&omega;</Var><Var>t</Var>) &middot; <Dot><Var>x</Var></Dot>(<Var>t</Var>)</span>
                   The rate at which energy is irreversibly dissipated into heat by viscous damping is:
-                  <span className="block my-2 text-center text-white font-mono">P_diss(t) = b · [ẋ(t)]²</span>
-                  At steady-state resonance, the average injected power equals the average dissipated power. Because velocity is exactly in-phase with the driving force at <span className="italic font-serif">φ = 90°</span>, the power transfer is maximized.
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm"><Var>P</Var><sub>diss</sub>(<Var>t</Var>) = <Var>b</Var> &middot; [<Dot><Var>x</Var></Dot>(<Var>t</Var>)]<sup>2</sup></span>
+                  At steady-state resonance, the average injected power equals the average dissipated power. Because velocity is exactly in-phase with the driving force at <Var>&phi;</Var> = 90&deg;, the power transfer is maximized.
                 </p>
               </div>
             </div>
@@ -1001,53 +1019,53 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
               
               <div className="space-y-4 text-xs md:text-sm text-white/70 leading-relaxed">
                 <p>
-                  When multiple oscillating components interact, energy transfers between them. For two coupled masses linked by a spring <span className="italic font-serif">k<sub>c</sub></span>, the equations of motion are coupled:
+                  When multiple oscillating components interact, energy transfers between them. For two coupled masses linked by a spring <Var>k</Var><sub>c</sub>, the equations of motion are coupled:
                 </p>
 
                 <EqBox>
                   <div className="text-left space-y-1">
-                    <div>m₁ ẍ₁ + b₁ ẋ₁ + (k₁ + k_c) x₁ - k_c x₂ = F₁(t)</div>
-                    <div>m₂ ẍ₂ + b₂ ẋ₂ + (k₂ + k_c) x₂ - k_c x₁ = F₂(t)</div>
+                    <div><Var>m</Var><sub>1</sub><DDot><Var>x</Var></DDot><sub>1</sub> + <Var>b</Var><sub>1</sub><Dot><Var>x</Var></Dot><sub>1</sub> + (<Var>k</Var><sub>1</sub> + <Var>k</Var><sub>c</sub>)<Var>x</Var><sub>1</sub> - <Var>k</Var><sub>c</sub><Var>x</Var><sub>2</sub> = <Var>F</Var><sub>1</sub>(<Var>t</Var>)</div>
+                    <div><Var>m</Var><sub>2</sub><DDot><Var>x</Var></DDot><sub>2</sub> + <Var>b</Var><sub>2</sub><Dot><Var>x</Var></Dot><sub>2</sub> + (<Var>k</Var><sub>2</sub> + <Var>k</Var><sub>c</sub>)<Var>x</Var><sub>2</sub> - <Var>k</Var><sub>c</sub><Var>x</Var><sub>1</sub> = <Var>F</Var><sub>2</sub>(<Var>t</Var>)</div>
                   </div>
                 </EqBox>
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Matrix Eigenvalue Formulation</h4>
                 <p>
-                  Ignoring damping and driving forces, we look for free harmonic solutions of the form <span className="italic font-serif">x⃗(t) = v⃗ e<sup>iωt</sup></span>.
+                  Ignoring damping and driving forces, we look for free harmonic solutions of the form <Var>x&#x20d7;</Var>(<Var>t</Var>) = <Var>v&#x20d7;</Var><Var>e</Var><sup><Var>i</Var><Var>&omega;</Var><Var>t</Var></sup>.
                   This transforms the differential equations into a matrix eigenvalue system:
                 </p>
 
                 <EqBox>
-                  ( <Mat2x2 a11="k₁ + k_c" a12="-k_c" a21="-k_c" a22="k₂ + k_c" /> - ω² <Mat2x2 a11="m₁" a12="0" a21="0" a22="m₂" /> ) <Vec2D top="v₁" bot="v₂" /> = <Vec2D top="0" bot="0" />
+                  ( <Mat2x2 a11={<><Var>k</Var><sub>1</sub> + <Var>k</Var><sub>c</sub></>} a12={<>-<Var>k</Var><sub>c</sub></>} a21={<>-<Var>k</Var><sub>c</sub></>} a22={<><Var>k</Var><sub>2</sub> + <Var>k</Var><sub>c</sub></>} /> - <Var>&omega;</Var><sup>2</sup> <Mat2x2 a11={<><Var>m</Var><sub>1</sub></>} a12="0" a21="0" a22={<><Var>m</Var><sub>2</sub></>} /> ) <Vec2D top={<><Var>v</Var><sub>1</sub></>} bot={<><Var>v</Var><sub>2</sub></>} /> = <Vec2D top="0" bot="0" />
                 </EqBox>
 
                 <p>
-                  Solving the characteristic equation <span className="italic font-serif">det(K - ω²M) = 0</span> yields the normal mode frequencies.
+                  Solving the characteristic equation det(<Var>K</Var> - <Var>&omega;</Var><sup>2</sup><Var>M</Var>) = 0 yields the normal mode frequencies.
                   For our active configuration:
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-xs">
-                  <li>Symmetric-like Mode 1 (In-Phase): <strong>f_mode1 = <span className="text-emerald-400 font-bold">{f_mode1.toFixed(3)} Hz</span></strong> (eigenvector ratio R₁ = {R1.toFixed(3)})</li>
-                  <li>Anti-symmetric-like Mode 2 (Out-of-Phase): <strong>f_mode2 = <span className="text-emerald-400 font-bold">{f_mode2.toFixed(3)} Hz</span></strong> (eigenvector ratio R₂ = {R2.toFixed(3)})</li>
-                  <li>Mode Splitting Gap: <strong>Δf_split = <span className="text-rose-400 font-bold">{(f_mode2 - f_mode1).toFixed(3)} Hz</span></strong></li>
+                  <li>Symmetric-like Mode 1 (In-Phase): <strong><Var>f</Var><sub>mode1</sub> = <span className="text-emerald-400 font-bold">{f_mode1.toFixed(3)} Hz</span></strong> (eigenvector ratio <Var>R</Var><sub>1</sub> = {R1.toFixed(3)})</li>
+                  <li>Anti-symmetric-like Mode 2 (Out-of-Phase): <strong><Var>f</Var><sub>mode2</sub> = <span className="text-emerald-400 font-bold">{f_mode2.toFixed(3)} Hz</span></strong> (eigenvector ratio <Var>R</Var><sub>2</sub> = {R2.toFixed(3)})</li>
+                  <li>Mode Splitting Gap: <strong><Var>&Delta;f</Var><sub>split</sub> = <span className="text-rose-400 font-bold">{(f_mode2 - f_mode1).toFixed(3)} Hz</span></strong></li>
                 </ul>
 
                 <CoupledModesWidget f1={f_mode1} f2={f_mode2} />
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Beats & Wave Interference</h4>
                 <p>
-                  When a single oscillator is driven by two frequencies <span className="italic font-serif">ω₁</span> and <span className="italic font-serif">ω₂</span> that are very close, the resulting displacement is the superposition:
-                  <span className="block my-2 text-center text-white font-serif">
-                    x(t) = A cos(ω₁ t) + A cos(ω₂ t) = 2 A cos(<Frac num="ω₁ - ω₂" den="2" /> t) cos(<Frac num="ω₁ + ω₂" den="2" /> t)
+                  When a single oscillator is driven by two frequencies <Var>&omega;</Var><sub>1</sub> and <Var>&omega;</Var><sub>2</sub> that are very close, the resulting displacement is the superposition:
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">
+                    <Var>x</Var>(<Var>t</Var>) = <Var>A</Var> cos(<Var>&omega;</Var><sub>1</sub><Var>t</Var>) + <Var>A</Var> cos(<Var>&omega;</Var><sub>2</sub><Var>t</Var>) = 2<Var>A</Var> cos(<Frac num={<><Var>&omega;</Var><sub>1</sub> - <Var>&omega;</Var><sub>2</sub></>} den="2" /> <Var>t</Var>) cos(<Frac num={<><Var>&omega;</Var><sub>1</sub> + <Var>&omega;</Var><sub>2</sub></>} den="2" /> <Var>t</Var>)
                   </span>
                   This represents a fast carrier oscillation modulated by a slow amplitude envelope. The beat frequency is:
                 </p>
 
                 <EqBox>
-                  f_beat = |f₁ - f₂|
+                  <Var>f</Var><sub>beat</sub> = |<Var>f</Var><sub>1</sub> - <Var>f</Var><sub>2</sub>|
                 </EqBox>
 
                 <p>
-                  For the current setup, if driven by two signals with difference <strong>|f₁ - f₂| = {f_beat.toFixed(3)} Hz</strong>, the amplitude envelope completes a cycle every <strong>T_envelope = {T_envelope === Infinity ? "∞" : T_envelope.toFixed(2)} s</strong>, showing slow, rhythmic constructive and destructive interference.
+                  For the current setup, if driven by two signals with difference <strong>|<Var>f</Var><sub>1</sub> - <Var>f</Var><sub>2</sub>| = {f_beat.toFixed(3)} Hz</strong>, the amplitude envelope completes a cycle every <strong><Var>T</Var><sub>envelope</sub> = {T_envelope === Infinity ? "∞" : T_envelope.toFixed(2)} s</strong>, showing slow, rhythmic constructive and destructive interference.
                 </p>
               </div>
             </div>
@@ -1067,12 +1085,12 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
                 </p>
 
                 <EqBox>
-                  m ẍ + b x  + k x + α x³ = F₀ cos(ω t)
+                  <Var>m</Var><DDot><Var>x</Var></DDot> + <Var>b</Var><Dot><Var>x</Var></Dot> + <Var>k</Var><Var>x</Var> + <Var>&alpha;</Var><Var>x</Var><sup>3</sup> = <Var>F</Var><sub>0</sub> cos(<Var>&omega;</Var><Var>t</Var>)
                 </EqBox>
 
                 <p>
-                  where <span className="italic font-serif">α</span> (N/m³) represents the nonlinear spring constant.
-                  If <strong>α &gt; 0</strong> (hardening spring, currently <span className="text-emerald-400 font-bold">{duffingAlpha.toFixed(1)}</span>), the effective spring stiffness increases with displacement. This bends the resonance peak to the right, causing:
+                  where <Var>&alpha;</Var> (N/m³) represents the nonlinear spring constant.
+                  If <strong><Var>&alpha;</Var> &gt; 0</strong> (hardening spring, currently <span className="text-emerald-400 font-bold">{duffingAlpha.toFixed(1)}</span>), the effective spring stiffness increases with displacement. This bends the resonance peak to the right, causing:
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-xs">
                   <li><strong>Bistability:</strong> Multiple stable amplitudes exist for the same frequency.</li>
@@ -1084,25 +1102,25 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Parametric Resonance (Mathieu Equation)</h4>
                 <p>
                   Instead of external forcing, <strong>parametric resonance</strong> occurs when a system parameter (like spring stiffness) varies periodically in time:
-                  <span className="block my-2 text-center text-white font-serif">
-                    m ẍ + b ẋ + k₀ [ 1 + ε cos(Ω t) ] x = 0
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">
+                    <Var>m</Var><DDot><Var>x</Var></DDot> + <Var>b</Var><Dot><Var>x</Var></Dot> + <Var>k</Var><sub>0</sub> [ 1 + <Var>&epsilon;</Var> cos(<Var>&Omega;</Var><Var>t</Var>) ] <Var>x</Var> = 0
                   </span>
-                  Here, <span className="italic font-serif">ε</span> is the modulation depth (currently <span className="text-emerald-400 font-bold">{parametricEpsilon.toFixed(2)}</span>) and <span className="italic font-serif">Ω</span> is the parameter pump frequency (2ω<sub>d</sub>).
+                  Here, <Var>&epsilon;</Var> is the modulation depth (currently <span className="text-emerald-400 font-bold">{parametricEpsilon.toFixed(2)}</span>) and <Var>&Omega;</Var> is the parameter pump frequency (2<Var>&omega;</Var><sub>d</sub>).
                   By Floquet theory, energy is pumped directly into the system, causing exponential growth if the pump frequency is near twice the natural frequency:
                 </p>
 
                 <EqBox>
-                  Ω ≈ 2 ω₀ / n  (for n = 1, 2, 3...)
+                  <Var>&Omega;</Var> &asymp; <Frac num={<>2<Var>&omega;</Var><sub>0</sub></>} den={<Var>n</Var>} />  (for <Var>n</Var> = 1, 2, 3...)
                 </EqBox>
 
                 <p>
-                  For the current setup, primary instability occurs near <strong>Ω ≈ {(2 * w0).toFixed(2)} rad/s</strong> (approx. <strong>{ (2 * f0).toFixed(2)} Hz</strong>).
-                  Damping raises the threshold: instability only occurs if the modulation depth <strong>ε &gt; 2 / Q = {(2 / Q).toFixed(4)}</strong>.
+                  For the current setup, primary instability occurs near <strong><Var>&Omega;</Var> &asymp; {(2 * w0).toFixed(2)} rad/s</strong> (approx. <strong>{(2 * f0).toFixed(2)} Hz</strong>).
+                  Damping raises the threshold: instability only occurs if the modulation depth <strong><Var>&epsilon;</Var> &gt; <Frac num="2" den={<Var>Q</Var>} /> = {(2 / Q).toFixed(4)}</strong>.
                 </p>
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Deterministic Chaos</h4>
                 <p>
-                  In nonlinear driven systems (like the Duffing oscillator), high driver amplitudes <span className="italic font-serif">F₀</span> and low damping <span className="italic font-serif">b</span> can trigger <strong>deterministic chaos</strong>.
+                  In nonlinear driven systems (like the Duffing oscillator), high driver amplitudes <Var>F</Var><sub>0</sub> and low damping <Var>b</Var> can trigger <strong>deterministic chaos</strong>.
                   Chaotic trajectories exhibit extreme sensitivity to initial conditions (Lyapunov divergence) and trace out strange fractals in phase space (strange attractors), rather than closing into simple limit cycles.
                 </p>
               </div>
@@ -1119,19 +1137,19 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
               
               <div className="space-y-4 text-xs md:text-sm text-white/70 leading-relaxed">
                 <p>
-                  Hamiltonian mechanics reformulates second-order differential equations as a system of first-order equations using generalized coordinate <span className="italic font-serif">x</span> and momentum <span className="italic font-serif">p = mẋ</span>.
-                  The total mechanical energy is defined by the Hamiltonian function <span className="italic font-serif">H(x, p) = T(p) + V(x)</span>:
+                  Hamiltonian mechanics reformulates second-order differential equations as a system of first-order equations using generalized coordinate <Var>x</Var> and momentum <Var>p</Var> = <Var>m</Var><Dot><Var>x</Var></Dot>.
+                  The total mechanical energy is defined by the Hamiltonian function <Var>H</Var>(<Var>x</Var>, <Var>p</Var>) = <Var>T</Var>(<Var>p</Var>) + <Var>V</Var>(<Var>x</Var>):
                 </p>
 
                 <EqBox>
-                  H(x, p) = <Frac num="p²" den="2 m" /> + ½ k x²
+                  <Var>H</Var>(<Var>x</Var>, <Var>p</Var>) = <Frac num={<><Var>p</Var><sup>2</sup></>} den={<>2<Var>m</Var></>} /> + <Frac num="1" den="2" /><Var>k</Var><Var>x</Var><sup>2</sup>
                 </EqBox>
 
                 <p>
                   Hamilton's canonical equations of motion are:
-                  <span className="block my-2 text-center text-white font-serif">
-                    ẋ = <Frac num="∂H" den="∂p" /> = <Frac num="p" den="m" /> , 
-                    ṗ = - <Frac num="∂H" den="∂x" /> = - k x
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">
+                    <Dot><Var>x</Var></Dot> = <Frac num={<>&part;<Var>H</Var></>} den={<>&part;<Var>p</Var></>} /> = <Frac num={<Var>p</Var>} den={<Var>m</Var>} /> , &nbsp;&nbsp;&nbsp;
+                    <Dot><Var>p</Var></Dot> = - <Frac num={<>&part;<Var>H</Var></>} den={<>&part;<Var>x</Var></>} /> = -<Var>k</Var><Var>x</Var>
                   </span>
                   This maps the system into a two-dimensional vector field representing <strong>Phase Space</strong>.
                 </p>
@@ -1140,12 +1158,12 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
 
                 <h4 className="text-white font-bold uppercase tracking-wider text-xs border-b border-white/5 pb-2">Symplectic Geometry & Liouville's Theorem</h4>
                 <p>
-                  For any conservative system (<span className="italic font-serif">b=0</span>), the phase space trajectories are closed energy contours.
+                  For any conservative system (<Var>b</Var> = 0), the phase space trajectories are closed energy contours.
                   According to <strong>Liouville's Theorem</strong>, the volume of any arbitrary region of phase space remains constant under Hamiltonian flow:
-                  <span className="block my-2 text-center text-white font-mono">
-                    <Frac num="d" den="dt" /> (d³q d³p) = 0
+                  <span className="block my-2 text-center text-white/95 font-serif text-sm">
+                    <Frac num={<><Var>d</Var></>} den={<><Var>d</Var><Var>t</Var></>} /> (<Var>d</Var><sup>3</sup><Var>q</Var> <Var>d</Var><sup>3</sup><Var>p</Var>) = 0
                   </span>
-                  This volume preservation is a consequence of the symplectic structure of Hamiltonian systems. Non-conservative forces (viscous damping <span className="italic font-serif">b &gt; 0</span>) break this symmetry, causing phase space volume to contract exponentially as the system energy dissipates.
+                  This volume preservation is a consequence of the symplectic structure of Hamiltonian systems. Non-conservative forces (viscous damping <Var>b</Var> &gt; 0) break this symmetry, causing phase space volume to contract exponentially as the system energy dissipates.
                 </p>
               </div>
             </div>
@@ -1161,7 +1179,7 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
               
               <div className="space-y-4 text-xs md:text-sm text-white/70 leading-relaxed">
                 <p>
-                  Computational physics engines solve these differential equations step-by-step using discrete timesteps <span className="italic font-serif">Δt</span>.
+                  Computational physics engines solve these differential equations step-by-step using discrete timesteps <Var>&Delta;t</Var>.
                   The choice of integrator dictates stability and energy conservation.
                 </p>
 
@@ -1170,15 +1188,15 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5">
                     <strong className="text-emerald-400 text-xs block mb-1">1. Runge-Kutta 4th Order (RK4)</strong>
                     <p className="leading-relaxed">
-                      Explicit, 4th-order algorithm with local error <span className="italic font-serif">O(Δt⁵)</span>. Extremely accurate for short integrations, but lacks symplectic properties, causing energy drift (explosion or artificial damping) over long cycles.
+                      Explicit, 4th-order algorithm with local error <Var>O</Var>(<Var>&Delta;t</Var><sup>5</sup>). Extremely accurate for short integrations, but lacks symplectic properties, causing energy drift (explosion or artificial damping) over long cycles.
                     </p>
                   </div>
                   <div className="p-3 bg-black/40 rounded-xl border border-white/5">
                     <strong className="text-emerald-400 text-xs block mb-1">2. Velocity Verlet</strong>
                     <p className="leading-relaxed">
                       A 2nd-order symplectic integrator that updates coordinates and velocities in steps:
-                      <br /><em>x<sub>n+1</sub> = x<sub>n</sub> + v<sub>n</sub> Δt + ½ a<sub>n</sub> Δt²</em>
-                      <br /><em>v<sub>n+1</sub> = v<sub>n</sub> + ½ (a<sub>n</sub> + a<sub>n+1</sub>) Δt</em>
+                      <br /><span className="font-serif"><Var>x</Var><sub>n+1</sub> = <Var>x</Var><sub>n</sub> + <Var>v</Var><sub>n</sub><Var>&Delta;t</Var> + <Frac num="1" den="2" /><Var>a</Var><sub>n</sub><Var>&Delta;t</Var><sup>2</sup></span>
+                      <br /><span className="font-serif"><Var>v</Var><sub>n+1</sub> = <Var>v</Var><sub>n</sub> + <Frac num="1" den="2" />(<Var>a</Var><sub>n</sub> + <Var>a</Var><sub>n+1</sub>)<Var>&Delta;t</Var></span>
                       <br />Crucial for oscillatory physics because it preserves the phase-space area, maintaining bounded energy errors.
                     </p>
                   </div>
@@ -1245,7 +1263,7 @@ export const ResonanceTheory: React.FC<ResonanceTheoryProps> = ({
                     <strong>Tuning Forks & Quartz Crystals:</strong> Designed with high Q-factors (high selectivity) to vibrate at highly stable frequencies, acting as timebases in electronic clocks.
                   </li>
                   <li>
-                    <strong>Seismometers & Suspension:</strong> Vehicle shock absorbers use near-critical damping (<span className="italic font-serif">ζ ≈ 0.7</span>) to suppress resonance peak amplitude growth while minimizing transient settling times after impacts.
+                    <strong>Seismometers & Suspension:</strong> Vehicle shock absorbers use near-critical damping (<Var>&zeta;</Var> &asymp; 0.7) to suppress resonance peak amplitude growth while minimizing transient settling times after impacts.
                   </li>
                   <li>
                     <strong>MEMS Resonators & Lasers:</strong> Micro-electro-mechanical resonators exploit parametric amplification to detect minute mass deposits, while atomic lasers use optical cavity resonance to lock phase-coherent light waves.

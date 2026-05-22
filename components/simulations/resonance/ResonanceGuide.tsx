@@ -19,6 +19,24 @@ const Sqrt: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </span>
 );
 
+const Var: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="font-serif italic text-white/95 mx-0.5 select-none">{children}</span>
+);
+
+const Dot: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-block relative">
+    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold select-none leading-none">.</span>
+    {children}
+  </span>
+);
+
+const DDot: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-block relative">
+    <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold select-none leading-none">..</span>
+    {children}
+  </span>
+);
+
 const EqBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="flex justify-center items-center p-3 my-2 bg-black/40 rounded-xl border border-white/5 font-mono text-emerald-400 text-xs md:text-sm overflow-x-auto shadow-inner">
     {children}
@@ -230,7 +248,7 @@ const EnergyFlowSVG: React.FC<{
       <div className="space-y-2 w-full text-xs font-mono mb-4">
         <div className="space-y-1">
           <div className="flex justify-between text-[9px] text-white/40">
-            <span>Peak Potential Energy (PE_max)</span>
+            <span>Peak Potential Energy (<Var>PE</Var><sub>max</sub>)</span>
             <span className="text-cyan-400 font-bold">{PE_max.toFixed(3)} J</span>
           </div>
           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -240,7 +258,7 @@ const EnergyFlowSVG: React.FC<{
 
         <div className="space-y-1">
           <div className="flex justify-between text-[9px] text-white/40">
-            <span>Peak Kinetic Energy (KE_max)</span>
+            <span>Peak Kinetic Energy (<Var>KE</Var><sub>max</sub>)</span>
             <span className="text-emerald-400 font-bold">{KE_max.toFixed(3)} J</span>
           </div>
           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
@@ -691,7 +709,7 @@ export const ResonanceGuide: React.FC<ResonanceGuideProps> = ({
 **Date**: ${reportDate || new Date().toLocaleDateString()}
 **Investigator**: ${studentName || "Anonymous Researcher"}
 **Oscillatory Mode**: ${simMode.toUpperCase()}
-**Solver Method**: ${integrator.toUpperCase()} (dt = ${timeStep}s, Substeps = ${substeps})
+**Solver Method**: ${integrator.toUpperCase()} (Δt = ${timeStep}s, Substeps = ${substeps})
 
 ## 1. Experimental Objectives
 - Verify forced, coupled, or nonlinear resonance equations of motion.
@@ -715,7 +733,7 @@ export const ResonanceGuide: React.FC<ResonanceGuideProps> = ({
 ## 4. Uncertainty & Error Analysis
 - Average Experimental Relative Error: ${verificationResult ? verificationResult.avg.toFixed(3) + "%" : "Not Calculated"}
 - Performance Assessment: ${verificationResult ? verificationResult.grade : "Unverified"}
-- Numerical stability safety factor (dt_crit/dt): ${((2 / w0) / timeStep).toFixed(2)}
+- Numerical stability safety factor (Δt_crit/Δt): ${((2 / w0) / timeStep).toFixed(2)}
 
 ## 5. Physical Discussion & Conclusions
 We verified that the driven damped harmonic system exhibits characteristic amplitude peaks and phase shifts. At low driver frequencies, the amplitude is dominated by the spring restoring force, and the displacement vector is in-phase with the driving force. At resonance, the phase angle approaches 90°, indicating a quadrature response where velocity aligns with the forcing engine to maximize instantaneous power injection. Above resonance, inertial forces dominate, and the mass shifts to an anti-phase alignment. Long-term energy conservation was verified by examining numerical drift.
@@ -793,22 +811,22 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>The phase shift φ between displacement and forcing harmonic is governed by friction b, spring rate k, and mass m at drive speed ω:</p>
+                    <p>The phase shift <Var>&phi;</Var> between displacement and forcing harmonic is governed by friction <Var>b</Var>, spring rate <Var>k</Var>, and mass <Var>m</Var> at drive speed <Var>&omega;</Var>:</p>
                     <EqBox>
-                      tan(φ) = <Frac num="b ω" den="k - m ω²" />
+                      <span>tan(<Var>&phi;</Var>) = <Frac num={<><Var>b</Var><Var>&omega;</Var></>} den={<><Var>k</Var> - <Var>m</Var><Var>&omega;</Var><sup>2</sup></>} /></span>
                     </EqBox>
-                    <p className="mt-1">Stiffness dominates at low frequency (in-phase, φ to 0°), inertia dominates at high frequency (anti-phase, φ to 180°), and damping regulates the amplitude at resonance (quadrature, φ = 90°).</p>
+                    <p className="mt-1">Stiffness dominates at low frequency (in-phase, <Var>&phi;</Var> &rarr; 0&deg;), inertia dominates at high frequency (anti-phase, <Var>&phi;</Var> &rarr; 180&deg;), and damping regulates the amplitude at resonance (quadrature, <Var>&phi;</Var> = 90&deg;).</p>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Single Oscillator</li>
-                      <li>Solver: Velocity Verlet (dt = 0.01 s)</li>
-                      <li>SI Coordinates: m = 2.00 kg, k = 100.00 N/m</li>
-                      <li>Damping: b = 0.50 N s/m (Weak regime)</li>
-                      <li>Forcing: F₀ = 10.00 N</li>
-                      <li>Initial Conditions: x₀ = 0.00 m, v₀ = 0.00 m/s</li>
+                      <li>Solver: Velocity Verlet (<Var>&Delta;t</Var> = 0.01 s)</li>
+                      <li>SI Coordinates: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m</li>
+                      <li>Damping: <Var>b</Var> = 0.50 N s/m (Weak regime)</li>
+                      <li>Forcing: <Var>F</Var><sub>0</sub> = 10.00 N</li>
+                      <li>Initial Conditions: <Var>x</Var><sub>0</sub> = 0.00 m, <Var>v</Var><sub>0</sub> = 0.00 m/s</li>
                     </ul>
                   </div>
                 </div>
@@ -818,10 +836,10 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   
                   <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 text-[11px] font-mono space-y-1">
                     <span className="text-blue-400 font-bold block mb-1">Active Targets (SI Units)</span>
-                    <div>• Natural Frequency (f₀): <strong>{f0_theo.toFixed(3)} Hz</strong></div>
-                    <div>• Resonant Peak (f_r): <strong>{f_r_theo.toFixed(3)} Hz</strong></div>
-                    <div>• Predicted Phase (φ): <strong>{phi_deg.toFixed(1)}°</strong></div>
-                    <div>• Steady Amplitude (A): <strong>{A_theo.toFixed(4)} m</strong></div>
+                    <div>• Natural Frequency (<Var>f</Var><sub>0</sub>): <strong>{f0_theo.toFixed(3)} Hz</strong></div>
+                    <div>• Resonant Peak (<Var>f</Var><sub>r</sub>): <strong>{f_r_theo.toFixed(3)} Hz</strong></div>
+                    <div>• Predicted Phase (<Var>&phi;</Var>): <strong>{phi_deg.toFixed(1)}&deg;</strong></div>
+                    <div>• Steady Amplitude (<Var>A</Var>): <strong>{A_theo.toFixed(4)} m</strong></div>
                   </div>
                 </div>
               </div>
@@ -832,29 +850,29 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
                     <li>Load parameters. Switch simulation view to the **Phasor Diagram**.</li>
                     <li>Set drive frequency to 0.50 Hz. Let transients decay, and measure the angle between driver and mass vectors.</li>
-                    <li>Increase frequency slowly to the natural frequency {f0_theo.toFixed(2)} Hz. Record the phase angle.</li>
+                    <li>Increase frequency slowly to the natural frequency <Var>f</Var><sub>0</sub> = {f0_theo.toFixed(2)} Hz. Record the phase angle.</li>
                     <li>Sweep to 3.50 Hz. Note the anti-phase rotation.</li>
                   </ol>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">5. Measurement Tasks</h4>
-                  <p>Record the displacement amplitude and phase lag at f = 0.50 Hz, {f0_theo.toFixed(2)} Hz, and 3.50 Hz. Submit values to the Report Console.</p>
+                  <p>Record the displacement amplitude and phase lag at <Var>f</Var> = 0.50 Hz, <Var>f</Var><sub>0</sub> = {f0_theo.toFixed(2)} Hz, and 3.50 Hz. Submit values to the Report Console.</p>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">6. Expected Physical Behavior</h4>
-                  <p>At resonance, the velocity aligns with the driver vector. Damping limits the peak amplitude. At high speeds, inertia prevents the mass from keeping up with the driver, causing it to lag by 180°.</p>
+                  <p>At resonance, the velocity aligns with the driver vector. Damping limits the peak amplitude. At high speeds, inertia prevents the mass from keeping up with the driver, causing it to lag by 180&deg;.</p>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>Calculate the phase lag analytically using: φ = atan2(b*ω, k - m*ω²). Note how φ shifts exactly to 90° at ω = √k/m.</p>
+                  <p>Calculate the phase lag analytically using: <Var>&phi;</Var> = atan2(<Var>b</Var><Var>&omega;</Var>, <Var>k</Var> - <Var>m</Var><Var>&omega;</Var><sup>2</sup>). Note how <Var>&phi;</Var> shifts exactly to 90&deg; at <Var>&omega;</Var> = <Sqrt><Frac num={<Var>k</Var>} den={<Var>m</Var>} /></Sqrt>.</p>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">8. Error & Uncertainty Analysis</h4>
-                  <p>In practice, measurement before transients completely decay yields transient error. Damping decay period τ = 2m/b. Wait at least 10τ (40 seconds for b = 0.5) to achieve 99.9% decay.</p>
+                  <p>In practice, measurement before transients completely decay yields transient error. Damping decay period <Var>&tau;</Var> = <Frac num={<>2<Var>m</Var></>} den={<Var>b</Var>} />. Wait at least 10<Var>&tau;</Var> (40 seconds for <Var>b</Var> = 0.5) to achieve 99.9% decay.</p>
                 </div>
 
                 <div>
@@ -864,7 +882,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">10. Real-World Engineering Connections</h4>
-                  <p>Bridges and structural beams are designed to avoid 90° resonance phase alignment to prevent catastrophically high energy injection rates.</p>
+                  <p>Bridges and structural beams are designed to avoid 90&deg; resonance phase alignment to prevent catastrophically high energy injection rates.</p>
                 </div>
               </div>
             </div>
@@ -887,9 +905,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>The Quality Factor Q defines the selectivity and energy retention of the system. In terms of bandwidth Δf at amplitude A_max / √2:</p>
+                    <p>The Quality Factor <Var>Q</Var> defines the selectivity and energy retention of the system. In terms of bandwidth <Var>&Delta;f</Var> at amplitude <Frac num={<><Var>A</Var><sub>max</sub></>} den={<Sqrt>2</Sqrt>} />:</p>
                     <EqBox>
-                      Q = <Frac num="f₀" den="Δf" /> = <Frac num={<Sqrt>m k</Sqrt>} den="b" />
+                      <span><Var>Q</Var> = <Frac num={<><Var>f</Var><sub>0</sub></>} den={<><Var>&Delta;f</Var></>} /> = <Frac num={<Sqrt><Var>m</Var><Var>k</Var></Sqrt>} den={<Var>b</Var>} /></span>
                     </EqBox>
                   </div>
 
@@ -897,8 +915,8 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Single Oscillator</li>
-                      <li>Parameters: m = 2.00 kg, k = 100.00 N/m</li>
-                      <li>Damping: b = 0.10 N s/m (High Q regime)</li>
+                      <li>Parameters: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m</li>
+                      <li>Damping: <Var>b</Var> = 0.10 N s/m (High-<Var>Q</Var> regime)</li>
                       <li>Initial Conditions: Zero state</li>
                     </ul>
                   </div>
@@ -909,9 +927,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   
                   <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 text-[11px] font-mono space-y-1">
                     <span className="text-blue-400 font-bold block mb-1">Active Targets</span>
-                    <div>• Analytical Q-Factor: <strong>{Q_theo === Infinity ? "∞" : Q_theo.toFixed(1)}</strong></div>
-                    <div>• Bandwidth (Δf): <strong>{bw_theo.toFixed(4)} Hz</strong></div>
-                    <div>• Peak Amplitude: <strong>{A_theo.toFixed(4)} m</strong></div>
+                    <div>• Analytical <Var>Q</Var>-Factor: <strong>{Q_theo === Infinity ? "∞" : Q_theo.toFixed(1)}</strong></div>
+                    <div>• Bandwidth (<Var>&Delta;f</Var>): <strong>{bw_theo.toFixed(4)} Hz</strong></div>
+                    <div>• Peak Amplitude (<Var>A</Var><sub>max</sub>): <strong>{A_theo.toFixed(4)} m</strong></div>
                   </div>
                 </div>
               </div>
@@ -920,10 +938,10 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">4. Step-by-Step Procedure</h4>
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
-                    <li>Load high Q preset parameter settings.</li>
+                    <li>Load high-<Var>Q</Var> preset parameter settings.</li>
                     <li>Slowly sweep driving frequency from 0.80 Hz to 1.30 Hz in steps of 0.02 Hz.</li>
                     <li>Identify the maximum amplitude peak at resonance.</li>
-                    <li>Calculate half-power points at A_peak * 0.707. Determine the two frequencies f₁ and f₂ corresponding to this amplitude.</li>
+                    <li>Calculate half-power points at <Var>A</Var><sub>peak</sub> &times; 0.707. Determine the two frequencies <Var>f</Var><sub>1</sub> and <Var>f</Var><sub>2</sub> corresponding to this amplitude.</li>
                   </ol>
                 </div>
 
@@ -939,7 +957,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>Verify that Q = √mk / b. For low damping, f_r is nearly identical to natural frequency f₀.</p>
+                  <p>Verify that <Var>Q</Var> = <Frac num={<Sqrt><Var>m</Var><Var>k</Var></Sqrt>} den={<Var>b</Var>} />. For low damping, <Var>f</Var><sub>r</sub> is nearly identical to natural frequency <Var>f</Var><sub>0</sub>.</p>
                 </div>
 
                 <div>
@@ -949,7 +967,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">9. Numerical Interpretation</h4>
-                  <p>High Q systems require fine resolution. If timeStep is too large, the peak may be missed due to discretization gaps.</p>
+                  <p>High-<Var>Q</Var> systems require fine resolution. If timestep <Var>&Delta;t</Var> is too large, the peak may be missed due to discretization gaps.</p>
                 </div>
 
                 <div>
@@ -977,9 +995,15 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>Conservation of energy dictates exchange between potential PE and kinetic KE reservoirs, while friction dissipates heat power:</p>
+                    <p>Conservation of energy dictates exchange between potential <Var>PE</Var> and kinetic <Var>KE</Var> reservoirs, while friction dissipates thermal power <Var>P</Var><sub>diss</sub>:</p>
                     <EqBox>
-                      KE = ½ m v², \quad PE = ½ k x², \quad P_diss = b v²
+                      <span>
+                        <Var>KE</Var> = <Frac num="1" den="2" /><Var>m</Var><Var>v</Var><sup>2</sup>
+                        <span className="mx-4 text-white/30">|</span>
+                        <Var>PE</Var> = <Frac num="1" den="2" /><Var>k</Var><Var>x</Var><sup>2</sup>
+                        <span className="mx-4 text-white/30">|</span>
+                        <Var>P</Var><sub>diss</sub> = <Var>b</Var><Var>v</Var><sup>2</sup>
+                      </span>
                     </EqBox>
                   </div>
 
@@ -987,9 +1011,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Single Oscillator</li>
-                      <li>Parameters: m = 2.00 kg, k = 100.00 N/m</li>
-                      <li>Damping: b = 1.00 N s/m, F₀ = 10.00 N</li>
-                      <li>Drive Speed: f_d = f₀ (Exact resonance)</li>
+                      <li>Parameters: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m</li>
+                      <li>Damping: <Var>b</Var> = 1.00 N s/m, <Var>F</Var><sub>0</sub> = 10.00 N</li>
+                      <li>Drive Speed: <Var>f</Var><sub>d</sub> = <Var>f</Var><sub>0</sub> (Exact resonance)</li>
                     </ul>
                   </div>
                 </div>
@@ -1003,25 +1027,25 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">4. Step-by-Step Procedure</h4>
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
-                    <li>Select Single mode. Drive exactly at resonance.</li>
-                    <li>Observe the Energy bar graph. Pause when x is maximum. Record KE and PE.</li>
-                    <li>Observe average power dissipation telemetry at steady state.</li>
+                    <li>Select Single mode. Drive exactly at resonance (<Var>f</Var><sub>d</sub> = <Var>f</Var><sub>0</sub>).</li>
+                    <li>Observe the Energy bar graph. Pause when displacement <Var>x</Var> is maximum. Record <Var>KE</Var> and <Var>PE</Var>.</li>
+                    <li>Observe average power dissipation telemetry <Var>P</Var><sub>diss</sub> at steady state.</li>
                   </ol>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">5. Measurement Tasks</h4>
-                  <p>Measure maximum kinetic and potential energy values. Verify that total energy matches E = PE_max = KE_max at resonance.</p>
+                  <p>Measure maximum kinetic and potential energy values. Verify that total energy matches <Var>E</Var> = <Var>PE</Var><sub>max</sub> = <Var>KE</Var><sub>max</sub> at resonance.</p>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">6. Expected Physical Behavior</h4>
-                  <p>Energy continuously sloshes between potential (restoring spring) and kinetic (mass momentum) forms twice per cycle.</p>
+                  <p>Energy continuously sloshes between potential (<Var>PE</Var>, restoring spring) and kinetic (<Var>KE</Var>, mass momentum) forms twice per cycle.</p>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>At steady-state resonance, the average injected power P_in = 0.5 * F₀ * A * ω must exactly equal dissipated power P_diss = 0.5 * b * ω² * A².</p>
+                  <p>At steady-state resonance, the average injected power <Var>P</Var><sub>in</sub> = <Frac num="1" den="2" /><Var>F</Var><sub>0</sub><Var>A</Var><Var>&omega;</Var> must exactly equal dissipated power <Var>P</Var><sub>diss</sub> = <Frac num="1" den="2" /><Var>b</Var><Var>&omega;</Var><sup>2</sup><Var>A</Var><sup>2</sup>.</p>
                 </div>
 
                 <div>
@@ -1059,9 +1083,13 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>Symmetric (in-phase) and antisymmetric (out-of-phase) eigenmodes split according to coupling stiffness k_c:</p>
+                    <p>Symmetric (in-phase) and antisymmetric (out-of-phase) eigenmodes split according to coupling stiffness <Var>k</Var><sub>c</sub>:</p>
                     <EqBox>
-                      f_sym = <Frac num={<Sqrt>k₁/m₁</Sqrt>} den="2π" />, \quad f_asym = <Frac num={<Sqrt>(k₁ + 2k_c)/m₁</Sqrt>} den="2π" />
+                      <span>
+                        <Var>f</Var><sub>sym</sub> = <Frac num={<Sqrt><Frac num={<><Var>k</Var><sub>1</sub></>} den={<><Var>m</Var><sub>1</sub></>} /></Sqrt>} den={<>2<Var>&pi;</Var></>} />
+                        <span className="mx-4 text-white/30">|</span>
+                        <Var>f</Var><sub>asym</sub> = <Frac num={<Sqrt><Frac num={<><Var>k</Var><sub>1</sub> + 2<Var>k</Var><sub>c</sub></>} den={<><Var>m</Var><sub>1</sub></>} /></Sqrt>} den={<>2<Var>&pi;</Var></>} />
+                      </span>
                     </EqBox>
                   </div>
 
@@ -1069,9 +1097,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Coupled Oscillators</li>
-                      <li>Parameters: m₁ = m₂ = 2.00 kg, k₁ = k₂ = 100.00 N/m</li>
-                      <li>Coupling Spring: k_c = 50.00 N/m</li>
-                      <li>Damping: b₁ = b₂ = 0.05 N s/m (Low damping)</li>
+                      <li>Parameters: <Var>m</Var><sub>1</sub> = <Var>m</Var><sub>2</sub> = 2.00 kg, <Var>k</Var><sub>1</sub> = <Var>k</Var><sub>2</sub> = 100.00 N/m</li>
+                      <li>Coupling Spring: <Var>k</Var><sub>c</sub> = 50.00 N/m</li>
+                      <li>Damping: <Var>b</Var><sub>1</sub> = <Var>b</Var><sub>2</sub> = 0.05 N s/m (Low damping)</li>
                     </ul>
                   </div>
                 </div>
@@ -1081,9 +1109,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   
                   <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 text-[11px] font-mono space-y-1">
                     <span className="text-blue-400 font-bold block mb-1">Active Split Modes</span>
-                    <div>• Symmetric (f_sym): <strong>{f_mode1_theo.toFixed(3)} Hz</strong></div>
-                    <div>• Antisymmetric (f_asym): <strong>{f_mode2_theo.toFixed(3)} Hz</strong></div>
-                    <div>• Frequency Split (Δf): <strong>{(f_mode2_theo - f_mode1_theo).toFixed(3)} Hz</strong></div>
+                    <div>• Symmetric (<Var>f</Var><sub>sym</sub>): <strong>{f_mode1_theo.toFixed(3)} Hz</strong></div>
+                    <div>• Antisymmetric (<Var>f</Var><sub>asym</sub>): <strong>{f_mode2_theo.toFixed(3)} Hz</strong></div>
+                    <div>• Frequency Split (<Var>&Delta;f</Var>): <strong>{(f_mode2_theo - f_mode1_theo).toFixed(3)} Hz</strong></div>
                   </div>
                 </div>
               </div>
@@ -1093,15 +1121,15 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">4. Step-by-Step Procedure</h4>
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
                     <li>Load coupled configuration mode.</li>
-                    <li>Initialize symmetric mode (masses in phase). Start simulation and measure frequency.</li>
-                    <li>Initialize antisymmetric mode (masses in opposite phase). Measure frequency.</li>
-                    <li>Initialize beats. Drive Mass 1 at {f0_theo.toFixed(2)} Hz and record the energy exchange period.</li>
+                    <li>Initialize symmetric mode (masses in phase). Start simulation and measure frequency <Var>f</Var><sub>sym</sub>.</li>
+                    <li>Initialize antisymmetric mode (masses in opposite phase). Measure frequency <Var>f</Var><sub>asym</sub>.</li>
+                    <li>Initialize beats. Drive Mass 1 (<Var>m</Var><sub>1</sub>) at <Var>f</Var><sub>0</sub> = {f0_theo.toFixed(2)} Hz and record the energy exchange period.</li>
                   </ol>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">5. Measurement Tasks</h4>
-                  <p>Measure symmetric mode, antisymmetric mode, and beat period. Verify relation: T_beat = 1 / (f_asym - f_sym).</p>
+                  <p>Measure symmetric mode, antisymmetric mode, and beat period. Verify relation: <Var>T</Var><sub>beat</sub> = <Frac num="1" den={<><Var>f</Var><sub>asym</sub> - <Var>f</Var><sub>sym</sub></>} />.</p>
                 </div>
 
                 <div>
@@ -1111,7 +1139,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>Derive equations of motion: m₁ẍ₁ = -kx₁ - k_c(x₁ - x₂) and m₂ẍ₂ = -kx₂ - k_c(x₂ - x₁).</p>
+                  <p>Derive equations of motion: <Var>m</Var><sub>1</sub><DDot><Var>x</Var></DDot><sub>1</sub> = -<Var>k</Var><sub>1</sub><Var>x</Var><sub>1</sub> - <Var>k</Var><sub>c</sub>(<Var>x</Var><sub>1</sub> - <Var>x</Var><sub>2</sub>) and <Var>m</Var><sub>2</sub><DDot><Var>x</Var></DDot><sub>2</sub> = -<Var>k</Var><sub>2</sub><Var>x</Var><sub>2</sub> - <Var>k</Var><sub>c</sub>(<Var>x</Var><sub>2</sub> - <Var>x</Var><sub>1</sub>).</p>
                 </div>
 
                 <div>
@@ -1149,20 +1177,22 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>The Duffing system includes a cubic spring term α, which makes spring stiffness dependent on amplitude:</p>
+                    <p>The Duffing system includes a cubic spring term <Var>&alpha;</Var>, which makes spring stiffness dependent on amplitude:</p>
                     <EqBox>
-                      m ẍ + b ẋ + k x + α x³ = F₀ cos(ω t)
+                      <span>
+                        <Var>m</Var><DDot><Var>x</Var></DDot> + <Var>b</Var><Dot><Var>x</Var></Dot> + <Var>k</Var><Var>x</Var> + <Var>&alpha;</Var><Var>x</Var><sup>3</sup> = <Var>F</Var><sub>0</sub> cos(<Var>&omega;</Var><Var>t</Var>)
+                      </span>
                     </EqBox>
-                    <p className="mt-1">For α &gt; 0 (hardening), peak bends right. For α &lt; 0 (softening), peak bends left. Hysteresis creates multiple coexisting stable states.</p>
+                    <p className="mt-1">For <Var>&alpha;</Var> &gt; 0 (hardening), the peak bends right. For <Var>&alpha;</Var> &lt; 0 (softening), the peak bends left. Hysteresis creates multiple coexisting stable states.</p>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Duffing Nonlinear</li>
-                      <li>Parameters: m = 2.00 kg, k = 100.00 N/m</li>
-                      <li>Nonlinearity: α = 30.00 N/m³ (Hardening)</li>
-                      <li>Damping: b = 0.50 N s/m, F₀ = 15.00 N</li>
+                      <li>Parameters: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m</li>
+                      <li>Nonlinearity: <Var>&alpha;</Var> = 30.00 N/m³ (Hardening)</li>
+                      <li>Damping: <Var>b</Var> = 0.50 N s/m, <Var>F</Var><sub>0</sub> = 15.00 N</li>
                     </ul>
                   </div>
                 </div>
@@ -1177,15 +1207,15 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">4. Step-by-Step Procedure</h4>
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
                     <li>Load Duffing configuration parameters.</li>
-                    <li>Slowly sweep frequency upwards from 0.80 Hz to 1.60 Hz. Record jump-down frequency.</li>
-                    <li>Sweep frequency downwards from 1.60 Hz to 0.80 Hz. Record jump-up frequency.</li>
-                    <li>Mark the hysteresis overlap zone.</li>
+                    <li>Slowly sweep driving frequency <Var>f</Var><sub>d</sub> upwards from 0.80 Hz to 1.60 Hz. Record the jump-down frequency.</li>
+                    <li>Sweep frequency <Var>f</Var><sub>d</sub> downwards from 1.60 Hz to 0.80 Hz. Record the jump-up frequency.</li>
+                    <li>Mark the hysteresis overlap (bistability) zone.</li>
                   </ol>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">5. Measurement Tasks</h4>
-                  <p>Identify the bistability boundary interval (f_jump_up vs f_jump_down) and input them in your laboratory manual.</p>
+                  <p>Identify the bistability boundary interval (<Var>f</Var><sub>jump-up</sub> vs <Var>f</Var><sub>jump-down</sub>) and input them in your laboratory manual.</p>
                 </div>
 
                 <div>
@@ -1195,7 +1225,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>Using perturbation analysis, resonance frequency shifts as: f_r ≈ f₀ * (1 + 0.375 * α * A² / k).</p>
+                  <p>Using perturbation analysis, the resonance frequency shifts as: <Var>f</Var><sub>r</sub> &asymp; <Var>f</Var><sub>0</sub> (1 + <Frac num={<>3<Var>&alpha;</Var><Var>A</Var><sup>2</sup></>} den={<>8<Var>k</Var></>} />).</p>
                 </div>
 
                 <div>
@@ -1233,20 +1263,24 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>The Mathieu equation models periodic stiffness modulation k(t) = k₀[1 + ε cos(Ω t)]. Instability occurs near: </p>
+                    <p>The Mathieu equation models periodic stiffness modulation <Var>k</Var>(<Var>t</Var>) = <Var>k</Var><sub>0</sub>[1 + <Var>&epsilon;</Var> cos(<Var>&Omega;</Var><Var>t</Var>)]. Instability occurs near the parametric resonance condition:</p>
                     <EqBox>
-                      Ω = 2 ω₀
+                      <span>
+                        <Var>m</Var><DDot><Var>x</Var></DDot> + <Var>b</Var><Dot><Var>x</Var></Dot> + <Var>k</Var><sub>0</sub>[1 + <Var>&epsilon;</Var> cos(<Var>&Omega;</Var><Var>t</Var>)]<Var>x</Var> = 0
+                        <span className="mx-4 text-white/30">|</span>
+                        <Var>&Omega;</Var> &asymp; 2<Var>&omega;</Var><sub>0</sub>
+                      </span>
                     </EqBox>
-                    <p className="mt-1">Energy is pumped twice per natural cycle, causing exponential amplitude growth if modulation ε exceeds critical damping limits.</p>
+                    <p className="mt-1">Energy is pumped twice per natural cycle, causing exponential amplitude growth if modulation depth <Var>&epsilon;</Var> exceeds critical damping limits.</p>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Parametric Resonance</li>
-                      <li>Parameters: m = 2.00 kg, k = 100.00 N/m, ε = 0.30</li>
-                      <li>Damping: b = 0.10 N s/m (Low threshold)</li>
-                      <li>Initial Conditions: x₀ = 0.05 m (Non-zero seed required)</li>
+                      <li>Parameters: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m, <Var>&epsilon;</Var> = 0.30</li>
+                      <li>Damping: <Var>b</Var> = 0.10 N s/m (Low threshold)</li>
+                      <li>Initial Conditions: <Var>x</Var><sub>0</sub> = 0.05 m (Non-zero seed required)</li>
                     </ul>
                   </div>
                 </div>
@@ -1256,9 +1290,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   
                   <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 text-[11px] font-mono space-y-1">
                     <span className="text-blue-400 font-bold block mb-1">Instability Telemetry</span>
-                    <div>• Modulator Speed (2f₀): <strong>{(2 * f0_theo).toFixed(3)} Hz</strong></div>
-                    <div>• Modulation Depth (ε): <strong>{parametricEpsilon.toFixed(2)}</strong></div>
-                    <div>• Instability Boundary: <strong>{(2 / Q_theo).toFixed(4)}</strong></div>
+                    <div>• Modulator Speed (2<Var>f</Var><sub>0</sub>): <strong>{(2 * f0_theo).toFixed(3)} Hz</strong></div>
+                    <div>• Modulation Depth (<Var>&epsilon;</Var>): <strong>{parametricEpsilon.toFixed(2)}</strong></div>
+                    <div>• Instability Threshold (2/<Var>Q</Var>): <strong>{(2 / Q_theo).toFixed(4)}</strong></div>
                   </div>
                 </div>
               </div>
@@ -1267,16 +1301,16 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">4. Step-by-Step Procedure</h4>
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
-                    <li>Load parametric configuration. Seed system with initial displacement.</li>
-                    <li>Set modulator frequency to 2.25 Hz (close to 2f₀).</li>
+                    <li>Load parametric configuration. Seed the system with initial displacement <Var>x</Var><sub>0</sub>.</li>
+                    <li>Set modulator frequency <Var>f</Var><sub>m</sub> to 2.25 Hz (close to 2<Var>f</Var><sub>0</sub>).</li>
                     <li>Observe exponential envelope growth. Measure the amplitude doubling period.</li>
-                    <li>Increase damping b to 1.80 N s/m. Observe how stability is restored.</li>
+                    <li>Increase damping <Var>b</Var> to 1.80 N s/m. Observe how stability is restored.</li>
                   </ol>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">5. Measurement Tasks</h4>
-                  <p>Measure amplitude growth rate at Ω = 2.25 Hz. Verify the threshold condition ε &gt; 2 / Q.</p>
+                  <p>Measure amplitude growth rate at frequency <Var>f</Var><sub>m</sub> = 2.25 Hz (modulator speed <Var>&Omega;</Var> = 2<Var>&pi;</Var><Var>f</Var><sub>m</sub>). Verify the threshold condition <Var>&epsilon;</Var> &gt; <Frac num="2" den={<Var>Q</Var>} />.</p>
                 </div>
 
                 <div>
@@ -1286,7 +1320,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>The stability boundaries of the Mathieu equation are plotted in Floquet space as instability tongues starting at integer fractions of 2ω₀.</p>
+                  <p>The stability boundaries of the Mathieu equation are plotted in Floquet space as instability tongues starting at integer fractions of 2<Var>&omega;</Var><sub>0</sub>.</p>
                 </div>
 
                 <div>
@@ -1324,20 +1358,20 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
-                    <p>Deterministic chaos in forced Duffing systems exhibits sensitive dependence on initial conditions:</p>
+                    <p>Deterministic chaos in forced Duffing systems exhibits sensitive dependence on initial conditions, where distance <Var>d</Var> between trajectories grows as:</p>
                     <EqBox>
-                      d(t) ≈ d₀ e^(λ t)
+                      <span><Var>d</Var>(<Var>t</Var>) &asymp; <Var>d</Var><sub>0</sub><Var>e</Var><sup><Var>&lambda;</Var><Var>t</Var></sup></span>
                     </EqBox>
-                    <p className="mt-1">If Lyapunov exponent λ &gt; 0, nearby starting trajectories diverge exponentially over time, forming a fractal strange attractor in phase space.</p>
+                    <p className="mt-1">If the Lyapunov exponent satisfies <Var>&lambda;</Var> &gt; 0, nearby starting trajectories diverge exponentially over time, forming a fractal strange attractor in phase space.</p>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Duffing Nonlinear</li>
-                      <li>Parameters: m = 2.00 kg, k = 100.00 N/m, α = 30.00 N/m³</li>
-                      <li>Damping: b = 0.05 N s/m (Extremely low)</li>
-                      <li>Harmonic Driver: F₀ = 38.00 N, f_d = 1.13 Hz</li>
+                      <li>Parameters: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m, <Var>&alpha;</Var> = 30.00 N/m³</li>
+                      <li>Damping: <Var>b</Var> = 0.05 N s/m (Extremely low)</li>
+                      <li>Harmonic Driver: <Var>F</Var><sub>0</sub> = 38.00 N, <Var>f</Var><sub>d</sub> = 1.13 Hz</li>
                     </ul>
                   </div>
                 </div>
@@ -1352,9 +1386,9 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">4. Step-by-Step Procedure</h4>
                   <ol className="list-decimal pl-5 space-y-1 text-xs">
                     <li>Load low damping, high drive Duffing parameters.</li>
-                    <li>Switch the graph display to **Phase Space (x vs v)**.</li>
+                    <li>Switch the graph display to **Phase Space** (<Var>x</Var> vs <Var>v</Var>).</li>
                     <li>Observe the non-repeating trajectory orbits.</li>
-                    <li>Adjust initial position x₁₀ by 0.001 m. Observe how the two orbits diverge.</li>
+                    <li>Adjust initial position <Var>x</Var><sub>0</sub> by 0.001 m. Observe how the two orbits diverge over time.</li>
                   </ol>
                 </div>
 
@@ -1370,7 +1404,7 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">7. Mathematical Analysis</h4>
-                  <p>Deterministic chaos requires at least 3 phase space dimensions. In a driven 1D oscillator, the phase space variables are position x, velocity v, and driver phase angle θ.</p>
+                  <p>Deterministic chaos requires at least 3 phase space dimensions. In a driven 1D oscillator, the phase space variables are position <Var>x</Var>, velocity <Var>v</Var>, and driver phase angle <Var>&theta;</Var> = <Var>&omega;</Var><Var>t</Var>.</p>
                 </div>
 
                 <div>
@@ -1410,17 +1444,17 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">2. Physical Theory</h4>
                     <p>Explicit solvers do not conserve phase space area, introducing artificial energy growth. Symplectic integrators preserve the Hamiltonian:</p>
                     <EqBox>
-                      H(q, p) = const
+                      <span><Var>H</Var>(<Var>q</Var>, <Var>p</Var>) = const</span>
                     </EqBox>
-                    <p className="mt-1">This limits energy drift, keeping the system stable even at larger step sizes.</p>
+                    <p className="mt-1">This limits energy drift, keeping the system stable even at larger step sizes <Var>&Delta;t</Var>.</p>
                   </div>
 
                   <div>
                     <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">3. Experimental Setup</h4>
                     <ul className="list-disc pl-5 font-mono text-[11px] text-white/60 space-y-1">
                       <li>Mode: Single Oscillator</li>
-                      <li>Parameters: m = 2.00 kg, k = 100.00 N/m, b = 0.00 N s/m (Undamped)</li>
-                      <li>Timestep: dt = 0.08 s (dt_crit = 0.28 s)</li>
+                      <li>Parameters: <Var>m</Var> = 2.00 kg, <Var>k</Var> = 100.00 N/m, <Var>b</Var> = 0.00 N s/m (Undamped)</li>
+                      <li>Timestep: <Var>&Delta;t</Var> = 0.08 s (<Var>&Delta;t</Var><sub>crit</sub> = 0.28 s)</li>
                     </ul>
                   </div>
                 </div>
@@ -1430,8 +1464,8 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                   
                   <div className="p-4 bg-red-500/5 rounded-2xl border border-red-500/10 text-[11px] font-mono space-y-1">
                     <span className="text-red-400 font-bold block mb-1">Integrator Health Indicators</span>
-                    <div>• Critical Limit (2/ω₀): <strong>{(2 / w0).toFixed(4)} s</strong></div>
-                    <div>• Timestep (dt): <strong>{timeStep.toFixed(3)} s</strong></div>
+                    <div>• Critical Limit (<Frac num="2" den={<><Var>&omega;</Var><sub>0</sub></>} />): <strong>{(2 / w0).toFixed(4)} s</strong></div>
+                    <div>• Timestep (<Var>&Delta;t</Var>): <strong>{timeStep.toFixed(3)} s</strong></div>
                     <div>• Safety Margin: <strong>{((2 / w0) / timeStep).toFixed(1)}x</strong></div>
                   </div>
                 </div>
@@ -1445,13 +1479,13 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
                     <li>Select **Runge-Kutta 4 (RK4)** integrator. Start the simulation.</li>
                     <li>Observe energy trace drift over 30 seconds.</li>
                     <li>Switch to **Velocity Verlet** and observe energy stabilization.</li>
-                    <li>Increase timestep dt to 0.15 s. Compare solver stability.</li>
+                    <li>Increase timestep <Var>&Delta;t</Var> to 0.15 s. Compare solver stability.</li>
                   </ol>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">5. Measurement Tasks</h4>
-                  <p>Record energy drift rates (dE/dt) for RK4, Symplectic Euler, and Velocity Verlet. Input results in the Report Console.</p>
+                  <p>Record energy drift rates (<Frac num={<><Var>d</Var><Var>E</Var></>} den={<><Var>d</Var><Var>t</Var></>} />) for RK4, Symplectic Euler, and Velocity Verlet. Input results in the Report Console.</p>
                 </div>
 
                 <div>
@@ -1466,12 +1500,12 @@ We verified that the driven damped harmonic system exhibits characteristic ampli
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">8. Error & Uncertainty Analysis</h4>
-                  <p>Global truncation error of RK4 scales as O(dt⁴), whereas Velocity Verlet scales as O(dt²), but Verlet restricts energy to a bounded shell.</p>
+                  <p>Global truncation error of RK4 scales as <Var>O</Var>(<Var>&Delta;t</Var><sup>4</sup>), whereas Velocity Verlet scales as <Var>O</Var>(<Var>&Delta;t</Var><sup>2</sup>), but Velocity Verlet restricts energy to a bounded shell.</p>
                 </div>
 
                 <div>
                   <h4 className="font-bold text-white uppercase text-xs tracking-wider mb-1">9. Numerical Interpretation</h4>
-                  <p>If the selected timestep exceeds the critical limit (dt &gt; 2/ω₀), the numerical integration becomes unstable, causing the simulation to explode.</p>
+                  <p>If the selected timestep exceeds the critical limit (<Var>&Delta;t</Var> &gt; <Frac num="2" den={<><Var>&omega;</Var><sub>0</sub></>} />), the numerical integration becomes unstable, causing the simulation to explode.</p>
                 </div>
 
                 <div>
