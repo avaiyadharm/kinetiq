@@ -5,6 +5,7 @@ import { SimulationPageLayout, TabType } from "@/components/simulations/Simulati
 import { ResonanceCanvas, WaveformType } from "./ResonanceCanvas";
 import { ResonanceEnvironment } from "./ResonanceEnvironment";
 import { ResonanceTheory } from "./ResonanceTheory";
+import { ResonanceGuide } from "./ResonanceGuide";
 import { 
   Play, Pause, RotateCcw, Activity, Zap, Settings2, Sparkles, Sliders, RefreshCw, BarChart2, BarChart
 } from "lucide-react";
@@ -749,80 +750,28 @@ export const ResonanceSimulator: React.FC = () => {
         )}
 
         {activeTab === "guide" && (
-          <div className="max-w-4xl mx-auto space-y-12 pb-24 text-white overflow-y-auto h-full px-6 pt-6 font-body-md">
-            <header className="space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold uppercase tracking-widest">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                Student Guide
-              </div>
-              <h2 className="text-4xl md:text-5xl font-black tracking-tight uppercase">
-                Resonance <span className="text-blue-400">Laboratory Guide</span>
-              </h2>
-              <p className="text-base text-white/50 leading-relaxed max-w-3xl font-body-md">
-                Follow these interactive laboratory procedures to explore the physics of resonance, non-linear jump behavior, normal modes, and phase transitions.
-              </p>
-            </header>
-
-            <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
-              <h3 className="text-lg font-black uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-3 relative z-10">
-                <span className="w-6 h-[2px] bg-blue-400/50" /> 
-                Experiment 1: Phase Shifts & Resonant Amplitude
-              </h3>
-              <ol className="list-decimal pl-6 space-y-4 text-sm text-white/70">
-                <li>
-                  Ensure you are in the <strong>Single Oscillator</strong> mode. Set Mass = 2.0 kg, spring $k = 100$ N/m, and damping $b = 0.5$ N s/m. This gives a natural frequency of $f_0 \approx 1.13$ Hz.
-                </li>
-                <li>
-                  Drive the system at $f_d = 0.50$ Hz. Notice on the <strong>Phasor Diagram</strong> (bottom-left) that the driver vector (blue) and mass position vector (teal) rotate almost in-phase. The phase lag $\phi \approx 10^\circ$.
-                </li>
-                <li>
-                  Slowly adjust $f_d$ to $1.13$ Hz. Notice the amplitude increase. The phase angle is now exactly $90^\circ$ — velocity is aligned with force, maximizing instantaneous power transfer!
-                </li>
-                <li>
-                  Increase $f_d$ to $3.00$ Hz. The mass displacement lags by almost $180^\circ$ and moves completely opposite to the driving force.
-                </li>
-              </ol>
-            </section>
-
-            <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
-              <h3 className="text-lg font-black uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-3 relative z-10">
-                <span className="w-6 h-[2px] bg-blue-400/50" /> 
-                Experiment 2: Auto Frequency Sweep & Bandwidth
-              </h3>
-              <ol className="list-decimal pl-6 space-y-4 text-sm text-white/70">
-                <li>
-                  Select the <strong>Tuning Fork (High Q)</strong> preset.
-                </li>
-                <li>
-                  In the right panel, scroll down to <strong>Sweep Laboratory</strong> and turn on <strong>Auto Sweep</strong>.
-                </li>
-                <li>
-                  Observe the driving frequency $f_d$ incrementing slowly. Watch the Lorentzian spectrum graph (top-right); yellow crosshairs will trace the experimental amplitude response.
-                </li>
-                <li>
-                  Notice that the peak is extremely narrow, which corresponds mathematically to a high Quality Factor ($Q \approx 250$). The half-power bandwidth is visually represented by the horizontal bandwidth line $\Delta f$.
-                </li>
-              </ol>
-            </section>
-
-            <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
-              <h3 className="text-lg font-black uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-3 relative z-10">
-                <span className="w-6 h-[2px] bg-blue-400/50" /> 
-                Experiment 3: Duffing Hysteresis & Jump Resonances
-              </h3>
-              <ol className="list-decimal pl-6 space-y-4 text-sm text-white/70">
-                <li>
-                  Select the <strong>Duffing Bistable Jump</strong> preset. This configures a hardening spring ($\alpha = 30$).
-                </li>
-                <li>
-                  Sweep the frequency manually upwards from $0.8$ Hz. Notice the peak bends to the right. The amplitude increases to high values and then suddenly "jumps" down to a lower branch around $1.4$ Hz.
-                </li>
-                <li>
-                  Now sweep the frequency downwards from $1.8$ Hz. The system stays on the lower amplitude branch until it reaches $1.0$ Hz, where it suddenly jumps up to the higher branch. This is the hysteresis region!
-                </li>
-              </ol>
-            </section>
-          </div>
+          <ResonanceGuide
+            mass={mass}
+            springK={springK}
+            dampingB={dampingB}
+            driverAmp={driverAmp}
+            driverFreq={driverFreq}
+            simMode={simMode}
+            integrator={integrator}
+            duffingAlpha={duffingAlpha}
+            couplingK={couplingK}
+            mass2={mass2}
+            dampingB2={dampingB2}
+            springK2={springK2}
+            couplingB={couplingB}
+            driverAmp2={driverAmp2}
+            driverFreq2={driverFreq2}
+            parametricEpsilon={parametricEpsilon}
+            timeStep={timeStep}
+            solverTolerance={solverTolerance}
+            adaptiveStepping={adaptiveStepping}
+            substeps={substeps}
+          />
         )}
       </div>
     </SimulationPageLayout>
