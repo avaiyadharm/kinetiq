@@ -6,7 +6,7 @@ import { ResonanceCanvas, WaveformType } from "./ResonanceCanvas";
 import { ResonanceEnvironment } from "./ResonanceEnvironment";
 import { ResonanceTheory } from "./ResonanceTheory";
 import { 
-  Play, Pause, RotateCcw, Activity, Zap, Info, Settings2, HelpCircle, Sparkles
+  Play, Pause, RotateCcw, Activity, Zap, Settings2, Sparkles, Sliders, RefreshCw, BarChart2, BarChart
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +60,7 @@ const ClickableValue = ({
             const rect = e.currentTarget.getBoundingClientRect();
             const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             const snapped = Math.round((min + percent * (max - min)) / step) * step;
-            onChange(snapped);
+            onChange(Math.min(max, Math.max(min, snapped)));
           }
         }}
         onMouseUp={() => setIsDragging(false)}
@@ -108,7 +108,7 @@ const ControlCard = ({ title, icon: Icon, children, color }: ControlCardProps) =
 export const ResonanceSimulator: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("canvas");
   
-  // Physical parameters state
+  // Physical parameters state (Mass 1, stiffness, damping, driver)
   const [mass, setMass] = useState<number>(2.0);        // kg
   const [springK, setSpringK] = useState<number>(100.0);   // N/m
   const [dampingB, setDampingB] = useState<number>(0.5);    // N s/m
@@ -116,32 +116,64 @@ export const ResonanceSimulator: React.FC = () => {
   const [driverFreq, setDriverFreq] = useState<number>(1.13); // Hz
   const [waveform, setWaveform] = useState<WaveformType>("sine");
 
-  // Visual/control parameters state
+  // Advanced states
+  const [simMode, setSimMode] = useState<"single" | "coupled" | "duffing" | "parametric" | "beats">("single");
+  const [integrator, setIntegrator] = useState<"rk4" | "symplectic_euler" | "velocity_verlet">("rk4");
+  const [duffingAlpha, setDuffingAlpha] = useState<number>(30.0); // N/m^3
+  const [couplingK, setCouplingK] = useState<number>(50.0); // N/m coupling
+  const [mass2, setMass2] = useState<number>(2.0); // kg mass 2
+  const [dampingB2, setDampingB2] = useState<number>(0.5); // N s/m damping 2
+  const [substeps, setSubsteps] = useState<number>(20);
+  const [autoSweep, setAutoSweep] = useState<boolean>(false);
+  const [sweepSpeed, setSweepSpeed] = useState<number>(0.05); // Hz/s
+  const [showCursors, setShowCursors] = useState<boolean>(true);
+  const [showValidation, setShowValidation] = useState<boolean>(false);
+
+  // Playback parameters
   const [slowMotion, setSlowMotion] = useState<number>(0.1);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [showVectors, setShowVectors] = useState<boolean>(true);
-  const [showPhaseSpace, setShowPhaseSpace] = useState<boolean>(false);
-  const [activePreset, setActivePreset] = useState<string>("Acoustic Cavity");
+  const [activePreset, setActivePreset] = useState<string>("Custom");
   
+  // Trigger states
   const [resetTrigger, setResetTrigger] = useState<number>(0);
+  const [impulseTrigger, setImpulseTrigger] = useState<number>(0);
+  const [resetPhaseTrigger, setResetPhaseTrigger] = useState<number>(0);
+  const [clearSweepTrigger, setClearSweepTrigger] = useState<number>(0);
 
   // Live telemetry state from Canvas
   const [telemetry, setTelemetry] = useState({
     currentAmplitude: 0,
+    currentAmplitude2: 0,
     qFactor: 0,
     phaseLagDeg: 0,
     peakFreqHz: 0,
     naturalFreqHz: 0,
     currentFreqHz: 0,
+    dissipatedPower: 0,
+    totalEnergy: 0,
+    integrationError: 0,
   });
 
   const handleReset = () => {
     setResetTrigger(prev => prev + 1);
   };
 
+  const handleApplyImpulse = () => {
+    setImpulseTrigger(prev => prev + 1);
+  };
+
+  const handleResetPhase = () => {
+    setResetPhaseTrigger(prev => prev + 1);
+  };
+
+  const handleClearSweep = () => {
+    setClearSweepTrigger(prev => prev + 1);
+  };
+
   return (
     <SimulationPageLayout
-      title="Resonance & Forced Oscillations"
+      title="Resonance & Oscillations Laboratory"
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onReset={handleReset}
@@ -150,7 +182,7 @@ export const ResonanceSimulator: React.FC = () => {
         {activeTab === "canvas" && (
           <div className="h-full flex flex-col xl:flex-row">
             {/* Simulation Canvas Workspace */}
-            <div className="flex-1 min-h-[400px] xl:h-full bg-black relative">
+            <div className="flex-1 min-h-[450px] xl:h-full bg-black relative">
               <ResonanceCanvas
                 params={{
                   mass,
@@ -162,17 +194,33 @@ export const ResonanceSimulator: React.FC = () => {
                   slowMotion,
                   isPlaying,
                   showVectors,
-                  showPhaseSpace,
+                  simMode,
+                  integrator,
+                  duffingAlpha,
+                  couplingK,
+                  mass2,
+                  dampingB2,
+                  substeps,
+                  autoSweep,
+                  sweepSpeed,
+                  showCursors,
+                  showValidation,
                 }}
                 onStateUpdate={setTelemetry}
                 resetTrigger={resetTrigger}
+                impulseTrigger={impulseTrigger}
+                resetPhaseTrigger={resetPhaseTrigger}
+                clearSweepTrigger={clearSweepTrigger}
+                setDriverFreq={setDriverFreq}
               />
 
               {/* Float HUD Header overlay */}
-              <div className="absolute top-6 left-6 p-4 bg-black/60 backdrop-blur-md rounded-2xl border border-white/5 space-y-1 select-none pointer-events-none">
+              <div className="absolute top-6 left-6 p-4 bg-black/75 backdrop-blur-md rounded-2xl border border-white/5 space-y-1 select-none pointer-events-none z-10">
                 <div className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">PHYSICAL INTEGRATOR</div>
-                <div className="text-sm font-mono text-cyan-400 font-bold">RK-4 Engine: 10 Substeps/Frame</div>
-                <div className="text-[9px] text-white/40">Step size: Δt = {(slowMotion / 60).toFixed(4)}s</div>
+                <div className="text-sm font-mono text-cyan-400 font-bold uppercase">
+                  {integrator.replace("_", " ")}: {substeps} Steps
+                </div>
+                <div className="text-[9px] text-white/40">Step size: Δt = {((slowMotion * 0.0166) / substeps).toFixed(5)}s</div>
               </div>
             </div>
 
@@ -180,32 +228,112 @@ export const ResonanceSimulator: React.FC = () => {
             <aside className="w-full xl:w-[360px] border-t xl:border-t-0 xl:border-l border-border bg-[#18181b] flex flex-col h-1/2 xl:h-full overflow-y-auto shrink-0 select-none">
               
               {/* Playback Controls & Quick resets */}
-              <div className="p-6 border-b border-border flex items-center gap-4 bg-black/20">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase tracking-widest text-xs transition-all active:scale-95",
-                    isPlaying 
-                      ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20"
-                      : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
-                  )}
-                >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  {isPlaying ? "PAUSE LABORATORY" : "RUN LABORATORY"}
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="p-3 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border border-white/5 rounded-xl transition-all active:scale-90"
-                >
-                  <RotateCcw className="w-4.5 h-4.5" />
-                </button>
+              <div className="p-6 border-b border-border flex flex-col gap-4 bg-black/20">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase tracking-widest text-xs transition-all active:scale-95",
+                      isPlaying 
+                        ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20"
+                        : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
+                    )}
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    {isPlaying ? "PAUSE LAB" : "RUN LAB"}
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    title="Reset simulation parameters and state"
+                    className="p-3 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border border-white/5 rounded-xl transition-all active:scale-90"
+                  >
+                    <RotateCcw className="w-4.5 h-4.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <button 
+                    onClick={handleApplyImpulse}
+                    className="py-2 px-3 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 rounded-lg border border-amber-500/20 font-bold uppercase tracking-wider transition-all"
+                  >
+                    Apply Impulse
+                  </button>
+                  <button 
+                    onClick={handleResetPhase}
+                    className="py-2 px-3 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg border border-blue-500/20 font-bold uppercase tracking-wider transition-all"
+                  >
+                    Reset Phase
+                  </button>
+                </div>
               </div>
 
               <div className="p-6 space-y-6">
                 
-                {/* 1. Driver Engine Configuration */}
-                <ControlCard title="Driver Engine" icon={Zap} color="#2563eb">
+                {/* 1. Lab Mode Configuration */}
+                <ControlCard title="Lab Regime" icon={Sliders} color="#3b82f6">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Simulation Mode</label>
+                      <select 
+                        value={simMode}
+                        onChange={(e) => {
+                          setSimMode(e.target.value as any);
+                          setActivePreset("Custom");
+                        }}
+                        className="w-full bg-black/40 border border-white/5 rounded-xl p-2.5 text-xs text-white outline-none focus:border-primary font-bold uppercase tracking-wide"
+                      >
+                        <option value="single">Single Oscillator</option>
+                        <option value="coupled">Coupled Oscillators</option>
+                        <option value="duffing">Duffing Nonlinear</option>
+                        <option value="parametric">Parametric Resonance</option>
+                        <option value="beats">Beats & Interference</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Numerical Solver</label>
+                      <select 
+                        value={integrator}
+                        onChange={(e) => setIntegrator(e.target.value as any)}
+                        className="w-full bg-black/40 border border-white/5 rounded-xl p-2.5 text-xs text-white outline-none focus:border-primary font-mono text-cyan-400"
+                      >
+                        <option value="rk4">Runge-Kutta 4th Order (RK4)</option>
+                        <option value="symplectic_euler">Symplectic Euler</option>
+                        <option value="velocity_verlet">Velocity Verlet</option>
+                      </select>
+                    </div>
+
+                    <ClickableValue
+                      label="Integration Substeps"
+                      value={substeps}
+                      unit=""
+                      min={5}
+                      max={100}
+                      step={1}
+                      onChange={setSubsteps}
+                      colorClass="text-cyan-400 font-mono"
+                    />
+                  </div>
+                </ControlCard>
+
+                {/* 2. Driver Engine Configuration */}
+                <ControlCard title="Driver Engine" icon={Zap} color="#f59e0b">
                   <div className="space-y-5">
+                    {simMode !== "parametric" && (
+                      <ClickableValue
+                        label="Forcing Amplitude (F₀)"
+                        value={driverAmp}
+                        unit="N"
+                        min={0}
+                        max={50}
+                        step={0.5}
+                        onChange={(val) => {
+                          setDriverAmp(val);
+                          setActivePreset("Custom");
+                        }}
+                        colorClass="text-amber-400"
+                      />
+                    )}
                     <ClickableValue
                       label="Driving Frequency (fd)"
                       value={driverFreq}
@@ -217,50 +345,39 @@ export const ResonanceSimulator: React.FC = () => {
                         setDriverFreq(val);
                         setActivePreset("Custom");
                       }}
-                      colorClass="text-blue-400"
-                    />
-                    <ClickableValue
-                      label="Forcing Amplitude (F₀)"
-                      value={driverAmp}
-                      unit="N"
-                      min={0}
-                      max={50}
-                      step={0.5}
-                      onChange={(val) => {
-                        setDriverAmp(val);
-                        setActivePreset("Custom");
-                      }}
-                      colorClass="text-blue-400"
+                      colorClass="text-amber-400"
                     />
 
                     {/* Waveform Selector */}
-                    <div className="flex gap-2 bg-black/40 p-1 rounded-xl border border-white/5">
-                      {(["sine", "square", "triangle"] as WaveformType[]).map((w) => (
-                        <button
-                          key={w}
-                          onClick={() => {
-                            setWaveform(w);
-                            setActivePreset("Custom");
-                          }}
-                          className={cn(
-                            "flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all",
-                            waveform === w 
-                              ? "bg-blue-600 text-white" 
-                              : "text-white/40 hover:text-white"
-                          )}
-                        >
-                          {w}
-                        </button>
-                      ))}
-                    </div>
+                    {simMode !== "parametric" && (
+                      <div className="flex gap-2 bg-black/40 p-1 rounded-xl border border-white/5">
+                        {(["sine", "square", "triangle"] as WaveformType[]).map((w) => (
+                          <button
+                            key={w}
+                            onClick={() => {
+                              setWaveform(w);
+                              setActivePreset("Custom");
+                            }}
+                            className={cn(
+                              "flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all",
+                              waveform === w 
+                                ? "bg-amber-500 text-black shadow-md shadow-amber-500/20" 
+                                : "text-white/40 hover:text-white"
+                            )}
+                          >
+                            {w}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </ControlCard>
 
-                {/* 2. Resonator Physical Parameters */}
+                {/* 3. Resonator Physical Parameters */}
                 <ControlCard title="Resonator Parameters" icon={Settings2} color="#0d9488">
                   <div className="space-y-5">
                     <ClickableValue
-                      label="Mass (m)"
+                      label={simMode === "coupled" ? "Mass 1 (m₁)" : "Mass (m)"}
                       value={mass}
                       unit="kg"
                       min={0.5}
@@ -272,8 +389,25 @@ export const ResonanceSimulator: React.FC = () => {
                       }}
                       colorClass="text-teal-400"
                     />
+                    
+                    {simMode === "coupled" && (
+                      <ClickableValue
+                        label="Mass 2 (m₂)"
+                        value={mass2}
+                        unit="kg"
+                        min={0.5}
+                        max={10.0}
+                        step={0.1}
+                        onChange={(val) => {
+                          setMass2(val);
+                          setActivePreset("Custom");
+                        }}
+                        colorClass="text-teal-400 animate-fadeIn"
+                      />
+                    )}
+
                     <ClickableValue
-                      label="Spring constant (k)"
+                      label={simMode === "coupled" ? "Spring Stiffness (k₁)" : "Stiffness (k)"}
                       value={springK}
                       unit="N/m"
                       min={20}
@@ -285,24 +419,112 @@ export const ResonanceSimulator: React.FC = () => {
                       }}
                       colorClass="text-teal-400"
                     />
+
+                    {simMode === "coupled" && (
+                      <ClickableValue
+                        label="Coupling spring (k₁₂)"
+                        value={couplingK}
+                        unit="N/m"
+                        min={0}
+                        max={200}
+                        step={5}
+                        onChange={(val) => {
+                          setCouplingK(val);
+                          setActivePreset("Custom");
+                        }}
+                        colorClass="text-indigo-400 font-bold"
+                      />
+                    )}
+
+                    {simMode === "duffing" && (
+                      <ClickableValue
+                        label="Duffing Nonlinearity (α)"
+                        value={duffingAlpha}
+                        unit="N/m³"
+                        min={0}
+                        max={100}
+                        step={1}
+                        onChange={(val) => {
+                          setDuffingAlpha(val);
+                          setActivePreset("Custom");
+                        }}
+                        colorClass="text-rose-400 font-bold"
+                      />
+                    )}
+
                     <ClickableValue
-                      label="Damping Coefficient (b)"
+                      label={simMode === "coupled" ? "Damping 1 (b₁)" : "Damping (b)"}
                       value={dampingB}
                       unit="N s/m"
                       min={0.0}
                       max={80.0}
-                      step={0.1}
+                      step={0.05}
                       onChange={(val) => {
                         setDampingB(val);
                         setActivePreset("Custom");
                       }}
                       colorClass="text-teal-400"
                     />
+
+                    {simMode === "coupled" && (
+                      <ClickableValue
+                        label="Damping 2 (b₂)"
+                        value={dampingB2}
+                        unit="N s/m"
+                        min={0.0}
+                        max={80.0}
+                        step={0.05}
+                        onChange={(val) => {
+                          setDampingB2(val);
+                          setActivePreset("Custom");
+                        }}
+                        colorClass="text-teal-400"
+                      />
+                    )}
                   </div>
                 </ControlCard>
 
-                {/* 3. Live Analytical Telemetry */}
-                <ControlCard title="Live Diagnostics" icon={Activity} color="#ffb95f">
+                {/* 4. Frequency Sweep Laboratory */}
+                <ControlCard title="Sweep Laboratory" icon={RefreshCw} color="#10b981">
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-black/20 p-3 rounded-2xl border border-white/5">
+                      <span className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Auto Sweep</span>
+                      <button
+                        onClick={() => setAutoSweep(!autoSweep)}
+                        className={cn(
+                          "w-12 h-6 rounded-full p-1 transition-all duration-200",
+                          autoSweep ? "bg-emerald-600" : "bg-white/10"
+                        )}
+                      >
+                        <div 
+                          className={cn("w-4 h-4 rounded-full bg-white transition-all", 
+                            autoSweep ? "translate-x-6" : "translate-x-0")} 
+                        />
+                      </button>
+                    </div>
+
+                    <ClickableValue
+                      label="Sweep Speed"
+                      value={sweepSpeed}
+                      unit="Hz/s"
+                      min={0.01}
+                      max={0.2}
+                      step={0.01}
+                      onChange={setSweepSpeed}
+                      colorClass="text-emerald-400"
+                    />
+
+                    <button
+                      onClick={handleClearSweep}
+                      className="w-full py-2 bg-black/40 hover:bg-black/60 border border-white/5 text-white/80 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      Clear Sweep History
+                    </button>
+                  </div>
+                </ControlCard>
+
+                {/* 5. Live Analytical Telemetry */}
+                <ControlCard title="Live Telemetry" icon={Activity} color="#10b981">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
                       <div className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Q-Factor</div>
@@ -323,20 +545,30 @@ export const ResonanceSimulator: React.FC = () => {
                       </div>
                     </div>
                     <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
-                      <div className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Displacement</div>
-                      <div className="text-lg font-mono font-bold text-emerald-400 mt-1">
-                        {telemetry.currentAmplitude.toFixed(3)} m
+                      <div className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Power Diss</div>
+                      <div className="text-lg font-mono font-bold text-red-400 mt-1">
+                        {telemetry.dissipatedPower.toFixed(2)} W
+                      </div>
+                    </div>
+                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Displacements</span>
+                        <span className="text-[8px] text-white/30 font-mono">1: Teal | 2: Purple</span>
+                      </div>
+                      <div className="text-sm font-mono font-bold text-emerald-400 mt-1 flex justify-between">
+                        <span>x₁: {telemetry.currentAmplitude.toFixed(3)} m</span>
+                        {simMode === "coupled" && <span>x₂: {telemetry.currentAmplitude2.toFixed(3)} m</span>}
                       </div>
                     </div>
                   </div>
                 </ControlCard>
 
-                {/* 4. Display Settings / Mechanics HUD toggles */}
-                <ControlCard title="Visualization Engine" icon={Sparkles} color="#b4c5ff">
+                {/* 6. Display Settings / Toggles */}
+                <ControlCard title="Instrumentation" icon={Sparkles} color="#b4c5ff">
                   <div className="space-y-4">
                     {/* Vectors Toggler */}
                     <div className="flex justify-between items-center bg-black/20 p-3 rounded-2xl border border-white/5">
-                      <span className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Show Vectors</span>
+                      <span className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Show Force Vectors</span>
                       <button
                         onClick={() => setShowVectors(!showVectors)}
                         className={cn(
@@ -351,19 +583,36 @@ export const ResonanceSimulator: React.FC = () => {
                       </button>
                     </div>
 
-                    {/* Plots Toggler: Lissajous vs Waveform */}
+                    {/* Scope Cursors Toggler */}
                     <div className="flex justify-between items-center bg-black/20 p-3 rounded-2xl border border-white/5">
-                      <span className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Lissajous Orbit</span>
+                      <span className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Scope Cursors</span>
                       <button
-                        onClick={() => setShowPhaseSpace(!showPhaseSpace)}
+                        onClick={() => setShowCursors(!showCursors)}
                         className={cn(
                           "w-12 h-6 rounded-full p-1 transition-all duration-200",
-                          showPhaseSpace ? "bg-teal-600" : "bg-white/10"
+                          showCursors ? "bg-cyan-600" : "bg-white/10"
                         )}
                       >
                         <div 
                           className={cn("w-4 h-4 rounded-full bg-white transition-all", 
-                            showPhaseSpace ? "translate-x-6" : "translate-x-0")} 
+                            showCursors ? "translate-x-6" : "translate-x-0")} 
+                        />
+                      </button>
+                    </div>
+
+                    {/* Validation Panel Toggler */}
+                    <div className="flex justify-between items-center bg-black/20 p-3 rounded-2xl border border-white/5">
+                      <span className="text-[10px] uppercase font-bold text-white/60 tracking-wider">Validation Overlay</span>
+                      <button
+                        onClick={() => setShowValidation(!showValidation)}
+                        className={cn(
+                          "w-12 h-6 rounded-full p-1 transition-all duration-200",
+                          showValidation ? "bg-teal-600" : "bg-white/10"
+                        )}
+                      >
+                        <div 
+                          className={cn("w-4 h-4 rounded-full bg-white transition-all", 
+                            showValidation ? "translate-x-6" : "translate-x-0")} 
                         />
                       </button>
                     </div>
@@ -397,10 +646,22 @@ export const ResonanceSimulator: React.FC = () => {
             setDampingB={setDampingB}
             driverAmp={driverAmp}
             setDriverAmp={setDriverAmp}
+            driverFreq={driverFreq}
+            setDriverFreq={setDriverFreq}
             waveform={waveform}
             setWaveform={setWaveform}
             activePreset={activePreset}
             setActivePreset={setActivePreset}
+            simMode={simMode}
+            setSimMode={setSimMode}
+            duffingAlpha={duffingAlpha}
+            setDuffingAlpha={setDuffingAlpha}
+            couplingK={couplingK}
+            setCouplingK={setCouplingK}
+            mass2={mass2}
+            setMass2={setMass2}
+            dampingB2={dampingB2}
+            setDampingB2={setDampingB2}
           />
         )}
 
@@ -417,30 +678,27 @@ export const ResonanceSimulator: React.FC = () => {
                 Resonance <span className="text-blue-400">Laboratory Guide</span>
               </h2>
               <p className="text-base text-white/50 leading-relaxed max-w-3xl font-body-md">
-                Follow these interactive laboratory procedures to explore the physics of resonance and energy transfer.
+                Follow these interactive laboratory procedures to explore the physics of resonance, non-linear jump behavior, normal modes, and phase transitions.
               </p>
             </header>
 
             <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
               <h3 className="text-lg font-black uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-3 relative z-10">
                 <span className="w-6 h-[2px] bg-blue-400/50" /> 
-                Experiment 1: Finding Resonance & Phase Shift
+                Experiment 1: Phase Shifts & Resonant Amplitude
               </h3>
               <ol className="list-decimal pl-6 space-y-4 text-sm text-white/70">
                 <li>
-                  Select the <strong>Acoustic Cavity</strong> preset from the <em>Environment Config</em> tab. Note the natural frequency $f_0 \approx 1.38$ Hz.
+                  Ensure you are in the <strong>Single Oscillator</strong> mode. Set Mass = 2.0 kg, spring $k = 100$ N/m, and damping $b = 0.5$ N s/m. This gives a natural frequency of $f_0 \approx 1.13$ Hz.
                 </li>
                 <li>
-                  Return to the <em>Simulation Canvas</em>. Set the <strong>Driving Frequency</strong> to $0.5$ Hz (well below natural resonance).
+                  Drive the system at $f_d = 0.50$ Hz. Notice on the <strong>Phasor Diagram</strong> (bottom-left) that the driver vector (blue) and mass position vector (teal) rotate almost in-phase. The phase lag $\phi \approx 10^\circ$.
                 </li>
                 <li>
-                  Observe the motion: the driver slide and the mass block move in phase (together). Look at the bottom time-series graph; the peaks are aligned, and the phase lag $\Phi \approx 10^\circ$.
+                  Slowly adjust $f_d$ to $1.13$ Hz. Notice the amplitude increase. The phase angle is now exactly $90^\circ$ — velocity is aligned with force, maximizing instantaneous power transfer!
                 </li>
                 <li>
-                  Slowly increase the frequency to $1.38$ Hz. Notice how the displacement amplitude grows dramatically. At $1.38$ Hz, the phase lag becomes exactly $90^\circ$. Displacement lags driver force by a quarter cycle.
-                </li>
-                <li>
-                  Increase the frequency to $4.0$ Hz. Notice the amplitude drops back down. The displacement is now out-of-phase with the driver ($\Phi \approx 170^\circ$).
+                  Increase $f_d$ to $3.00$ Hz. The mass displacement lags by almost $180^\circ$ and moves completely opposite to the driving force.
                 </li>
               </ol>
             </section>
@@ -448,20 +706,38 @@ export const ResonanceSimulator: React.FC = () => {
             <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
               <h3 className="text-lg font-black uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-3 relative z-10">
                 <span className="w-6 h-[2px] bg-blue-400/50" /> 
-                Experiment 2: Quality Factor & Bandwidth
+                Experiment 2: Auto Frequency Sweep & Bandwidth
               </h3>
               <ol className="list-decimal pl-6 space-y-4 text-sm text-white/70">
                 <li>
-                  Select the <strong>Tuning Fork</strong> preset. It has extremely small damping ($b = 0.1$), which gives it an exceptionally high Q-factor.
+                  Select the <strong>Tuning Fork (High Q)</strong> preset.
                 </li>
                 <li>
-                  Look at the Lorentzian resonance graph in the canvas. Notice how sharp and narrow the amplitude spike is.
+                  In the right panel, scroll down to <strong>Sweep Laboratory</strong> and turn on <strong>Auto Sweep</strong>.
                 </li>
                 <li>
-                  Vary the frequency slightly. Notice how the system response is virtually zero everywhere, except in the immediate vicinity of $f_d \approx f_0 \approx 3.18$ Hz.
+                  Observe the driving frequency $f_d$ incrementing slowly. Watch the Lorentzian spectrum graph (top-right); yellow crosshairs will trace the experimental amplitude response.
                 </li>
                 <li>
-                  Toggle the <strong>Lissajous Orbit</strong> switch. Drag the frequency sliders to trace the shape of the force vs displacement ellipse. At resonance, the ellipse is upright and open.
+                  Notice that the peak is extremely narrow, which corresponds mathematically to a high Quality Factor ($Q \approx 250$). The half-power bandwidth is visually represented by the horizontal bandwidth line $\Delta f$.
+                </li>
+              </ol>
+            </section>
+
+            <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
+              <h3 className="text-lg font-black uppercase tracking-widest text-blue-400 mb-4 flex items-center gap-3 relative z-10">
+                <span className="w-6 h-[2px] bg-blue-400/50" /> 
+                Experiment 3: Duffing Hysteresis & Jump Resonances
+              </h3>
+              <ol className="list-decimal pl-6 space-y-4 text-sm text-white/70">
+                <li>
+                  Select the <strong>Duffing Bistable Jump</strong> preset. This configures a hardening spring ($\alpha = 30$).
+                </li>
+                <li>
+                  Sweep the frequency manually upwards from $0.8$ Hz. Notice the peak bends to the right. The amplitude increases to high values and then suddenly "jumps" down to a lower branch around $1.4$ Hz.
+                </li>
+                <li>
+                  Now sweep the frequency downwards from $1.8$ Hz. The system stays on the lower amplitude branch until it reaches $1.0$ Hz, where it suddenly jumps up to the higher branch. This is the hysteresis region!
                 </li>
               </ol>
             </section>

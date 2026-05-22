@@ -2,7 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import { Activity, Settings2, ShieldAlert, Zap } from "lucide-react";
+import { Activity, Settings2, Zap } from "lucide-react";
 import { WaveformType } from "./ResonanceCanvas";
 
 interface ResonanceEnvironmentProps {
@@ -14,44 +14,129 @@ interface ResonanceEnvironmentProps {
   setDampingB: (v: number) => void;
   driverAmp: number;
   setDriverAmp: (v: number) => void;
+  driverFreq: number;
+  setDriverFreq: (v: number) => void;
   waveform: WaveformType;
   setWaveform: (v: WaveformType) => void;
   activePreset: string;
   setActivePreset: (v: string) => void;
+  simMode: "single" | "coupled" | "duffing" | "parametric" | "beats";
+  setSimMode: (v: "single" | "coupled" | "duffing" | "parametric" | "beats") => void;
+  duffingAlpha: number;
+  setDuffingAlpha: (v: number) => void;
+  couplingK: number;
+  setCouplingK: (v: number) => void;
+  mass2: number;
+  setMass2: (v: number) => void;
+  dampingB2: number;
+  setDampingB2: (v: number) => void;
 }
 
-const PRESETS = [
+export const PRESETS = [
   {
-    name: "Tuning Fork",
+    name: "Tuning Fork (High Q)",
     mass: 1.0,
     springK: 400.0,
-    dampingB: 0.1, // High Q, extremely slow decay
+    dampingB: 0.08,
+    driverAmp: 2.0,
+    driverFreq: 3.18,
     waveform: "sine" as WaveformType,
-    description: "Extremely low internal friction, leading to high mechanical resonance. Oscillates for a long time at a single sharp peak frequency."
+    simMode: "single" as const,
+    duffingAlpha: 0.0,
+    couplingK: 0.0,
+    mass2: 1.0,
+    dampingB2: 0.1,
+    description: "Extremely low internal friction, leading to a sharp mechanical resonance. Oscillates for a long time at a single frequency with Q ≈ 250."
   },
   {
-    name: "Acoustic Cavity",
-    mass: 2.0,
-    springK: 150.0,
-    dampingB: 1.2, // Moderate Q
-    waveform: "sine" as WaveformType,
-    description: "Moderate internal friction and damping. Broad resonance characteristics typical of air pillars and string instruments."
-  },
-  {
-    name: "Automobile Shock Absorber",
+    name: "Shock Absorber (Critical)",
     mass: 5.0,
     springK: 250.0,
-    dampingB: 70.7, // Critical damping: b = 2*sqrt(k*m) = 2*sqrt(1250) = 70.7
+    dampingB: 70.7,
+    driverAmp: 10.0,
+    driverFreq: 1.13,
     waveform: "sine" as WaveformType,
-    description: "Damped precisely near the critical point to prevent ongoing oscillations. Designed for swift stabilization back to equilibrium."
+    simMode: "single" as const,
+    duffingAlpha: 0.0,
+    couplingK: 0.0,
+    mass2: 1.0,
+    dampingB2: 0.1,
+    description: "Damped precisely near the critical point (b = 2*sqrt(k*m)) to prevent ongoing oscillations. Returns quickly to equilibrium."
   },
   {
-    name: "Seismograph Pendulum",
+    name: "Seismograph (Overdamped)",
     mass: 8.0,
     springK: 80.0,
-    dampingB: 45.0, // Overdamped
+    dampingB: 45.0,
+    driverAmp: 10.0,
+    driverFreq: 0.5,
     waveform: "sine" as WaveformType,
-    description: "Highly viscous environment with high mass inertia. Returns very slowly to equilibrium without oscillating."
+    simMode: "single" as const,
+    duffingAlpha: 0.0,
+    couplingK: 0.0,
+    mass2: 1.0,
+    dampingB2: 0.1,
+    description: "Highly viscous environment with high mass inertia. Returns slowly to equilibrium without oscillating, tracking long-period waves."
+  },
+  {
+    name: "Duffing Bistable Jump",
+    mass: 1.0,
+    springK: 50.0,
+    dampingB: 0.5,
+    driverAmp: 15.0,
+    driverFreq: 1.2,
+    waveform: "sine" as WaveformType,
+    simMode: "duffing" as const,
+    duffingAlpha: 30.0,
+    couplingK: 0.0,
+    mass2: 1.0,
+    dampingB2: 0.1,
+    description: "Nonlinear spring stiffness (alpha = 30) causes resonance curve bending. Demonstrates bistability, hysteresis, and amplitude jumps."
+  },
+  {
+    name: "Coupled Normal Modes",
+    mass: 2.0,
+    springK: 100.0,
+    dampingB: 0.2,
+    driverAmp: 10.0,
+    driverFreq: 1.13,
+    waveform: "sine" as WaveformType,
+    simMode: "coupled" as const,
+    duffingAlpha: 0.0,
+    couplingK: 50.0,
+    mass2: 2.0,
+    dampingB2: 0.2,
+    description: "Two masses connected by a coupling spring. Demonstrates symmetric and asymmetric modes, yielding two distinct resonance peaks."
+  },
+  {
+    name: "Parametric Resonance",
+    mass: 1.0,
+    springK: 100.0,
+    dampingB: 0.1,
+    driverAmp: 0.0, // Self-excited, driver force is zero
+    driverFreq: 3.18, // 2 * f0 (since f0 ≈ 1.59Hz)
+    waveform: "sine" as WaveformType,
+    simMode: "parametric" as const,
+    duffingAlpha: 0.0,
+    couplingK: 0.0,
+    mass2: 1.0,
+    dampingB2: 0.1,
+    description: "Spring stiffness is modulated periodically at twice the natural frequency. Drives exponential amplitude growth without direct forcing."
+  },
+  {
+    name: "Resonance Catastrophe",
+    mass: 2.0,
+    springK: 150.0,
+    dampingB: 0.0, // Undamped
+    driverAmp: 8.0,
+    driverFreq: 1.38, // At resonance
+    waveform: "sine" as WaveformType,
+    simMode: "single" as const,
+    duffingAlpha: 0.0,
+    couplingK: 0.0,
+    mass2: 1.0,
+    dampingB2: 0.1,
+    description: "Zero damping. Driving exactly at resonance causes continuous linear energy accumulation, leading to theoretical infinite amplitude."
   }
 ];
 
@@ -100,10 +185,22 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
   setDampingB,
   driverAmp,
   setDriverAmp,
+  driverFreq,
+  setDriverFreq,
   waveform,
   setWaveform,
   activePreset,
-  setActivePreset
+  setActivePreset,
+  simMode,
+  setSimMode,
+  duffingAlpha,
+  setDuffingAlpha,
+  couplingK,
+  setCouplingK,
+  mass2,
+  setMass2,
+  dampingB2,
+  setDampingB2
 }) => {
 
   const selectPreset = (p: typeof PRESETS[0]) => {
@@ -111,7 +208,14 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
     setMass(p.mass);
     setSpringK(p.springK);
     setDampingB(p.dampingB);
+    setDriverAmp(p.driverAmp);
+    setDriverFreq(p.driverFreq);
     setWaveform(p.waveform);
+    setSimMode(p.simMode);
+    setDuffingAlpha(p.duffingAlpha);
+    setCouplingK(p.couplingK);
+    setMass2(p.mass2);
+    setDampingB2(p.dampingB2);
   };
 
   return (
@@ -141,10 +245,34 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
       <div className="lg:col-span-2 space-y-8">
         <ControlCard title="Oscillator Properties" icon={Settings2} glowColor="#2563eb">
           <div className="space-y-8">
-            {/* Mass Slider */}
+            {/* Simulation Mode Select */}
+            <div className="space-y-3">
+              <label className="text-xs font-black uppercase tracking-wider text-white/70 block">Simulation Mode</label>
+              <div className="grid grid-cols-5 gap-2">
+                {(["single", "coupled", "duffing", "parametric", "beats"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setSimMode(mode);
+                      setActivePreset("Custom");
+                    }}
+                    className={cn(
+                      "py-2 px-1 rounded-xl border font-bold text-[10px] uppercase tracking-wider transition-all",
+                      simMode === mode 
+                        ? "bg-primary text-white border-primary shadow-lg" 
+                        : "bg-black/40 text-white/60 border-white/5 hover:border-white/10"
+                    )}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mass 1 Slider */}
             <div className="space-y-3">
               <div className="flex justify-between items-baseline">
-                <label className="text-xs font-black uppercase tracking-wider text-white/70">Mass (m)</label>
+                <label className="text-xs font-black uppercase tracking-wider text-white/70">Mass 1 (m₁)</label>
                 <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
                   <span className="text-sm font-mono font-bold text-primary">{mass.toFixed(1)}</span>
                   <span className="text-[10px] text-white/40 uppercase">kg</span>
@@ -162,16 +290,37 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
                 }}
                 className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <div className="flex justify-between text-[9px] text-white/30 font-mono">
-                <span>0.5 kg (Inertia Min)</span>
-                <span>10.0 kg (Inertia Max)</span>
-              </div>
             </div>
 
-            {/* Spring Constant Slider */}
+            {/* Coupled Mass 2 Slider (Only visible in Coupled Mode) */}
+            {simMode === "coupled" && (
+              <div className="space-y-3 animate-fadeIn">
+                <div className="flex justify-between items-baseline">
+                  <label className="text-xs font-black uppercase tracking-wider text-white/70">Mass 2 (m₂)</label>
+                  <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
+                    <span className="text-sm font-mono font-bold text-primary">{mass2.toFixed(1)}</span>
+                    <span className="text-[10px] text-white/40 uppercase">kg</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="10.0"
+                  step="0.1"
+                  value={mass2}
+                  onChange={(e) => {
+                    setMass2(parseFloat(e.target.value));
+                    setActivePreset("Custom");
+                  }}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+            )}
+
+            {/* Spring Stiffness Slider */}
             <div className="space-y-3">
               <div className="flex justify-between items-baseline">
-                <label className="text-xs font-black uppercase tracking-wider text-white/70">Spring Stiffness (k)</label>
+                <label className="text-xs font-black uppercase tracking-wider text-white/70">Spring Stiffness (k₁ / k₀)</label>
                 <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
                   <span className="text-sm font-mono font-bold text-primary">{springK.toFixed(0)}</span>
                   <span className="text-[10px] text-white/40 uppercase">N/m</span>
@@ -189,18 +338,64 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
                 }}
                 className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <div className="flex justify-between text-[9px] text-white/30 font-mono">
-                <span>20 N/m (Compliant)</span>
-                <span>500 N/m (Stiff)</span>
-              </div>
             </div>
+
+            {/* Coupling Spring Stiffness Slider (Only in Coupled Mode) */}
+            {simMode === "coupled" && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-baseline">
+                  <label className="text-xs font-black uppercase tracking-wider text-white/70">Coupling Spring (k₁₂)</label>
+                  <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
+                    <span className="text-sm font-mono font-bold text-teal-400">{couplingK.toFixed(0)}</span>
+                    <span className="text-[10px] text-white/40 uppercase">N/m</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  step="5"
+                  value={couplingK}
+                  onChange={(e) => {
+                    setCouplingK(parseInt(e.target.value));
+                    setActivePreset("Custom");
+                  }}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                />
+              </div>
+            )}
+
+            {/* Duffing Nonlinear Coefficient Slider (Only in Duffing Mode) */}
+            {simMode === "duffing" && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-baseline">
+                  <label className="text-xs font-black uppercase tracking-wider text-white/70">Duffing Nonlinearity (α)</label>
+                  <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
+                    <span className="text-sm font-mono font-bold text-amber-400">{duffingAlpha.toFixed(1)}</span>
+                    <span className="text-[10px] text-white/40 uppercase">N/m³</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={duffingAlpha}
+                  onChange={(e) => {
+                    setDuffingAlpha(parseFloat(e.target.value));
+                    setActivePreset("Custom");
+                  }}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+              </div>
+            )}
 
             {/* Damping Coefficient Slider */}
             <div className="space-y-3">
               <div className="flex justify-between items-baseline">
-                <label className="text-xs font-black uppercase tracking-wider text-white/70">Damping Coefficient (b)</label>
+                <label className="text-xs font-black uppercase tracking-wider text-white/70">Damping Coefficient (b₁)</label>
                 <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
-                  <span className="text-sm font-mono font-bold text-primary">{dampingB.toFixed(1)}</span>
+                  <span className="text-sm font-mono font-bold text-primary">{dampingB.toFixed(2)}</span>
                   <span className="text-[10px] text-white/40 uppercase">N s/m</span>
                 </div>
               </div>
@@ -208,7 +403,7 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
                 type="range"
                 min="0.0"
                 max="80.0"
-                step="0.1"
+                step="0.05"
                 value={dampingB}
                 onChange={(e) => {
                   setDampingB(parseFloat(e.target.value));
@@ -216,11 +411,32 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
                 }}
                 className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <div className="flex justify-between text-[9px] text-white/30 font-mono">
-                <span>0.0 N s/m (Undamped)</span>
-                <span>80.0 N s/m (Overdamped Max)</span>
-              </div>
             </div>
+
+            {/* Coupled Damping Coefficient Slider (Only in Coupled Mode) */}
+            {simMode === "coupled" && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-baseline">
+                  <label className="text-xs font-black uppercase tracking-wider text-white/70">Damping Coefficient 2 (b₂)</label>
+                  <div className="flex items-baseline gap-1 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
+                    <span className="text-sm font-mono font-bold text-primary">{dampingB2.toFixed(2)}</span>
+                    <span className="text-[10px] text-white/40 uppercase">N s/m</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="80.0"
+                  step="0.05"
+                  value={dampingB2}
+                  onChange={(e) => {
+                    setDampingB2(parseFloat(e.target.value));
+                    setActivePreset("Custom");
+                  }}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+            )}
           </div>
         </ControlCard>
 
@@ -247,10 +463,6 @@ export const ResonanceEnvironment: React.FC<ResonanceEnvironmentProps> = ({
                 }}
                 className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-secondary"
               />
-              <div className="flex justify-between text-[9px] text-white/30 font-mono">
-                <span>0.0 N (Disabled)</span>
-                <span>50.0 N (Maximum Driving)</span>
-              </div>
             </div>
 
             {/* Waveform Select */}
