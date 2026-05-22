@@ -723,8 +723,30 @@ export const ResonanceSimulator: React.FC = () => {
             telemetry={telemetry}
           />
         )}
-
-        {activeTab === "theory" && <ResonanceTheory />}
+        {activeTab === "theory" && (
+          <ResonanceTheory
+            mass={mass}
+            springK={springK}
+            dampingB={dampingB}
+            driverAmp={driverAmp}
+            driverFreq={driverFreq}
+            simMode={simMode}
+            integrator={integrator}
+            duffingAlpha={duffingAlpha}
+            couplingK={couplingK}
+            mass2={mass2}
+            dampingB2={dampingB2}
+            springK2={springK2}
+            couplingB={couplingB}
+            driverAmp2={driverAmp2}
+            driverFreq2={driverFreq2}
+            parametricEpsilon={parametricEpsilon}
+            timeStep={timeStep}
+            solverTolerance={solverTolerance}
+            adaptiveStepping={adaptiveStepping}
+            substeps={substeps}
+          />
+        )}
 
         {activeTab === "guide" && (
           <div className="max-w-4xl mx-auto space-y-12 pb-24 text-white overflow-y-auto h-full px-6 pt-6 font-body-md">
