@@ -118,12 +118,26 @@ export const ResonanceSimulator: React.FC = () => {
 
   // Advanced states
   const [simMode, setSimMode] = useState<"single" | "coupled" | "duffing" | "parametric" | "beats">("single");
-  const [integrator, setIntegrator] = useState<"rk4" | "symplectic_euler" | "velocity_verlet">("rk4");
+  const [integrator, setIntegrator] = useState<"rk4" | "symplectic_euler" | "velocity_verlet" | "adaptive_rk">("rk4");
   const [duffingAlpha, setDuffingAlpha] = useState<number>(30.0); // N/m^3
   const [couplingK, setCouplingK] = useState<number>(50.0); // N/m coupling
   const [mass2, setMass2] = useState<number>(2.0); // kg mass 2
   const [dampingB2, setDampingB2] = useState<number>(0.5); // N s/m damping 2
   const [substeps, setSubsteps] = useState<number>(20);
+
+  // Expanded physical states for university-grade control console
+  const [springK2, setSpringK2] = useState<number>(100.0); // N/m stiffness 2
+  const [couplingB, setCouplingB] = useState<number>(0.1); // N s/m coupling damping
+  const [driverAmp2, setDriverAmp2] = useState<number>(0.0); // N driving amp 2
+  const [driverFreq2, setDriverFreq2] = useState<number>(1.5); // Hz driving freq 2
+  const [initX1, setInitX1] = useState<number>(0.0); // m initial displacement 1
+  const [initV1, setInitV1] = useState<number>(0.0); // m/s initial velocity 1
+  const [initX2, setInitX2] = useState<number>(0.0); // m initial displacement 2
+  const [initV2, setInitV2] = useState<number>(0.0); // m/s initial velocity 2
+  const [parametricEpsilon, setParametricEpsilon] = useState<number>(0.3); // epsilon modulation depth
+  const [timeStep, setTimeStep] = useState<number>(0.01); // s integration timestep
+  const [solverTolerance, setSolverTolerance] = useState<number>(1e-5); // m local error tolerance
+  const [adaptiveStepping, setAdaptiveStepping] = useState<boolean>(false); // adaptive step toggle
   const [autoSweep, setAutoSweep] = useState<boolean>(false);
   const [sweepSpeed, setSweepSpeed] = useState<number>(0.05); // Hz/s
   const [showCursors, setShowCursors] = useState<boolean>(true);
@@ -153,6 +167,9 @@ export const ResonanceSimulator: React.FC = () => {
     dissipatedPower: 0,
     totalEnergy: 0,
     integrationError: 0,
+    solverStatus: "stable",
+    energyDrift: 0,
+    truncationError: 0,
   });
 
   const handleReset = () => {
@@ -205,6 +222,18 @@ export const ResonanceSimulator: React.FC = () => {
                   sweepSpeed,
                   showCursors,
                   showValidation,
+                  springK2,
+                  couplingB,
+                  driverAmp2,
+                  driverFreq2,
+                  initX1,
+                  initV1,
+                  initX2,
+                  initV2,
+                  parametricEpsilon,
+                  timeStep,
+                  solverTolerance,
+                  adaptiveStepping,
                 }}
                 onStateUpdate={setTelemetry}
                 resetTrigger={resetTrigger}
@@ -300,6 +329,7 @@ export const ResonanceSimulator: React.FC = () => {
                         <option value="rk4">Runge-Kutta 4th Order (RK4)</option>
                         <option value="symplectic_euler">Symplectic Euler</option>
                         <option value="velocity_verlet">Velocity Verlet</option>
+                        <option value="adaptive_rk">Adaptive RK45 (Cash-Karp)</option>
                       </select>
                     </div>
 
@@ -662,6 +692,35 @@ export const ResonanceSimulator: React.FC = () => {
             setMass2={setMass2}
             dampingB2={dampingB2}
             setDampingB2={setDampingB2}
+            springK2={springK2}
+            setSpringK2={setSpringK2}
+            couplingB={couplingB}
+            setCouplingB={setCouplingB}
+            driverAmp2={driverAmp2}
+            setDriverAmp2={setDriverAmp2}
+            driverFreq2={driverFreq2}
+            setDriverFreq2={setDriverFreq2}
+            initX1={initX1}
+            setInitX1={setInitX1}
+            initV1={initV1}
+            setInitV1={setInitV1}
+            initX2={initX2}
+            setInitX2={setInitX2}
+            initV2={initV2}
+            setInitV2={setInitV2}
+            parametricEpsilon={parametricEpsilon}
+            setParametricEpsilon={setParametricEpsilon}
+            timeStep={timeStep}
+            setTimeStep={setTimeStep}
+            solverTolerance={solverTolerance}
+            setSolverTolerance={setSolverTolerance}
+            adaptiveStepping={adaptiveStepping}
+            setAdaptiveStepping={setAdaptiveStepping}
+            integrator={integrator}
+            setIntegrator={setIntegrator}
+            substeps={substeps}
+            setSubsteps={setSubsteps}
+            telemetry={telemetry}
           />
         )}
 

@@ -20,7 +20,7 @@ export interface ResonanceParams {
   isPlaying: boolean;
   showVectors: boolean;
   simMode: "single" | "coupled" | "duffing" | "parametric" | "beats";
-  integrator: "rk4" | "symplectic_euler" | "velocity_verlet";
+  integrator: "rk4" | "symplectic_euler" | "velocity_verlet" | "adaptive_rk";
   duffingAlpha: number;  // Duffing cubic coefficient
   couplingK: number;     // Coupling spring stiffness
   mass2: number;        // Mass of oscillator 2
@@ -30,6 +30,19 @@ export interface ResonanceParams {
   sweepSpeed: number;    // Sweep rate in Hz/s
   showCursors: boolean;  // Oscilloscope cursors
   showValidation: boolean; // Analytical validation panel
+  // Expanded parameters
+  springK2: number;
+  couplingB: number;
+  driverAmp2: number;
+  driverFreq2: number;
+  initX1: number;
+  initV1: number;
+  initX2: number;
+  initV2: number;
+  parametricEpsilon: number;
+  timeStep: number;
+  solverTolerance: number;
+  adaptiveStepping: boolean;
 }
 
 interface ResonanceCanvasProps {
@@ -45,6 +58,9 @@ interface ResonanceCanvasProps {
     dissipatedPower: number;
     totalEnergy: number;
     integrationError: number;
+    solverStatus: string;
+    energyDrift: number;
+    truncationError: number;
   }) => void;
   resetTrigger: number;
   impulseTrigger: number;
@@ -78,10 +94,10 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
   // v2 = velocity of mass 2 (m/s)
   // t_phys = accumulated physical time (seconds)
   const stateRef = useRef({
-    x: 0.0,
-    v: 0.0,
-    x2: 0.0,
-    v2: 0.0,
+    x: params.initX1,
+    v: params.initV1,
+    x2: params.initX2,
+    v2: params.initV2,
     t_phys: 0.0,
     workIn: 0.0,
     workDiss: 0.0,
@@ -111,10 +127,10 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
   // Handle physical triggers from parent
   useEffect(() => {
     stateRef.current = {
-      x: params.simMode === "parametric" ? 0.2 : 0.0, // parametric needs non-zero initial state to activate
-      v: 0.0,
-      x2: 0.0,
-      v2: 0.0,
+      x: params.initX1 || (params.simMode === "parametric" ? 0.2 : 0.0),
+      v: params.initV1 || 0.0,
+      x2: params.initX2 || 0.0,
+      v2: params.initV2 || 0.0,
       t_phys: 0.0,
       workIn: 0.0,
       workDiss: 0.0,
@@ -124,7 +140,7 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
     sweepHistoryRef.current = [];
     lastVRef.current = 0;
     lastV2Ref.current = 0;
-  }, [resetTrigger, params.simMode]);
+  }, [resetTrigger, params.simMode, params.initX1, params.initV1, params.initX2, params.initV2]);
 
   useEffect(() => {
     if (impulseTrigger > 0) {
@@ -309,20 +325,22 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
       if (p.simMode === "coupled") {
         if (idx === 1) {
           const F = getDriverForcing(t, p.driverFreq, p.driverAmp, p.waveform);
-          return (F - p.dampingB * v - p.springK * x - p.couplingK * (x - x2_val)) / p.mass;
+          return (F - p.dampingB * v - p.couplingB * (v - v2_val) - p.springK * x - p.couplingK * (x - x2_val)) / p.mass;
         } else {
-          return (- p.dampingB2 * v2_val - p.springK * x2_val - p.couplingK * (x2_val - x)) / p.mass2;
+          const F2 = getDriverForcing(t, p.driverFreq2, p.driverAmp2, p.waveform);
+          return (F2 - p.dampingB2 * v2_val - p.couplingB * (v2_val - v) - p.springK2 * x2_val - p.couplingK * (x2_val - x)) / p.mass2;
         }
       } else if (p.simMode === "duffing") {
         const F = getDriverForcing(t, p.driverFreq, p.driverAmp, p.waveform);
-        // Duffing oscillator equation: m*x'' + b*x' + k*x + alpha*x^3 = F(t)
         return (F - p.dampingB * v - p.springK * x - p.duffingAlpha * x * x * x) / p.mass;
       } else if (p.simMode === "parametric") {
-        const F = getDriverForcing(t, p.driverFreq, p.driverAmp, p.waveform);
-        // Parametric resonance: spring constant stiffness k(t) = k0 * (1 + 0.3 * cos(2*pi*fd*t))
-        const k_eff = p.springK * (1.0 + 0.3 * Math.cos(2 * Math.PI * p.driverFreq * t));
-        return (F - p.dampingB * v - k_eff * x) / p.mass;
-      } else { // single or beats
+        const k_eff = p.springK * (1.0 + p.parametricEpsilon * Math.cos(2 * Math.PI * p.driverFreq * t));
+        return (- p.dampingB * v - k_eff * x) / p.mass;
+      } else if (p.simMode === "beats") {
+        const F = getDriverForcing(t, p.driverFreq, p.driverAmp, "sine") + 
+                  getDriverForcing(t, p.driverFreq2, p.driverAmp2, "sine");
+        return (F - p.dampingB * v - p.springK * x) / p.mass;
+      } else { // single
         const F = getDriverForcing(t, p.driverFreq, p.driverAmp, p.waveform);
         return (F - p.dampingB * v - p.springK * x) / p.mass;
       }
@@ -372,227 +390,378 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
       const analyticalSteadyAmp = denominator > 0 ? p.driverAmp / denominator : 0;
 
       // ─── INTEGRATION ──────────────────────────────────────────
-      if (p.isPlaying) {
-        const dt_phys = dt_wall * p.slowMotion;
-        const steps = p.substeps;
-        const subDt = dt_phys / steps;
-        let s = { ...stateRef.current };
-
-        // Auto sweep frequency update
-        if (p.autoSweep) {
-          const nextFreq = p.driverFreq + p.sweepSpeed * dt_phys;
-          const finalFreq = nextFreq > 5.0 ? 0.1 : nextFreq;
-          // Throttled parent state updater
-          if (performance.now() - lastStateUpdateTimeRef.current > 50) {
-            setDriverFreq(finalFreq);
-            lastStateUpdateTimeRef.current = performance.now();
-          }
-        }
-
-        // Selected Integration Scheme
-        for (let step = 0; step < steps; step++) {
-          const t = s.t_phys;
-          const F_driver = getDriverForcing(t, p.driverFreq, p.driverAmp, p.waveform);
-
-          if (p.integrator === "rk4") {
-            if (p.simMode === "coupled") {
-              // Integrate coupled system (4 ODE equations)
-              const dx1_1 = s.v;
-              const dv1_1 = getAccel(s.x, s.v, s.x2, s.v2, t, 1);
-              const dx2_1 = s.v2;
-              const dv2_1 = getAccel(s.x, s.v, s.x2, s.v2, t, 2);
-
-              const x1_h1 = s.x + 0.5 * subDt * dx1_1;
-              const v1_h1 = s.v + 0.5 * subDt * dv1_1;
-              const x2_h1 = s.x2 + 0.5 * subDt * dx2_1;
-              const v2_h1 = s.v2 + 0.5 * subDt * dv2_1;
-              const t_h = t + 0.5 * subDt;
-
-              const dx1_2 = v1_h1;
-              const dv1_2 = getAccel(x1_h1, v1_h1, x2_h1, v2_h1, t_h, 1);
-              const dx2_2 = v2_h1;
-              const dv2_2 = getAccel(x1_h1, v1_h1, x2_h1, v2_h1, t_h, 2);
-
-              const x1_h2 = s.x + 0.5 * subDt * dx1_2;
-              const v1_h2 = s.v + 0.5 * subDt * dv1_2;
-              const x2_h2 = s.x2 + 0.5 * subDt * dx2_2;
-              const v2_h2 = s.v2 + 0.5 * subDt * dv2_2;
-
-              const dx1_3 = v1_h2;
-              const dv1_3 = getAccel(x1_h2, v1_h2, x2_h2, v2_h2, t_h, 1);
-              const dx2_3 = v2_h2;
-              const dv2_3 = getAccel(x1_h2, v1_h2, x2_h2, v2_h2, t_h, 2);
-
-              const x1_e = s.x + subDt * dx1_3;
-              const v1_e = s.v + subDt * dv1_3;
-              const x2_e = s.x2 + subDt * dx2_3;
-              const v2_e = s.v2 + subDt * dv2_3;
-              const t_e = t + subDt;
-
-              const dx1_4 = v1_e;
-              const dv1_4 = getAccel(x1_e, v1_e, x2_e, v2_e, t_e, 1);
-              const dx2_4 = v2_e;
-              const dv2_4 = getAccel(x1_e, v1_e, x2_e, v2_e, t_e, 2);
-
-              s.x += (subDt / 6) * (dx1_1 + 2 * dx1_2 + 2 * dx1_3 + dx1_4);
-              s.v += (subDt / 6) * (dv1_1 + 2 * dv1_2 + 2 * dv1_3 + dv1_4);
-              s.x2 += (subDt / 6) * (dx2_1 + 2 * dx2_2 + 2 * dx2_3 + dx2_4);
-              s.v2 += (subDt / 6) * (dv2_1 + 2 * dv2_2 + 2 * dv2_3 + dv2_4);
-              s.workIn += F_driver * s.v * subDt;
-              s.workDiss += (p.dampingB * s.v * s.v + p.dampingB2 * s.v2 * s.v2) * subDt;
-              s.t_phys = t_e;
-            } else {
-              // Integrate single system
-              const dx1 = s.v;
-              const dv1 = getAccel(s.x, s.v, 0, 0, t, 1);
-
-              const x_h1 = s.x + 0.5 * subDt * dx1;
-              const v_h1 = s.v + 0.5 * subDt * dv1;
-              const t_h = t + 0.5 * subDt;
-
-              const dx2 = v_h1;
-              const dv2 = getAccel(x_h1, v_h1, 0, 0, t_h, 1);
-
-              const x_h2 = s.x + 0.5 * subDt * dx2;
-              const v_h2 = s.v + 0.5 * subDt * dv2;
-
-              const dx3 = v_h2;
-              const dv3 = getAccel(x_h2, v_h2, 0, 0, t_h, 1);
-
-              const x_e = s.x + subDt * dx3;
-              const v_e = s.v + subDt * dv3;
-              const t_e = t + subDt;
-
-              const dx4 = v_e;
-              const dv4 = getAccel(x_e, v_e, 0, 0, t_e, 1);
-
-              s.x += (subDt / 6) * (dx1 + 2 * dx2 + 2 * dx3 + dx4);
-              s.v += (subDt / 6) * (dv1 + 2 * dv2 + 2 * dv3 + dv4);
-              s.workIn += F_driver * s.v * subDt;
-              s.workDiss += (p.dampingB * s.v * s.v) * subDt;
-              s.t_phys = t_e;
-            }
-          } else if (p.integrator === "symplectic_euler") {
-            if (p.simMode === "coupled") {
-              const a1 = getAccel(s.x, s.v, s.x2, s.v2, t, 1);
-              const a2 = getAccel(s.x, s.v, s.x2, s.v2, t, 2);
-              s.v += a1 * subDt;
-              s.v2 += a2 * subDt;
-              s.x += s.v * subDt;
-              s.x2 += s.v2 * subDt;
-              s.workIn += F_driver * s.v * subDt;
-              s.workDiss += (p.dampingB * s.v * s.v + p.dampingB2 * s.v2 * s.v2) * subDt;
-              s.t_phys += subDt;
-            } else {
-              const a = getAccel(s.x, s.v, 0, 0, t, 1);
-              s.v += a * subDt;
-              s.x += s.v * subDt;
-              s.workIn += F_driver * s.v * subDt;
-              s.workDiss += (p.dampingB * s.v * s.v) * subDt;
-              s.t_phys += subDt;
-            }
-          } else if (p.integrator === "velocity_verlet") {
-            if (p.simMode === "coupled") {
-              const a1 = getAccel(s.x, s.v, s.x2, s.v2, t, 1);
-              const a2 = getAccel(s.x, s.v, s.x2, s.v2, t, 2);
-              s.x += s.v * subDt + 0.5 * a1 * subDt * subDt;
-              s.x2 += s.v2 * subDt + 0.5 * a2 * subDt * subDt;
-
-              const v1_pred = s.v + 0.5 * a1 * subDt;
-              const v2_pred = s.v2 + 0.5 * a2 * subDt;
-              const a1_next = getAccel(s.x, v1_pred, s.x2, v2_pred, t + subDt, 1);
-              const a2_next = getAccel(s.x, v1_pred, s.x2, v2_pred, t + subDt, 2);
-
-              s.v = v1_pred + 0.5 * a1_next * subDt;
-              s.v2 = v2_pred + 0.5 * a2_next * subDt;
-
-              s.workIn += F_driver * s.v * subDt;
-              s.workDiss += (p.dampingB * s.v * s.v + p.dampingB2 * s.v2 * s.v2) * subDt;
-              s.t_phys += subDt;
-            } else {
-              const a = getAccel(s.x, s.v, 0, 0, t, 1);
-              s.x += s.v * subDt + 0.5 * a * subDt * subDt;
-
-              const v_pred = s.v + 0.5 * a * subDt;
-              const a_next = getAccel(s.x, v_pred, 0, 0, t + subDt, 1);
-              s.v = v_pred + 0.5 * a_next * subDt;
-
-              s.workIn += F_driver * s.v * subDt;
-              s.workDiss += (p.dampingB * s.v * s.v) * subDt;
-              s.t_phys += subDt;
-            }
-          }
-
-          // Peak Detection for Sweep laboratory history trace
-          const currentV = s.v;
-          const lastV = lastVRef.current;
-          if ((lastV > 0 && currentV <= 0) || (lastV < 0 && currentV >= 0)) {
-            // mass 1 peak
-            const peak1 = Math.abs(s.x);
-            const peak2 = Math.abs(s.x2);
-            // Append to sweep history ref
-            sweepHistoryRef.current.push({ freq: p.driverFreq, amp1: peak1, amp2: peak2 });
-            if (sweepHistoryRef.current.length > 500) {
-              sweepHistoryRef.current.shift();
-            }
-          }
-          lastVRef.current = currentV;
-        }
-
-        stateRef.current = s;
-
-        // Append to oscilloscope history
-        const driveVal = getDriverForcing(s.t_phys, p.driverFreq, p.driverAmp, p.waveform);
-        historyRef.current.push({ t: s.t_phys, drive: driveVal, mass: s.x, mass2: s.x2 });
-        if (historyRef.current.length > 500) {
-          historyRef.current.shift();
-        }
-      }
-
-      // Compute physical quantities for bar charts
+      // Compute physical energies before advancement for initialization
       let kineticEnergy = 0.5 * p.mass * stateRef.current.v * stateRef.current.v;
       let potentialEnergy = 0.5 * p.springK * stateRef.current.x * stateRef.current.x;
       let dissipatedPower = p.dampingB * stateRef.current.v * stateRef.current.v;
 
       if (p.simMode === "coupled") {
         kineticEnergy += 0.5 * p.mass2 * stateRef.current.v2 * stateRef.current.v2;
-        // coupled PE includes the coupling spring: PE = 0.5*k1*x1^2 + 0.5*k2*x2^2 + 0.5*k12*(x1 - x2)^2
-        potentialEnergy += 0.5 * p.springK * stateRef.current.x2 * stateRef.current.x2 + 
+        potentialEnergy += 0.5 * p.springK2 * stateRef.current.x2 * stateRef.current.x2 + 
                            0.5 * p.couplingK * Math.pow(stateRef.current.x - stateRef.current.x2, 2);
-        dissipatedPower += p.dampingB2 * stateRef.current.v2 * stateRef.current.v2;
+        dissipatedPower += p.dampingB2 * stateRef.current.v2 * stateRef.current.v2 +
+                           p.couplingB * Math.pow(stateRef.current.v - stateRef.current.v2, 2);
       } else if (p.simMode === "duffing") {
-        // duffing PE includes nonlinear term: 0.5*k*x^2 + 0.25*alpha*x^4
         potentialEnergy += 0.25 * p.duffingAlpha * Math.pow(stateRef.current.x, 4);
       }
       const totalEnergy = kineticEnergy + potentialEnergy;
 
-      // Numerical error evaluation
+      if (stateRef.current.t_phys === 0.0) {
+        stateRef.current.initialEnergy = totalEnergy;
+        stateRef.current.workIn = 0.0;
+        stateRef.current.workDiss = 0.0;
+      }
+
+      let est_error = 0;
+
+      if (p.isPlaying) {
+        const dt_phys = dt_wall * p.slowMotion;
+        let s = { ...stateRef.current };
+
+        // Auto sweep frequency update
+        if (p.autoSweep) {
+          const nextFreq = p.driverFreq + p.sweepSpeed * dt_phys;
+          const finalFreq = nextFreq > 5.0 ? 0.1 : nextFreq;
+          if (performance.now() - lastStateUpdateTimeRef.current > 50) {
+            setDriverFreq(finalFreq);
+            lastStateUpdateTimeRef.current = performance.now();
+          }
+        }
+
+        if (p.integrator === "adaptive_rk") {
+          // Adaptive Cash-Karp RK45
+          const derivs = (t_val: number, y_val: number[]): number[] => {
+            if (p.simMode === "coupled") {
+              return [
+                y_val[1],
+                getAccel(y_val[0], y_val[1], y_val[2], y_val[3], t_val, 1),
+                y_val[3],
+                getAccel(y_val[0], y_val[1], y_val[2], y_val[3], t_val, 2)
+              ];
+            } else {
+              return [
+                y_val[1],
+                getAccel(y_val[0], y_val[1], 0, 0, t_val, 1)
+              ];
+            }
+          };
+
+          const rk45_step = (t_val: number, h_step: number, y_val: number[]) => {
+            const b21 = 0.2;
+            const b31 = 3/40; const b32 = 9/40;
+            const b41 = 0.3; const b42 = -0.9; const b43 = 1.2;
+            const b51 = -11/54; const b52 = 2.5; const b53 = -70/27; const b54 = 35/27;
+            const b61 = 1631/55296; const b62 = 175/512; const b63 = 575/13824; const b64 = 44275/110592; const b65 = 253/4096;
+
+            const c1 = 37/378; const c3 = 250/621; const c4 = 125/594; const c6 = 512/1771;
+            const cs1 = 2825/27648; const cs3 = 18575/48384; const cs4 = 13525/55296; const cs5 = 277/14336; const cs6 = 0.25;
+
+            const k1 = derivs(t_val, y_val);
+            const y2 = y_val.map((val, i) => val + h_step * b21 * k1[i]);
+            const k2 = derivs(t_val + 0.2 * h_step, y2);
+            const y3 = y_val.map((val, i) => val + h_step * (b31 * k1[i] + b32 * k2[i]));
+            const k3 = derivs(t_val + 0.3 * h_step, y3);
+            const y4 = y_val.map((val, i) => val + h_step * (b41 * k1[i] + b42 * k2[i] + b43 * k3[i]));
+            const k4 = derivs(t_val + 0.6 * h_step, y4);
+            const y5 = y_val.map((val, i) => val + h_step * (b51 * k1[i] + b52 * k2[i] + b53 * k3[i] + b54 * k4[i]));
+            const k5 = derivs(t_val + h_step, y5);
+            const y6 = y_val.map((val, i) => val + h_step * (b61 * k1[i] + b62 * k2[i] + b63 * k3[i] + b64 * k4[i] + b65 * k5[i]));
+            const k6 = derivs(t_val + 0.875 * h_step, y6);
+
+            const yNext = y_val.map((val, i) => val + h_step * (c1 * k1[i] + c3 * k3[i] + c4 * k4[i] + c6 * k6[i]));
+            const yStar = y_val.map((val, i) => val + h_step * (cs1 * k1[i] + cs3 * k3[i] + cs4 * k4[i] + cs5 * k5[i] + cs6 * k6[i]));
+            const yError = yNext.map((val, i) => Math.abs(val - yStar[i]));
+
+            return { yNext, yError };
+          };
+
+          let t_curr = s.t_phys;
+          const t_end = t_curr + dt_phys;
+          let h_trial = p.timeStep;
+          let y_vec = p.simMode === "coupled" ? [s.x, s.v, s.x2, s.v2] : [s.x, s.v];
+          
+          let step_count = 0;
+          let max_steps = 1000;
+          let total_err = 0;
+          const safety = 0.85;
+
+          while (t_curr < t_end && step_count < max_steps) {
+            step_count++;
+            if (t_curr + h_trial > t_end) {
+              h_trial = t_end - t_curr;
+            }
+
+            const { yNext, yError } = rk45_step(t_curr, h_trial, y_vec);
+            const maxError = Math.max(...yError);
+
+            if (maxError <= p.solverTolerance || h_trial < 1e-6) {
+              y_vec = yNext;
+              t_curr += h_trial;
+              total_err += maxError;
+
+              if (maxError > 0) {
+                h_trial = safety * h_trial * Math.pow(p.solverTolerance / maxError, 0.2);
+              } else {
+                h_trial *= 2.0;
+              }
+              h_trial = Math.max(1e-5, Math.min(0.1, h_trial));
+            } else {
+              h_trial = safety * h_trial * Math.pow(p.solverTolerance / maxError, 0.25);
+              h_trial = Math.max(1e-5, h_trial);
+            }
+          }
+
+          s.x = y_vec[0];
+          s.v = y_vec[1];
+          if (p.simMode === "coupled") {
+            s.x2 = y_vec[2];
+            s.v2 = y_vec[3];
+          }
+
+          const F_d1 = getDriverForcing(s.t_phys, p.driverFreq, p.driverAmp, p.waveform);
+          const F_d2 = p.simMode === "coupled" ? getDriverForcing(s.t_phys, p.driverFreq2, p.driverAmp2, p.waveform) : 0;
+          s.workIn += (F_d1 * s.v + F_d2 * s.v2) * dt_phys;
+          
+          let p_diss = p.dampingB * s.v * s.v;
+          if (p.simMode === "coupled") {
+            p_diss += p.dampingB2 * s.v2 * s.v2 + p.couplingB * Math.pow(s.v - s.v2, 2);
+          }
+          s.workDiss += p_diss * dt_phys;
+          s.t_phys = t_curr;
+          est_error = step_count > 0 ? total_err / step_count : 0;
+
+        } else {
+          // Fixed step solver
+          let subDt = p.timeStep;
+          let steps = Math.max(1, Math.round(dt_phys / subDt));
+          if (steps > 1000) {
+            steps = 1000;
+            subDt = dt_phys / steps;
+          } else {
+            subDt = dt_phys / steps;
+          }
+
+          for (let step = 0; step < steps; step++) {
+            const t = s.t_phys;
+            const F_driver1 = p.simMode === "beats" 
+              ? getDriverForcing(t, p.driverFreq, p.driverAmp, "sine") + getDriverForcing(t, p.driverFreq2, p.driverAmp2, "sine")
+              : getDriverForcing(t, p.driverFreq, p.driverAmp, p.waveform);
+            const F_driver2 = p.simMode === "coupled" 
+              ? getDriverForcing(t, p.driverFreq2, p.driverAmp2, p.waveform)
+              : 0;
+
+            if (p.integrator === "rk4") {
+              if (p.simMode === "coupled") {
+                const dx1_1 = s.v;
+                const dv1_1 = getAccel(s.x, s.v, s.x2, s.v2, t, 1);
+                const dx2_1 = s.v2;
+                const dv2_1 = getAccel(s.x, s.v, s.x2, s.v2, t, 2);
+
+                const x1_h1 = s.x + 0.5 * subDt * dx1_1;
+                const v1_h1 = s.v + 0.5 * subDt * dv1_1;
+                const x2_h1 = s.x2 + 0.5 * subDt * dx2_1;
+                const v2_h1 = s.v2 + 0.5 * subDt * dv2_1;
+                const t_h = t + 0.5 * subDt;
+
+                const dx1_2 = v1_h1;
+                const dv1_2 = getAccel(x1_h1, v1_h1, x2_h1, v2_h1, t_h, 1);
+                const dx2_2 = v2_h1;
+                const dv2_2 = getAccel(x1_h1, v1_h1, x2_h1, v2_h1, t_h, 2);
+
+                const x1_h2 = s.x + 0.5 * subDt * dx1_2;
+                const v1_h2 = s.v + 0.5 * subDt * dv1_2;
+                const x2_h2 = s.x2 + 0.5 * subDt * dx2_2;
+                const v2_h2 = s.v2 + 0.5 * subDt * dv2_2;
+
+                const dx1_3 = v1_h2;
+                const dv1_3 = getAccel(x1_h2, v1_h2, x2_h2, v2_h2, t_h, 1);
+                const dx2_3 = v2_h2;
+                const dv2_3 = getAccel(x1_h2, v1_h2, x2_h2, v2_h2, t_h, 2);
+
+                const x1_e = s.x + subDt * dx1_3;
+                const v1_e = s.v + subDt * dv1_3;
+                const x2_e = s.x2 + subDt * dx2_3;
+                const v2_e = s.v2 + subDt * dv2_3;
+                const t_e = t + subDt;
+
+                const dx1_4 = v1_e;
+                const dv1_4 = getAccel(x1_e, v1_e, x2_e, v2_e, t_e, 1);
+                const dx2_4 = v2_e;
+                const dv2_4 = getAccel(x1_e, v1_e, x2_e, v2_e, t_e, 2);
+
+                s.x += (subDt / 6) * (dx1_1 + 2 * dx1_2 + 2 * dx1_3 + dx1_4);
+                s.v += (subDt / 6) * (dv1_1 + 2 * dv1_2 + 2 * dv1_3 + dv1_4);
+                s.x2 += (subDt / 6) * (dx2_1 + 2 * dx2_2 + 2 * dx2_3 + dx2_4);
+                s.v2 += (subDt / 6) * (dv2_1 + 2 * dv2_2 + 2 * dv2_3 + dv2_4);
+                s.t_phys = t_e;
+              } else {
+                const dx1 = s.v;
+                const dv1 = getAccel(s.x, s.v, 0, 0, t, 1);
+
+                const x_h1 = s.x + 0.5 * subDt * dx1;
+                const v_h1 = s.v + 0.5 * subDt * dv1;
+                const t_h = t + 0.5 * subDt;
+
+                const dx2 = v_h1;
+                const dv2 = getAccel(x_h1, v_h1, 0, 0, t_h, 1);
+
+                const x_h2 = s.x + 0.5 * subDt * dx2;
+                const v_h2 = s.v + 0.5 * subDt * dv2;
+
+                const dx3 = v_h2;
+                const dv3 = getAccel(x_h2, v_h2, 0, 0, t_h, 1);
+
+                const x_e = s.x + subDt * dx3;
+                const v_e = s.v + subDt * dv3;
+                const t_e = t + subDt;
+
+                const dx4 = v_e;
+                const dv4 = getAccel(x_e, v_e, 0, 0, t_e, 1);
+
+                s.x += (subDt / 6) * (dx1 + 2 * dx2 + 2 * dx3 + dx4);
+                s.v += (subDt / 6) * (dv1 + 2 * dv2 + 2 * dv3 + dv4);
+                s.t_phys = t_e;
+              }
+            } else if (p.integrator === "symplectic_euler") {
+              if (p.simMode === "coupled") {
+                const a1 = getAccel(s.x, s.v, s.x2, s.v2, t, 1);
+                const a2 = getAccel(s.x, s.v, s.x2, s.v2, t, 2);
+                s.v += a1 * subDt;
+                s.v2 += a2 * subDt;
+                s.x += s.v * subDt;
+                s.x2 += s.v2 * subDt;
+                s.t_phys += subDt;
+              } else {
+                const a = getAccel(s.x, s.v, 0, 0, t, 1);
+                s.v += a * subDt;
+                s.x += s.v * subDt;
+                s.t_phys += subDt;
+              }
+            } else if (p.integrator === "velocity_verlet") {
+              if (p.simMode === "coupled") {
+                const a1 = getAccel(s.x, s.v, s.x2, s.v2, t, 1);
+                const a2 = getAccel(s.x, s.v, s.x2, s.v2, t, 2);
+                s.x += s.v * subDt + 0.5 * a1 * subDt * subDt;
+                s.x2 += s.v2 * subDt + 0.5 * a2 * subDt * subDt;
+
+                const v1_pred = s.v + 0.5 * a1 * subDt;
+                const v2_pred = s.v2 + 0.5 * a2 * subDt;
+                const a1_next = getAccel(s.x, v1_pred, s.x2, v2_pred, t + subDt, 1);
+                const a2_next = getAccel(s.x, v1_pred, s.x2, v2_pred, t + subDt, 2);
+
+                s.v = v1_pred + 0.5 * a1_next * subDt;
+                s.v2 = v2_pred + 0.5 * a2_next * subDt;
+                s.t_phys += subDt;
+              } else {
+                const a = getAccel(s.x, s.v, 0, 0, t, 1);
+                s.x += s.v * subDt + 0.5 * a * subDt * subDt;
+
+                const v_pred = s.v + 0.5 * a * subDt;
+                const a_next = getAccel(s.x, v_pred, 0, 0, t + subDt, 1);
+                s.v = v_pred + 0.5 * a_next * subDt;
+                s.t_phys += subDt;
+              }
+            }
+
+            s.workIn += (F_driver1 * s.v + F_driver2 * s.v2) * subDt;
+            let p_diss = p.dampingB * s.v * s.v;
+            if (p.simMode === "coupled") {
+              p_diss += p.dampingB2 * s.v2 * s.v2 + p.couplingB * Math.pow(s.v - s.v2, 2);
+            }
+            s.workDiss += p_diss * subDt;
+
+            const currentV = s.v;
+            const lastV = lastVRef.current;
+            if ((lastV > 0 && currentV <= 0) || (lastV < 0 && currentV >= 0)) {
+              const peak1 = Math.abs(s.x);
+              const peak2 = Math.abs(s.x2);
+              sweepHistoryRef.current.push({ freq: p.driverFreq, amp1: peak1, amp2: peak2 });
+              if (sweepHistoryRef.current.length > 500) {
+                sweepHistoryRef.current.shift();
+              }
+            }
+            lastVRef.current = currentV;
+          }
+        }
+
+        stateRef.current = s;
+
+        const driveVal = p.simMode === "beats"
+          ? getDriverForcing(s.t_phys, p.driverFreq, p.driverAmp, "sine") + getDriverForcing(s.t_phys, p.driverFreq2, p.driverAmp2, "sine")
+          : getDriverForcing(s.t_phys, p.driverFreq, p.driverAmp, p.waveform);
+        historyRef.current.push({ t: s.t_phys, drive: driveVal, mass: s.x, mass2: s.x2 });
+        if (historyRef.current.length > 500) {
+          historyRef.current.shift();
+        }
+      }
+
+      // Recompute energy at updated states
+      let kineticEnergy_next = 0.5 * p.mass * stateRef.current.v * stateRef.current.v;
+      let potentialEnergy_next = 0.5 * p.springK * stateRef.current.x * stateRef.current.x;
+      let dissipatedPower_next = p.dampingB * stateRef.current.v * stateRef.current.v;
+
+      if (p.simMode === "coupled") {
+        kineticEnergy_next += 0.5 * p.mass2 * stateRef.current.v2 * stateRef.current.v2;
+        potentialEnergy_next += 0.5 * p.springK2 * stateRef.current.x2 * stateRef.current.x2 + 
+                               0.5 * p.couplingK * Math.pow(stateRef.current.x - stateRef.current.x2, 2);
+        dissipatedPower_next += p.dampingB2 * stateRef.current.v2 * stateRef.current.v2 +
+                               p.couplingB * Math.pow(stateRef.current.v - stateRef.current.v2, 2);
+      } else if (p.simMode === "duffing") {
+        potentialEnergy_next += 0.25 * p.duffingAlpha * Math.pow(stateRef.current.x, 4);
+      }
+      const totalEnergy_next = kineticEnergy_next + potentialEnergy_next;
+
+      // Energy conservation drift computation
+      const energyDrift = totalEnergy_next - stateRef.current.initialEnergy - stateRef.current.workIn + stateRef.current.workDiss;
+
+      // Cramer's rule analytical amplitude at current frequency
       let analyticalAmp = analyticalSteadyAmp;
       if (p.simMode === "coupled") {
-        // Compute complex analytical amplitudes for coupled
         const omega = 2 * Math.PI * p.driverFreq;
-        const r1 = p.springK + p.couplingK - p.mass * omega * omega;
-        const i1 = p.dampingB * omega;
-        const r2 = p.springK + p.couplingK - p.mass2 * omega * omega;
-        const i2 = p.dampingB2 * omega;
+        const k_c = p.couplingK;
+        const b_c = p.couplingB;
+        const r1 = p.springK + k_c - p.mass * omega * omega;
+        const i1 = (p.dampingB + b_c) * omega;
+        const r2 = p.springK2 + k_c - p.mass2 * omega * omega;
+        const i2 = (p.dampingB2 + b_c) * omega;
+        const rc = k_c;
+        const ic = b_c * omega;
 
         const r_prod = r1 * r2 - i1 * i2;
         const i_prod = r1 * i2 + r2 * i1;
-        const r_denom = r_prod - p.couplingK * p.couplingK;
-        const i_denom = i_prod;
+        const rc_sq = rc * rc - ic * ic;
+        const ic_sq = 2 * rc * ic;
+        const r_denom = r_prod - rc_sq;
+        const i_denom = i_prod - ic_sq;
         const denom_sq = r_denom * r_denom + i_denom * i_denom;
 
         if (denom_sq > 0) {
-          const r_num1 = p.driverAmp * (r2 * r_denom + i2 * i_denom);
-          const i_num1 = p.driverAmp * (i2 * r_denom - r2 * i_denom);
-          analyticalAmp = Math.sqrt(r_num1 * r_num1 + i_num1 * i_num1) / denom_sq;
+          const F1 = p.driverAmp;
+          const F2 = p.driverAmp2;
+          const r_num1 = F1 * r2 + F2 * rc;
+          const i_num1 = F1 * i2 + F2 * ic;
+          const r_x1 = r_num1 * r_denom + i_num1 * i_denom;
+          const i_x1 = i_num1 * r_denom - r_num1 * i_denom;
+          analyticalAmp = Math.sqrt(r_x1 * r_x1 + i_x1 * i_x1) / denom_sq;
         }
       }
       
       const numericalAmp = Math.abs(stateRef.current.x);
       const relativeError = analyticalAmp > 0 ? (Math.abs(numericalAmp - analyticalAmp) / analyticalAmp) * 100 : 0;
 
-      // Update parent telemetry
+      // Solver status stability limit
+      const omega_0_max = p.simMode === "coupled"
+        ? Math.sqrt((p.springK + p.couplingK) / p.mass)
+        : Math.sqrt(p.springK / p.mass);
+      const stabilityLimitDt = 2.0 / omega_0_max;
+
+      let solverStatus = "stable";
+      if (Math.abs(stateRef.current.x) > 10.0 || totalEnergy_next > 10000) {
+        solverStatus = "divergent";
+      } else if (p.timeStep > stabilityLimitDt && p.integrator !== "adaptive_rk") {
+        solverStatus = "warning";
+      }
+
       onStateUpdate({
         currentAmplitude: stateRef.current.x,
         currentAmplitude2: stateRef.current.x2,
@@ -601,9 +770,12 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
         peakFreqHz: f_peak,
         naturalFreqHz: f_0,
         currentFreqHz: p.driverFreq,
-        dissipatedPower: dissipatedPower,
-        totalEnergy: totalEnergy,
-        integrationError: relativeError
+        dissipatedPower: dissipatedPower_next,
+        totalEnergy: totalEnergy_next,
+        integrationError: relativeError,
+        solverStatus: solverStatus,
+        energyDrift: energyDrift,
+        truncationError: est_error,
       });
 
       // ─── RENDERING ────────────────────────────────────────────
@@ -750,7 +922,7 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
           drawForceArrow(ctx, m1X, trackY + 6, F_spring1 * 1.5, "#0d9488", "Fs₁");
           
           // Vectors on mass 2
-          const F_spring2 = -p.springK * stateRef.current.x2;
+          const F_spring2 = -p.springK2 * stateRef.current.x2;
           drawForceArrow(ctx, m2X, trackY + 6, F_spring2 * 1.5, "#a78bfa", "Fs₂");
         }
 
@@ -1127,7 +1299,6 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
 
       // PLOT ANALYTICAL CURVE
       if (p.simMode === "coupled") {
-        // Draw analytical curves for BOTH coupled masses
         ctx.lineWidth = 1.8;
 
         // Draw Mass 1 curve (Teal)
@@ -1135,23 +1306,33 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
         ctx.beginPath();
         for (let px = 0; px <= graphW; px++) {
           const f_val = 0.1 + (px / graphW) * (5.0 - 0.1);
-          // Complex analytical formula
           const omega = 2 * Math.PI * f_val;
-          const r1 = p.springK + p.couplingK - p.mass * omega * omega;
-          const i1 = p.dampingB * omega;
-          const r2 = p.springK + p.couplingK - p.mass2 * omega * omega;
-          const i2 = p.dampingB2 * omega;
+          const k_c = p.couplingK;
+          const b_c = p.couplingB;
+          const r1 = p.springK + k_c - p.mass * omega * omega;
+          const i1 = (p.dampingB + b_c) * omega;
+          const r2 = p.springK2 + k_c - p.mass2 * omega * omega;
+          const i2 = (p.dampingB2 + b_c) * omega;
+          const rc = k_c;
+          const ic = b_c * omega;
+
           const r_prod = r1 * r2 - i1 * i2;
           const i_prod = r1 * i2 + r2 * i1;
-          const r_denom = r_prod - p.couplingK * p.couplingK;
-          const i_denom = i_prod;
+          const rc_sq = rc * rc - ic * ic;
+          const ic_sq = 2 * rc * ic;
+          const r_denom = r_prod - rc_sq;
+          const i_denom = i_prod - ic_sq;
           const denom_sq = r_denom * r_denom + i_denom * i_denom;
 
           let amp1 = 0;
           if (denom_sq > 0) {
-            const r_num1 = p.driverAmp * (r2 * r_denom + i2 * i_denom);
-            const i_num1 = p.driverAmp * (i2 * r_denom - r2 * i_denom);
-            amp1 = Math.sqrt(r_num1 * r_num1 + i_num1 * i_num1) / denom_sq;
+            const F1 = p.driverAmp;
+            const F2 = p.driverAmp2;
+            const r_num1 = F1 * r2 + F2 * rc;
+            const i_num1 = F1 * i2 + F2 * ic;
+            const r_x1 = r_num1 * r_denom + i_num1 * i_denom;
+            const i_x1 = i_num1 * r_denom - r_num1 * i_denom;
+            amp1 = Math.sqrt(r_x1 * r_x1 + i_x1 * i_x1) / denom_sq;
           }
 
           const gy = graphTop + graphH - (amp1 / maxGraphAmp) * (graphH - 15) - 5;
@@ -1165,21 +1346,32 @@ export const ResonanceCanvas: React.FC<ResonanceCanvasProps> = ({
         for (let px = 0; px <= graphW; px++) {
           const f_val = 0.1 + (px / graphW) * (5.0 - 0.1);
           const omega = 2 * Math.PI * f_val;
-          const r1 = p.springK + p.couplingK - p.mass * omega * omega;
-          const i1 = p.dampingB * omega;
-          const r2 = p.springK + p.couplingK - p.mass2 * omega * omega;
-          const i2 = p.dampingB2 * omega;
+          const k_c = p.couplingK;
+          const b_c = p.couplingB;
+          const r1 = p.springK + k_c - p.mass * omega * omega;
+          const i1 = (p.dampingB + b_c) * omega;
+          const r2 = p.springK2 + k_c - p.mass2 * omega * omega;
+          const i2 = (p.dampingB2 + b_c) * omega;
+          const rc = k_c;
+          const ic = b_c * omega;
+
           const r_prod = r1 * r2 - i1 * i2;
           const i_prod = r1 * i2 + r2 * i1;
-          const r_denom = r_prod - p.couplingK * p.couplingK;
-          const i_denom = i_prod;
+          const rc_sq = rc * rc - ic * ic;
+          const ic_sq = 2 * rc * ic;
+          const r_denom = r_prod - rc_sq;
+          const i_denom = i_prod - ic_sq;
           const denom_sq = r_denom * r_denom + i_denom * i_denom;
 
           let amp2 = 0;
           if (denom_sq > 0) {
-            const r_num2 = p.driverAmp * p.couplingK * r_denom;
-            const i_num2 = p.driverAmp * p.couplingK * (-i_denom);
-            amp2 = Math.sqrt(r_num2 * r_num2 + i_num2 * i_num2) / denom_sq;
+            const F1 = p.driverAmp;
+            const F2 = p.driverAmp2;
+            const r_num2 = F2 * r1 + F1 * rc;
+            const i_num2 = F2 * i1 + F1 * ic;
+            const r_x2 = r_num2 * r_denom + i_num2 * i_denom;
+            const i_x2 = i_num2 * r_denom - r_num2 * i_denom;
+            amp2 = Math.sqrt(r_x2 * r_x2 + i_x2 * i_x2) / denom_sq;
           }
 
           const gy = graphTop + graphH - (amp2 / maxGraphAmp) * (graphH - 15) - 5;
