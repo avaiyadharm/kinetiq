@@ -8,7 +8,8 @@ export const SoundWavesTheory: React.FC = () => {
   const [level, setLevel] = useState<"beginner" | "intermediate" | "advanced">("beginner");
 
   return (
-    <div className="flex-1 p-8 bg-[#18181b] overflow-y-auto text-white space-y-6">
+    <div className="flex-1 p-8 bg-[#18181b] overflow-y-auto text-white">
+      <div className="max-w-4xl mx-auto w-full space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center border-b border-white/5 pb-6">
         <div>
@@ -46,7 +47,7 @@ export const SoundWavesTheory: React.FC = () => {
 
       {/* Beginner Mode */}
       {level === "beginner" && (
-        <div className="space-y-6 max-w-4xl animate-fadeIn">
+        <div className="space-y-6 w-full animate-fadeIn">
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
             <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">What is a Sound Wave?</h3>
             <p className="text-sm text-white/80 leading-relaxed">
@@ -122,7 +123,7 @@ export const SoundWavesTheory: React.FC = () => {
 
       {/* Intermediate Mode */}
       {level === "intermediate" && (
-        <div className="space-y-6 max-w-4xl animate-fadeIn">
+        <div className="space-y-6 w-full animate-fadeIn">
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
             <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">Acoustic Variables & Wave Formulas</h3>
             <p className="text-sm text-white/80 leading-relaxed font-sans">
@@ -212,7 +213,7 @@ export const SoundWavesTheory: React.FC = () => {
 
       {/* Advanced Mode */}
       {level === "advanced" && (
-        <div className="space-y-6 max-w-4xl animate-fadeIn">
+        <div className="space-y-6 w-full animate-fadeIn">
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
             <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">The Governing Acoustic Wave Equation</h3>
             <p className="text-sm text-white/80 leading-relaxed">
@@ -300,6 +301,7 @@ export const SoundWavesTheory: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

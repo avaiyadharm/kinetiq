@@ -5,6 +5,7 @@ import { SimulationPageLayout, TabType } from "@/components/simulations/Simulati
 import { SoundWavesCanvas } from "./SoundWavesCanvas";
 import { SoundWavesTheory } from "./SoundWavesTheory";
 import { SoundWavesGuide } from "./SoundWavesGuide";
+import { SoundWavesConfig } from "./SoundWavesConfig";
 import { 
   Play, Pause, RotateCcw, Activity, Zap, Settings2, Sparkles, Sliders, RefreshCw, BarChart2, Volume2, Waves
 } from "lucide-react";
@@ -737,58 +738,20 @@ export const SoundWavesSimulator: React.FC = () => {
         )}
 
         {activeTab === "config" && (
-          <div className="flex-1 p-10 bg-[#18181b] overflow-y-auto text-white space-y-6">
-            <h2 className="text-xl font-bold font-display uppercase tracking-widest text-primary">Environment Settings & Solver Coefficients</h2>
-            <p className="text-sm text-white/60 leading-relaxed max-w-3xl">
-              Adjust the microphysical constants of the medium and configuration details of the Numerical PDE Solvers.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl pt-4">
-              <div className="bg-black/30 border border-white/5 rounded-3xl p-6 space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-teal-400">Thermodynamic Relations</h3>
-                <div className="space-y-2 text-xs text-white/80">
-                  <div className="flex justify-between py-1.5 border-b border-white/5">
-                    <span>Medium Density (ρ)</span>
-                    <span className="font-mono">{density.toFixed(2)} kg/m³</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 border-b border-white/5">
-                    <span>Adiabatic Bulk Modulus (B)</span>
-                    <span className="font-mono">{(bulkModulus / 1000).toFixed(1)} kPa</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 border-b border-white/5">
-                    <span>Specific Acoustic Impedance (Z₀)</span>
-                    <span className="font-mono">{(speedOfSound * density).toFixed(1)} N·s/m³</span>
-                  </div>
-                  <div className="flex justify-between py-1.5">
-                    <span>Reference Intensity (I₀)</span>
-                    <span className="font-mono">10⁻¹² W/m² (Hearing Threshold)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-black/30 border border-white/5 rounded-3xl p-6 space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-cyan-400">PDE Solver Specifications (1D FDTD)</h3>
-                <div className="space-y-2 text-xs text-white/80">
-                  <div className="flex justify-between py-1.5 border-b border-white/5">
-                    <span>Grid Resolution (Δx)</span>
-                    <span className="font-mono">0.015 m (80 Grid Nodes)</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 border-b border-white/5">
-                    <span>Calculated Timestep (Δt)</span>
-                    <span className="font-mono">{(telemetry.timestep * 1000000).toFixed(2)} μs</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 border-b border-white/5">
-                    <span>Courant-Friedrichs-Lewy (CFL) limit</span>
-                    <span className="font-mono">C = c·Δt/Δx ≤ 1.00</span>
-                  </div>
-                  <div className="flex justify-between py-1.5">
-                    <span>Perfectly Matched Layer (PML) nodes</span>
-                    <span className="font-mono">15 Nodes (Left & Right boundaries)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SoundWavesConfig
+            speedOfSound={speedOfSound}
+            density={density}
+            bulkModulus={bulkModulus}
+            damping={damping}
+            nonlinearBeta={nonlinearBeta}
+            frequency={frequency}
+            amplitude={amplitude}
+            solverType={solverType}
+            boundaryL={boundaryL}
+            boundaryR={boundaryR}
+            impedanceRatio={impedanceRatio}
+            telemetry={telemetry}
+          />
         )}
 
         {activeTab === "theory" && (
