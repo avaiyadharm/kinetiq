@@ -223,9 +223,9 @@ export const SoundWavesSimulator: React.FC = () => {
       setDensity(1000.0);
       setBulkModulus(1482.0 * 1482.0 * 1000.0);
     } else if (presetName === "Vacuum") {
-      setSpeedOfSound(0.001); // Avoid division by zero
-      setDensity(0.0);
-      setBulkModulus(0.0);
+      setSpeedOfSound(0.001);
+      setDensity(0.001); // Near-zero to avoid NaN from sqrt(B/rho)
+      setBulkModulus(0.000001);
     }
   };
 
@@ -689,10 +689,11 @@ export const SoundWavesSimulator: React.FC = () => {
                     ) : (
                       <>
                         <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
-                          <div className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Pressure Level</div>
+                          <div className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Sound Level (SPL)</div>
                           <div className="text-sm font-mono font-bold text-blue-400 mt-1">
-                            {telemetry.soundLevelDb.toFixed(1)} <span className="text-[9px] text-white/30 font-sans">dB</span>
+                            {telemetry.soundLevelDb.toFixed(1)} <span className="text-[9px] text-white/30 font-sans">dB SPL</span>
                           </div>
+                          <div className="text-[8px] text-white/25 mt-0.5">ref: 20 µPa</div>
                         </div>
                         <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
                           <div className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Intensity (I)</div>
