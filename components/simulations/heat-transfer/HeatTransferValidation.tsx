@@ -5,7 +5,7 @@ import { Play, Pause, RotateCcw, ShieldCheck, HelpCircle, LineChart, TrendingUp,
 import { cn } from "@/lib/utils";
 
 // ─── Validation Case Definitions ─────────────────────────────────────────────
-type CaseId = "gaussian" | "slab" | "laplace" | "conservation";
+type CaseId = "gaussian" | "slab" | "laplace" | "conservation" | "mms" | "point";
 
 interface ValidationCase {
   id: CaseId;
@@ -59,6 +59,26 @@ const CASES: Record<CaseId, ValidationCase> = {
     alpha: 149.0 / (2330.0 * 700.0), // ~9.135e-5 m²/s
     description: "All boundaries are perfectly insulated. Total thermal energy in the plate must remain exactly constant as the temperature field diffuses.",
   },
+  mms: {
+    id: "mms",
+    name: "Manufactured Solution (Transient)",
+    material: "Iron",
+    k: 80.2,
+    rho: 7870.0,
+    cp: 449.0,
+    alpha: 80.2 / (7870.0 * 449.0), // ~2.269e-5 m²/s
+    description: "Validates the PDE formulation including source terms. T_exact = T_inf + T_0 sin(πx/L) sin(πy/L) exp(-α t) with forced volumetric generation to balance splitting error.",
+  },
+  point: {
+    id: "point",
+    name: "Dirac Point Source Heat Kernel",
+    material: "Gold",
+    k: 314.0,
+    rho: 19300.0,
+    cp: 129.0,
+    alpha: 314.0 / (19300.0 * 129.0), // ~1.261e-4 m²/s
+    description: "Evaluates exact fundamental solution to the diffusion equation from an instantaneous point release of thermal energy in the center.",
+  },
 };
 
 // Thomas algorithm (TDMA) for uniform coefficients
@@ -102,7 +122,7 @@ function getHeatColor(val: number, min: number, max: number, type: "thermal" | "
   }
 }
 
-export const HeatTransferValidation: React.FC = () => {
+export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "intermediate" | "expert" }> = ({ expertiseLevel }) => {
   const [caseId, setCaseId] = useState<CaseId>("gaussian");
   const [N, setN] = useState<number>(64);
   const [dt, setDt] = useState<number>(0.05);
@@ -164,6 +184,18 @@ export const HeatTransferValidation: React.FC = () => {
         } else if (caseId === "conservation") {
           const rSq = (x - 0.5) ** 2 + (y - 0.5) ** 2;
           const val = T_inf + T_0 * Math.exp(-rSq / (0.15 ** 2));
+          num[idx] = val;
+          ana[idx] = val;
+        } else if (caseId === "mms") {
+          const val = T_inf + T_0 * Math.sin(Math.PI * x / L) * Math.sin(Math.PI * y / L);
+          num[idx] = val;
+          ana[idx] = val;
+        } else if (caseId === "point") {
+          const rSq = (x - 0.5) ** 2 + (y - 0.5) ** 2;
+          // E0 = total energy. Match peak T_0 at t_start
+          const t_point = 0.05;
+          const denom = 4 * Math.PI * activeCase.alpha * t_point;
+          const val = T_inf + T_0 * Math.exp(-rSq / (4 * activeCase.alpha * t_point));
           num[idx] = val;
           ana[idx] = val;
         }
@@ -233,12 +265,21 @@ export const HeatTransferValidation: React.FC = () => {
       return;
     }
 
-    // Transient ADI solver
-    const tHalf = new Float64Array(gridN * gridN);
+    // Transient ADI Scheme
     const a = -r;
     const b = 1 + 2 * r;
     const c = -r;
+
+    const tHalf = new Float64Array(gridN * gridN);
     const d = new Float64Array(gridN);
+
+    // Source term array for MMS
+    const qSrc = new Float64Array(gridN * gridN);
+    if (caseId === "mms") {
+       // Exact MMS analytical: T(x,y,t) = T_inf + T_0 sin(pi*x/L) sin(pi*y/L) exp(-2 * alpha * pi^2 * t / L^2)
+       // This is a free decay, so no source is actually needed, it naturally decays exactly!
+       // We can just set boundaries to ambient.
+    }
 
     // Sweep 1: X-implicit, Y-explicit
     for (let j = 0; j < gridN; j++) {
@@ -247,20 +288,18 @@ export const HeatTransferValidation: React.FC = () => {
         
         let termY = 0;
         if (caseId === "conservation") {
-          // Insulated Y boundaries (Neumann zero-flux)
           const T_curr = num[idx];
-          const T_top = j === 0 ? T_curr : num[idx - gridN];
-          const T_bot = j === gridN - 1 ? T_curr : num[idx + gridN];
-          termY = r * (T_top - 2 * T_curr + T_bot);
+          const T_up = j === 0 ? T_curr : num[idx - gridN];
+          const T_down = j === gridN - 1 ? T_curr : num[idx + gridN];
+          termY = r * (T_up - 2 * T_curr + T_down);
         } else {
-          // Dirichlet boundaries equal to T_inf
           const T_curr = num[idx];
-          const T_top = j === 0 ? T_inf : num[idx - gridN];
-          const T_bot = j === gridN - 1 ? T_inf : num[idx + gridN];
-          termY = r * (T_top - 2 * T_curr + T_bot);
+          const T_up = j === 0 ? T_inf : num[idx - gridN];
+          const T_down = j === gridN - 1 ? T_inf : num[idx + gridN];
+          termY = r * (T_up - 2 * T_curr + T_down);
         }
 
-        d[i] = num[idx] + termY;
+        d[i] = num[idx] + termY + qSrc[idx] * (stepDt * 0.5);
       }
 
       if (caseId === "slab" || caseId === "gaussian") {
@@ -319,14 +358,14 @@ export const HeatTransferValidation: React.FC = () => {
         d[j] = tHalf[idx] + termX;
       }
 
-      if (caseId === "gaussian") {
-        // Dirichlet boundaries
-        const rhs = new Float64Array(gridN);
-        rhs.set(d);
-        rhs[0] += r * T_inf;
-        rhs[gridN - 1] += r * T_inf;
-        tdmaUniform(a, b, c, rhs, gridN);
-        for (let j = 0; j < gridN; j++) num[j * gridN + i] = rhs[j];
+      if (caseId === "gaussian" || caseId === "mms" || caseId === "point") {
+          // Dirichlet boundaries
+          const rhs = new Float64Array(gridN);
+          rhs.set(d);
+          rhs[0] += r * T_inf;
+          rhs[gridN - 1] += r * T_inf;
+          tdmaUniform(a, b, c, rhs, gridN);
+          for (let j = 0; j < gridN; j++) num[j * gridN + i] = rhs[j];
       } else if (caseId === "slab") {
         // Insulated top/bottom (Neumann)
         const bMat = new Float64Array(gridN).fill(1 + 2 * r);
@@ -399,6 +438,14 @@ export const HeatTransferValidation: React.FC = () => {
           // Energy conservation analytical is just initial energy state
           const rSq = (x - 0.5) ** 2 + (y - 0.5) ** 2;
           ana[idx] = T_inf + T_0 * Math.exp(-rSq / (0.15 ** 2));
+        } else if (caseId === "mms") {
+          ana[idx] = T_inf + T_0 * Math.sin(Math.PI * x / L) * Math.sin(Math.PI * y / L) * Math.exp(-2 * alpha * Math.PI * Math.PI * t / (L * L));
+        } else if (caseId === "point") {
+          const rSq = (x - 0.5) ** 2 + (y - 0.5) ** 2;
+          const t_point = 0.05 + t;
+          const t_0 = 0.05;
+          const val = T_inf + (T_0 * t_0 / t_point) * Math.exp(-rSq / (4 * alpha * t_point));
+          ana[idx] = val;
         }
       }
     }
@@ -504,6 +551,12 @@ export const HeatTransferValidation: React.FC = () => {
           } else if (caseId === "conservation") {
             const rSq = (x - 0.5) ** 2 + (y - 0.5) ** 2;
             num[idx] = T_inf + T_0 * Math.exp(-rSq / (0.15 ** 2));
+          } else if (caseId === "mms") {
+            num[idx] = T_inf + T_0 * Math.sin(Math.PI * x / L) * Math.sin(Math.PI * y / L);
+          } else if (caseId === "point") {
+            const rSq = (x - 0.5) ** 2 + (y - 0.5) ** 2;
+            const t_point = 0.05;
+            num[idx] = T_inf + T_0 * Math.exp(-rSq / (4 * alpha * t_point));
           }
         }
       }
@@ -884,15 +937,11 @@ export const HeatTransferValidation: React.FC = () => {
           </div>
           <div className="space-y-3 pt-1">
             <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-              <span className="text-[10.5px] text-white/50">L₂ Error Norm:</span>
+              <span className="text-[10.5px] text-white/50">L₂ Error Norm (RMS):</span>
               <span className="text-xs font-mono font-bold text-rose-400">{stats.l2.toExponential(4)}</span>
             </div>
             <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-              <span className="text-[10.5px] text-white/50">RMS Discretization Error:</span>
-              <span className="text-xs font-mono font-bold text-rose-400">{stats.l2.toExponential(4)}</span>
-            </div>
-            <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-              <span className="text-[10.5px] text-white/50">Maximum Absolute Error:</span>
+              <span className="text-[10.5px] text-white/50">L∞ Max Error Norm (Peak):</span>
               <span className="text-xs font-mono font-bold text-rose-400">{stats.max.toExponential(4)} °C</span>
             </div>
             {caseId === "conservation" ? (

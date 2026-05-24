@@ -127,6 +127,9 @@ export interface Telemetry {
   energyInflow: number;        // [W] total heat power entering grid
   energyOutflow: number;       // [W] total heat power leaving grid
   conservationError: number;   // [W] net energy conservation mismatch rate
+  infinityNorm?: number;       // Max absolute error
+  localFluxImbalance?: number; // Max local flux imbalance [W]
+  dtSubSteps?: number;         // Adaptive substeps taken
 }
 
 interface HeatTransferCanvasProps {
@@ -150,6 +153,7 @@ interface HeatTransferCanvasProps {
   activePreset: string;
   onTelemetryUpdate: (t: Telemetry) => void;
   stepsPerFrame: number; // sub-steps per animation frame
+  expertiseLevel: "beginner" | "intermediate" | "expert";
 }
 
 // ─── TDMA (Thomas Algorithm) for tridiagonal systems ────────────────────────
@@ -371,16 +375,25 @@ function buildPreset(
 export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
   gridSize, dx, dt, thickness, ambientTemp, convectionCoeff,
   solverMode, boundaryType, drawTool, selectedMaterial,
-  brushSize, colormap, showFluxVectors, showIsotherms, showGridLines, showColorbar,
-  isPlaying, activePreset, onTelemetryUpdate, stepsPerFrame,
+  brushSize, colormap: userColormap, showFluxVectors: userShowFluxVectors, 
+  showIsotherms: userShowIsotherms, showGridLines: userShowGridLines, 
+  showColorbar, isPlaying, activePreset, onTelemetryUpdate, stepsPerFrame,
+  expertiseLevel,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Beginner overrides
+  const showFluxVectors = expertiseLevel === "beginner" ? false : userShowFluxVectors;
+  const showIsotherms = expertiseLevel === "beginner" ? false : userShowIsotherms;
+  const showGridLines = expertiseLevel === "beginner" ? false : userShowGridLines;
+  const colormap = expertiseLevel === "beginner" ? "thermal" : userColormap;
 
   // ── Physics buffers (Float64 for numerical precision) ──────────────────────
   const tempRef = useRef<Float64Array | null>(null);
   const tempNextRef = useRef<Float64Array | null>(null);
   const fixedRef = useRef<Uint8Array | null>(null);
   const materialIdRef = useRef<Uint8Array | null>(null); // index into MATERIAL_KEYS
+  const qGenRef = useRef<Float64Array | null>(null); // [W/m³] Volumetric heat generation
   const simTimeRef = useRef<number>(0);
 
   // Preallocated workspace to avoid GC overhead in real-time solvers
@@ -408,7 +421,20 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
     tempNextRef.current = new Float64Array(N * N);
     fixedRef.current = fixed;
     materialIdRef.current = materialId;
+    qGenRef.current = new Float64Array(N * N);
     simTimeRef.current = 0;
+
+    // Apply internal heat generation for specific presets
+    if (preset === "CPU Heatsink") {
+      const cx = Math.floor(N / 2), cy = Math.floor(N / 2);
+      const dieW = Math.max(2, Math.floor(N * 0.12));
+      for (let j = cy - 2; j <= cy + 2; j++) {
+        for (let i = cx - dieW; i <= cx + dieW; i++) {
+          qGenRef.current[j * N + i] = 5e7; // 50 MW/m³ internal heat gen for silicon die
+          fixedRef.current[j * N + i] = 0; // unfix temperature so it can heat up naturally
+        }
+      }
+    }
 
     aRef.current = new Float64Array(N);
     bRef.current = new Float64Array(N);
@@ -448,7 +474,13 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
         const nx = cellX + dx2, ny = cellY + dy;
         if (nx < 0 || nx >= N || ny < 0 || ny >= N) continue;
         const idx = ny * N + nx;
-        if (drawTool === "source") { temp[idx] = 100; fixed[idx] = 1; }
+        if (qGenRef.current) qGenRef.current[idx] = 0; // Reset heat gen by default on draw
+        if (drawTool === "source") { 
+          // Use internal heat generation instead of fixed boundary
+          if (qGenRef.current) qGenRef.current[idx] = 5e7; // 50 MW/m³
+          fixed[idx] = 0; 
+          matId[idx] = Math.max(0, matIdx); // Keep current brush material
+        }
         else if (drawTool === "sink") { temp[idx] = 5; fixed[idx] = 2; }
         else if (drawTool === "material") { fixed[idx] = 0; matId[idx] = Math.max(0, matIdx); }
         else if (drawTool === "erase") { temp[idx] = ambientTemp; fixed[idx] = 0; matId[idx] = 0; }
@@ -489,17 +521,34 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
     let animId: number;
     const GS_ITERS = 60;
 
-    const step = () => {
+    const EMISSIVITY = 0.9;
+    const STEFAN_BOLTZMANN = 5.67e-8; // W/(m²K⁴)
+    const CONTACT_RESISTANCE = 0.0005; // m²K/W
+
+    const getHEff = (T_cell: number) => {
+      const T_K = T_cell + 273.15;
+      const T_inf_K = ambientTemp + 273.15;
+      const h_rad = EMISSIVITY * STEFAN_BOLTZMANN * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
+      return convectionCoeff + h_rad;
+    };
+
+    const getKInterface = (id1: number, id2: number, k1: number, k2: number, dist: number) => {
+      if (id1 === id2) return 2 * k1 * k2 / (k1 + k2);
+      return dist / ((dist/2)/k1 + (dist/2)/k2 + CONTACT_RESISTANCE);
+    };
+
+    const step = (currentDt: number) => {
       const tOld = tempRef.current;
       const tNew = tempNextRef.current;
       const fixed = fixedRef.current;
       const matId = materialIdRef.current;
-      if (!tOld || !tNew || !fixed || !matId) return;
+      const qGen = qGenRef.current;
+      if (!tOld || !tNew || !fixed || !matId || !qGen) return;
 
       const N = gridSize;
       const h = convectionCoeff;    // [W/m²K]
       const T_inf = ambientTemp;     // [°C]
-
+      
       // Helper to check if a cell is fixed (sources or air background)
       const isFixed = (k: number) => fixed[k] > 0 || matId[k] === 5;
 
@@ -526,89 +575,33 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
               let num = 0;
               let denom = 0;
 
-              // Left neighbor
-              if (i === 0) {
-                if (boundaryType === "fixed") {
-                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
-                } else if (boundaryType === "convective") {
-                  num += (h * dx) * T_inf; denom += h * dx;
-                }
-              } else {
-                const idxL = idx - 1;
-                const k_nbr = getConductivity(getMat(matId[idxL]), tOld[idxL]);
-                let k_interface = 0;
-                let T_val = 0;
-                if (matId[idxL] === 5) { // Air neighbor
-                  k_interface = h * dx; T_val = T_inf;
-                } else {
-                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
-                  T_val = tOld[idxL];
-                }
-                num += k_interface * T_val; denom += k_interface;
-              }
+              const h_eff = getHEff(tOld[idx]);
 
-              // Right neighbor
-              if (i === N - 1) {
-                if (boundaryType === "fixed") {
-                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
-                } else if (boundaryType === "convective") {
-                  num += (h * dx) * T_inf; denom += h * dx;
-                }
-              } else {
-                const idxR = idx + 1;
-                const k_nbr = getConductivity(getMat(matId[idxR]), tOld[idxR]);
-                let k_interface = 0;
-                let T_val = 0;
-                if (matId[idxR] === 5) {
-                  k_interface = h * dx; T_val = T_inf;
+              const addNeighbor = (nbrIdx: number, dist: number, isBoundary: boolean) => {
+                if (isBoundary) {
+                  if (boundaryType === "fixed") {
+                    num += 2 * k_idx * T_inf; denom += 2 * k_idx;
+                  } else if (boundaryType === "convective") {
+                    num += (h_eff * dist) * T_inf; denom += h_eff * dist;
+                  }
                 } else {
-                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
-                  T_val = tOld[idxR];
+                  const k_nbr = getConductivity(getMat(matId[nbrIdx]), tOld[nbrIdx]);
+                  if (matId[nbrIdx] === 5) { // Air neighbor
+                    num += (h_eff * dist) * T_inf; denom += h_eff * dist;
+                  } else {
+                    const k_int = getKInterface(matId[idx], matId[nbrIdx], k_idx, k_nbr, dist);
+                    num += k_int * tOld[nbrIdx]; denom += k_int;
+                  }
                 }
-                num += k_interface * T_val; denom += k_interface;
-              }
+              };
 
-              // Top neighbor
-              if (j === 0) {
-                if (boundaryType === "fixed") {
-                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
-                } else if (boundaryType === "convective") {
-                  num += (h * dy) * T_inf; denom += h * dy;
-                }
-              } else {
-                const idxT = idx - N;
-                const k_nbr = getConductivity(getMat(matId[idxT]), tOld[idxT]);
-                let k_interface = 0;
-                let T_val = 0;
-                if (matId[idxT] === 5) {
-                  k_interface = h * dy; T_val = T_inf;
-                } else {
-                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
-                  T_val = tOld[idxT];
-                }
-                num += k_interface * T_val; denom += k_interface;
-              }
-
-              // Bottom neighbor
-              if (j === N - 1) {
-                if (boundaryType === "fixed") {
-                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
-                } else if (boundaryType === "convective") {
-                  num += (h * dy) * T_inf; denom += h * dy;
-                }
-              } else {
-                const idxB = idx + N;
-                const k_nbr = getConductivity(getMat(matId[idxB]), tOld[idxB]);
-                let k_interface = 0;
-                let T_val = 0;
-                if (matId[idxB] === 5) {
-                  k_interface = h * dy; T_val = T_inf;
-                } else {
-                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
-                  T_val = tOld[idxB];
-                }
-                num += k_interface * T_val; denom += k_interface;
-              }
+              addNeighbor(idx - 1, dx, i === 0);
+              addNeighbor(idx + 1, dx, i === N - 1);
+              addNeighbor(idx - N, dy, j === 0);
+              addNeighbor(idx + N, dy, j === N - 1);
+              
+              // Add internal volumetric heat generation source term (Q * dx * dy / k_eff)
+              num += qGen[idx] * dx * dy;
 
               tOld[idx] = denom > 0 ? num / denom : T_inf;
             }
@@ -618,7 +611,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
 
       } else {
         // ── Conservative ADI Crank-Nicolson implicit solver ─────────────────
-        const halfDt = dt * 0.5;
+        const halfDt = currentDt * 0.5;
         const dy = dx;
         
         const a = aRef.current;
@@ -630,41 +623,35 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
 
         tHalf.set(tOld);
 
-        const getNeighborCoeff = (
-          idx: number, idxNbr: number,
-          halfDt: number, dist: number, C_idx: number, k_idx: number
+        const getNeighborConductance = (
+          idx: number, idxNbr: number, T_ref: Float64Array, k_idx: number
         ) => {
           if (matId[idxNbr] === 5) { // Air convective cooling
-            const rConv = h * halfDt / (C_idx * dist);
-            return { r: rConv, isFixed: true, T: T_inf };
+            const h_eff = getHEff(T_ref[idx]);
+            const K_conv = h_eff * (dx * thickness); // W/K
+            return { K: K_conv, isFixed: true, T: T_inf };
           }
           const fixNbr = fixed[idxNbr];
-          const k_nbr = getConductivity(getMat(matId[idxNbr]), tOld[idxNbr]);
-          const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
-          const rCond = k_interface * halfDt / (C_idx * dist * dist);
+          const k_nbr = getConductivity(getMat(matId[idxNbr]), T_ref[idxNbr]);
+          const k_eff = getKInterface(matId[idx], matId[idxNbr], k_idx, k_nbr, dx);
+          const K_cond = k_eff * thickness; // W/K
           if (fixNbr > 0) {
-            return { r: rCond, isFixed: true, T: tOld[idxNbr] };
+            return { K: K_cond, isFixed: true, T: T_ref[idxNbr] };
           }
-          return { r: rCond, isFixed: false, T: 0 };
+          return { K: K_cond, isFixed: false, T: 0 };
         };
 
-        const getNeighborCoeffHalf = (
-          idx: number, idxNbr: number,
-          halfDt: number, dist: number, C_idx: number, k_idx: number
-        ) => {
-          if (matId[idxNbr] === 5) {
-            const rConv = h * halfDt / (C_idx * dist);
-            return { r: rConv, isFixed: true, T: T_inf };
+        const getBoundaryConductance = (T_cell: number, k_idx: number) => {
+          if (boundaryType === "fixed") {
+             return { K: 2 * k_idx * thickness, isFixed: true, T: T_inf };
+          } else if (boundaryType === "convective") {
+             const h_eff = getHEff(T_cell);
+             return { K: h_eff * (dx * thickness), isFixed: true, T: T_inf };
           }
-          const fixNbr = fixed[idxNbr];
-          const k_nbr = getConductivity(getMat(matId[idxNbr]), tHalf[idxNbr]);
-          const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
-          const rCond = k_interface * halfDt / (C_idx * dist * dist);
-          if (fixNbr > 0) {
-            return { r: rCond, isFixed: true, T: tHalf[idxNbr] };
-          }
-          return { r: rCond, isFixed: false, T: 0 };
+          return { K: 0, isFixed: false, T: 0 }; // insulated
         };
+
+        const invHalfDt = 2.0 / currentDt;
 
         // === Half step 1: x-implicit, y-explicit ===========================
         for (let j = 0; j < N; j++) {
@@ -676,96 +663,70 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             }
 
             const mat = getMat(matId[idx]);
-            const C_idx = mat.rho * getSpecificHeat(mat, tOld[idx]);
+            const C_P = mat.rho * getSpecificHeat(mat, tOld[idx]) * dx * dx * thickness; // J/K
+            const a_P0 = C_P * invHalfDt; // W/K
             const k_idx = getConductivity(mat, tOld[idx]);
             const T_current = tOld[idx];
+            const S = qGen[idx] * dx * dx * thickness; // W
 
             let rhsY = 0;
-            let rL = 0;
-            let rR = 0;
+            let K_L = 0;
+            let K_R = 0;
             let lhsExtra = 0;
             let rhsExtra = 0;
 
             // --- Y direction (explicit) ---
             // Top neighbor
             if (j === 0) {
-              if (boundaryType === "fixed") {
-                const r = (2 * k_idx) * halfDt / (C_idx * dy * dy);
-                rhsY += r * (T_inf - T_current);
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dy);
-                rhsY += r * (T_inf - T_current);
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              rhsY += b_cond.K * (b_cond.T - T_current);
             } else {
-              const res = getNeighborCoeff(idx, idx - N, halfDt, dy, C_idx, k_idx);
-              if (res.isFixed) {
-                rhsY += res.r * (res.T - T_current);
-              } else {
-                rhsY += res.r * (tOld[idx - N] - T_current);
-              }
+              const res = getNeighborConductance(idx, idx - N, tOld, k_idx);
+              rhsY += res.K * ((res.isFixed ? res.T : tOld[idx - N]) - T_current);
             }
             // Bottom neighbor
             if (j === N - 1) {
-              if (boundaryType === "fixed") {
-                const r = (2 * k_idx) * halfDt / (C_idx * dy * dy);
-                rhsY += r * (T_inf - T_current);
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dy);
-                rhsY += r * (T_inf - T_current);
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              rhsY += b_cond.K * (b_cond.T - T_current);
             } else {
-              const res = getNeighborCoeff(idx, idx + N, halfDt, dy, C_idx, k_idx);
-              if (res.isFixed) {
-                rhsY += res.r * (res.T - T_current);
-              } else {
-                rhsY += res.r * (tOld[idx + N] - T_current);
-              }
+              const res = getNeighborConductance(idx, idx + N, tOld, k_idx);
+              rhsY += res.K * ((res.isFixed ? res.T : tOld[idx + N]) - T_current);
             }
 
             // --- X direction (implicit) ---
             // Left neighbor
             if (i === 0) {
-              if (boundaryType === "fixed") {
-                rL = (2 * k_idx) * halfDt / (C_idx * dx * dx);
-                rhsExtra += rL * T_inf;
-                lhsExtra += rL;
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dx);
-                rhsExtra += r * T_inf;
-                lhsExtra += r;
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              lhsExtra += b_cond.K;
+              rhsExtra += b_cond.K * b_cond.T;
             } else {
-              const res = getNeighborCoeff(idx, idx - 1, halfDt, dx, C_idx, k_idx);
+              const res = getNeighborConductance(idx, idx - 1, tOld, k_idx);
               if (res.isFixed) {
-                rhsExtra += res.r * res.T;
+                lhsExtra += res.K;
+                rhsExtra += res.K * res.T;
               } else {
-                rL = res.r;
+                K_L = res.K;
               }
             }
             // Right neighbor
             if (i === N - 1) {
-              if (boundaryType === "fixed") {
-                rR = (2 * k_idx) * halfDt / (C_idx * dx * dx);
-                rhsExtra += rR * T_inf;
-                lhsExtra += rR;
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dx);
-                rhsExtra += r * T_inf;
-                lhsExtra += r;
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              lhsExtra += b_cond.K;
+              rhsExtra += b_cond.K * b_cond.T;
             } else {
-              const res = getNeighborCoeff(idx, idx + 1, halfDt, dx, C_idx, k_idx);
+              const res = getNeighborConductance(idx, idx + 1, tOld, k_idx);
               if (res.isFixed) {
-                rhsExtra += res.r * res.T;
+                lhsExtra += res.K;
+                rhsExtra += res.K * res.T;
               } else {
-                rR = res.r;
+                K_R = res.K;
               }
             }
 
-            a[i] = -rL;
-            b[i] = 1 + rL + rR + lhsExtra;
-            c[i] = -rR;
-            d[i] = T_current + rhsY + rhsExtra;
+            a[i] = -K_L;
+            b[i] = a_P0 + K_L + K_R + lhsExtra;
+            c[i] = -K_R;
+            d[i] = a_P0 * T_current + rhsY + rhsExtra + S;
           }
           tdma(a, b, c, d, N);
           for (let i = 0; i < N; i++) tHalf[j * N + i] = d[i];
@@ -781,103 +742,76 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             }
 
             const mat = getMat(matId[idx]);
-            const C_idx = mat.rho * getSpecificHeat(mat, tHalf[idx]);
+            const C_P = mat.rho * getSpecificHeat(mat, tHalf[idx]) * dx * dx * thickness; // J/K
+            const a_P0 = C_P * invHalfDt; // W/K
             const k_idx = getConductivity(mat, tHalf[idx]);
             const T_current = tHalf[idx];
+            const S = qGen[idx] * dx * dx * thickness; // W
 
             let rhsX = 0;
-            let rT = 0;
-            let rB = 0;
+            let K_T = 0;
+            let K_B = 0;
             let lhsExtra = 0;
             let rhsExtra = 0;
 
             // --- X direction (explicit) ---
             // Left neighbor
             if (i === 0) {
-              if (boundaryType === "fixed") {
-                const r = (2 * k_idx) * halfDt / (C_idx * dx * dx);
-                rhsX += r * (T_inf - T_current);
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dx);
-                rhsX += r * (T_inf - T_current);
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              rhsX += b_cond.K * (b_cond.T - T_current);
             } else {
-              const res = getNeighborCoeffHalf(idx, idx - 1, halfDt, dx, C_idx, k_idx);
-              if (res.isFixed) {
-                rhsX += res.r * (res.T - T_current);
-              } else {
-                rhsX += res.r * (tHalf[idx - 1] - T_current);
-              }
+              const res = getNeighborConductance(idx, idx - 1, tHalf, k_idx);
+              rhsX += res.K * ((res.isFixed ? res.T : tHalf[idx - 1]) - T_current);
             }
             // Right neighbor
             if (i === N - 1) {
-              if (boundaryType === "fixed") {
-                const r = (2 * k_idx) * halfDt / (C_idx * dx * dx);
-                rhsX += r * (T_inf - T_current);
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dx);
-                rhsX += r * (T_inf - T_current);
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              rhsX += b_cond.K * (b_cond.T - T_current);
             } else {
-              const res = getNeighborCoeffHalf(idx, idx + 1, halfDt, dx, C_idx, k_idx);
-              if (res.isFixed) {
-                rhsX += res.r * (res.T - T_current);
-              } else {
-                rhsX += res.r * (tHalf[idx + 1] - T_current);
-              }
+              const res = getNeighborConductance(idx, idx + 1, tHalf, k_idx);
+              rhsX += res.K * ((res.isFixed ? res.T : tHalf[idx + 1]) - T_current);
             }
 
             // --- Y direction (implicit) ---
             // Top neighbor
             if (j === 0) {
-              if (boundaryType === "fixed") {
-                rT = (2 * k_idx) * halfDt / (C_idx * dy * dy);
-                rhsExtra += rT * T_inf;
-                lhsExtra += rT;
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dy);
-                rhsExtra += r * T_inf;
-                lhsExtra += r;
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              lhsExtra += b_cond.K;
+              rhsExtra += b_cond.K * b_cond.T;
             } else {
-              const res = getNeighborCoeffHalf(idx, idx - N, halfDt, dy, C_idx, k_idx);
+              const res = getNeighborConductance(idx, idx - N, tHalf, k_idx);
               if (res.isFixed) {
-                rhsExtra += res.r * res.T;
+                lhsExtra += res.K;
+                rhsExtra += res.K * res.T;
               } else {
-                rT = res.r;
+                K_T = res.K;
               }
             }
             // Bottom neighbor
             if (j === N - 1) {
-              if (boundaryType === "fixed") {
-                rB = (2 * k_idx) * halfDt / (C_idx * dy * dy);
-                rhsExtra += rB * T_inf;
-                lhsExtra += rB;
-              } else if (boundaryType === "convective") {
-                const r = h * halfDt / (C_idx * dy);
-                rhsExtra += r * T_inf;
-                lhsExtra += r;
-              }
+              const b_cond = getBoundaryConductance(T_current, k_idx);
+              lhsExtra += b_cond.K;
+              rhsExtra += b_cond.K * b_cond.T;
             } else {
-              const res = getNeighborCoeffHalf(idx, idx + N, halfDt, dy, C_idx, k_idx);
+              const res = getNeighborConductance(idx, idx + N, tHalf, k_idx);
               if (res.isFixed) {
-                rhsExtra += res.r * res.T;
+                lhsExtra += res.K;
+                rhsExtra += res.K * res.T;
               } else {
-                rB = res.r;
+                K_B = res.K;
               }
             }
 
-            a[j] = -rT;
-            b[j] = 1 + rT + rB + lhsExtra;
-            c[j] = -rB;
-            d[j] = T_current + rhsX + rhsExtra;
+            a[j] = -K_T;
+            b[j] = a_P0 + K_T + K_B + lhsExtra;
+            c[j] = -K_B;
+            d[j] = a_P0 * T_current + rhsX + rhsExtra + S;
           }
           tdma(a, b, c, d, N);
           for (let j = 0; j < N; j++) tNew[j * N + i] = d[j];
         }
 
-        // Advance time
-        simTimeRef.current += dt;
+
 
         // Swap buffers
         tempRef.current = tNew;
@@ -886,7 +820,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
     };
 
     // ── Telemetry computation ─────────────────────────────────────────────
-    const computeTelemetry = () => {
+    const computeTelemetry = (numSubSteps: number = 1) => {
       const tData = tempRef.current;
       const tOld = tempNextRef.current;
       const matId = materialIdRef.current;
@@ -917,11 +851,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
 
           const mat = getMat(matId[idx]);
           const C_idx = mat.rho * getSpecificHeat(mat, T);
-          // Volumetric heat energy above ambient reference
-          // V = dx * dy * thickness
           thermalEnergy += C_idx * (T - T_inf) * dx * dx * thickness;
 
-          // Heat flux magnitude: q = k·|∇T|
           let gx = 0;
           let gy = 0;
           if (i > 0 && i < N - 1) gx = (tData[idx + 1] - tData[idx - 1]) / (2 * dx);
@@ -936,49 +867,44 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           const flux = currentK * Math.sqrt(gx * gx + gy * gy);
           if (flux > maxFlux) maxFlux = flux;
 
-          // Energy Inflow and Outflow
-          if (isFixed(idx)) {
+          // Compute exact energy inflow/outflow from boundary cells or fixed cells
+          if (!isFixed(idx)) {
+            // Check top, bottom, left, right for fixed or boundary
             const neighbors = [
-              { r: idx - 1, cond: i > 0 },
-              { r: idx + 1, cond: i < N - 1 },
-              { r: idx - N, cond: j > 0 },
-              { r: idx + N, cond: j < N - 1 },
+              { idxNbr: idx - 1, isBound: i === 0 },
+              { idxNbr: idx + 1, isBound: i === N - 1 },
+              { idxNbr: idx - N, isBound: j === 0 },
+              { idxNbr: idx + N, isBound: j === N - 1 },
             ];
+            
             for (const nbr of neighbors) {
-              if (nbr.cond && !isFixed(nbr.r)) {
-                const k_nbr = getConductivity(getMat(matId[nbr.r]), tData[nbr.r]);
-                let q = 0;
-                if (matId[idx] === 5) {
-                  q = h * (T_inf - tData[nbr.r]);
-                } else {
-                  const k_interface = 2 * currentK * k_nbr / (currentK + k_nbr);
-                  q = k_interface * (T - tData[nbr.r]) / dx;
-                }
-                const P = q * dx * thickness; // Area = dx * thickness
-                if (P > 0) energyInflow += P;
-                else energyOutflow += Math.abs(P);
-              }
-            }
-          } else {
-            const boundaries = [
-              { cond: i === 0 },
-              { cond: i === N - 1 },
-              { cond: j === 0 },
-              { cond: j === N - 1 },
-            ];
-            for (const b of boundaries) {
-              if (b.cond) {
-                let P = 0;
+              let P = 0; // W
+              if (nbr.isBound) {
                 if (boundaryType === "fixed") {
-                  const q = 2 * currentK * (T_inf - T) / dx;
-                  P = q * dx * thickness;
+                  P = (2 * currentK * thickness) * (T_inf - T);
                 } else if (boundaryType === "convective") {
-                  const q = h * (T_inf - T);
-                  P = q * dx * thickness;
+                  const T_K = T + 273.15;
+                  const T_inf_K = T_inf + 273.15;
+                  const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
+                  const h_eff_val = h + h_rad;
+                  P = h_eff_val * (dx * thickness) * (T_inf - T);
                 }
-                if (P > 0) energyInflow += P;
-                else energyOutflow += Math.abs(P);
+              } else if (isFixed(nbr.idxNbr)) {
+                if (matId[nbr.idxNbr] === 5) {
+                  const T_K = T + 273.15;
+                  const T_inf_K = T_inf + 273.15;
+                  const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
+                  const h_eff_val = h + h_rad;
+                  P = h_eff_val * (dx * thickness) * (T_inf - T);
+                } else {
+                  const T_fixed = tData[nbr.idxNbr];
+                  const k_nbr = getConductivity(getMat(matId[nbr.idxNbr]), T_fixed);
+                  const k_int = getKInterface(matId[idx], matId[nbr.idxNbr], currentK, k_nbr, dx);
+                  P = (k_int * thickness) * (T_fixed - T);
+                }
               }
+              if (P > 0) energyInflow += P;
+              else energyOutflow += Math.abs(P);
             }
           }
         }
@@ -987,6 +913,9 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
       // Compute PDE equation residual norm L2 over free cells
       let sumResSq = 0;
       let resCount = 0;
+      let maxFluxImbalance = 0;
+      let maxAbsRes = 0;
+      const qGen = qGenRef.current;
 
       for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
@@ -994,63 +923,61 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           if (isFixed(idx)) continue;
 
           const mat = getMat(matId[idx]);
-          const C_idx = mat.rho * getSpecificHeat(mat, (tData[idx] + tOld[idx]) * 0.5);
-          const k_idx_avg = getConductivity(mat, (tData[idx] + tOld[idx]) * 0.5);
+          const T_avg = (tData[idx] + tOld[idx]) * 0.5;
+          const C_idx = mat.rho * getSpecificHeat(mat, T_avg) * dx * dx * thickness; // J/K
+          const k_idx_avg = getConductivity(mat, T_avg);
 
           const getFluxNbr = (idxNbr: number, dist: number) => {
             if (matId[idxNbr] === 5) {
-              return h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
+              const T_K = T_avg + 273.15;
+              const T_inf_K = T_inf + 273.15;
+              const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
+              return (h + h_rad) * (dx * thickness) * (T_inf - T_avg); // W
             }
-            const k_nbr_avg = getConductivity(getMat(matId[idxNbr]), (tData[idxNbr] + tOld[idxNbr]) * 0.5);
-            const k_interface = 2 * k_idx_avg * k_nbr_avg / (k_idx_avg + k_nbr_avg);
-            const T_idx_avg = (tData[idx] + tOld[idx]) * 0.5;
             const T_nbr_avg = isFixed(idxNbr) ? tOld[idxNbr] : (tData[idxNbr] + tOld[idxNbr]) * 0.5;
-            return k_interface * (T_nbr_avg - T_idx_avg) / dist;
+            const k_nbr_avg = getConductivity(getMat(matId[idxNbr]), T_nbr_avg);
+            const k_interface = getKInterface(matId[idx], matId[idxNbr], k_idx_avg, k_nbr_avg, dist);
+            return (k_interface * thickness) * (T_nbr_avg - T_avg); // W
           };
 
-          // Net spatial flux rate (W/m³)
+          const getFluxBound = (dist: number) => {
+            if (boundaryType === "fixed") return (2 * k_idx_avg * thickness) * (T_inf - T_avg); // W
+            if (boundaryType === "convective") {
+              const T_K = T_avg + 273.15;
+              const T_inf_K = T_inf + 273.15;
+              const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
+              return (h + h_rad) * (dx * thickness) * (T_inf - T_avg); // W
+            }
+            return 0; // insulated
+          };
+
+          // Net spatial flux rate (W)
           let fluxX = 0;
-          if (i === 0) {
-            const fluxR = getFluxNbr(idx + 1, dx);
-            let fluxL = 0;
-            if (boundaryType === "fixed") fluxL = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
-            else if (boundaryType === "convective") fluxL = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
-            fluxX = (fluxR + fluxL) / dx;
-          } else if (i === N - 1) {
-            const fluxL = getFluxNbr(idx - 1, dx);
-            let fluxR = 0;
-            if (boundaryType === "fixed") fluxR = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
-            else if (boundaryType === "convective") fluxR = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
-            fluxX = (fluxR + fluxL) / dx;
-          } else {
-            fluxX = (getFluxNbr(idx + 1, dx) + getFluxNbr(idx - 1, dx)) / dx;
-          }
+          if (i === 0) fluxX = getFluxNbr(idx + 1, dx) + getFluxBound(dx);
+          else if (i === N - 1) fluxX = getFluxBound(dx) + getFluxNbr(idx - 1, dx);
+          else fluxX = getFluxNbr(idx + 1, dx) + getFluxNbr(idx - 1, dx);
 
           let fluxY = 0;
-          if (j === 0) {
-            const fluxB = getFluxNbr(idx + N, dx);
-            let fluxT = 0;
-            if (boundaryType === "fixed") fluxT = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
-            else if (boundaryType === "convective") fluxT = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
-            fluxY = (fluxB + fluxT) / dx;
-          } else if (j === N - 1) {
-            const fluxT = getFluxNbr(idx - N, dx);
-            let fluxB = 0;
-            if (boundaryType === "fixed") fluxB = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
-            else if (boundaryType === "convective") fluxB = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
-            fluxY = (fluxB + fluxT) / dx;
-          } else {
-            fluxY = (getFluxNbr(idx + N, dx) + getFluxNbr(idx - N, dx)) / dx;
-          }
+          if (j === 0) fluxY = getFluxNbr(idx + N, dx) + getFluxBound(dx);
+          else if (j === N - 1) fluxY = getFluxBound(dx) + getFluxNbr(idx - N, dx);
+          else fluxY = getFluxNbr(idx + N, dx) + getFluxNbr(idx - N, dx);
 
-          // residual R = C * (dT/dt) - (q_net)
+          const Q_vol_W = qGen ? (qGen[idx] * dx * dx * thickness) : 0;
+
+          // residual R = C * (dT/dt) - (q_net + Q_vol) [Watts]
           const dTdt = (tData[idx] - tOld[idx]) / dt;
           const R = solverMode === "steady" 
-            ? (fluxX + fluxY) // in steady state, flux sum should be zero
-            : C_idx * dTdt - (fluxX + fluxY);
+            ? (fluxX + fluxY + Q_vol_W) 
+            : C_idx * dTdt - (fluxX + fluxY + Q_vol_W);
 
           sumResSq += R * R;
           resCount++;
+          if (expertiseLevel === "expert") {
+            const absR = Math.abs(R);
+            if (absR > maxAbsRes) maxAbsRes = absR;
+            const absFlux = Math.abs(fluxX + fluxY + Q_vol_W);
+            if (absFlux > maxFluxImbalance) maxFluxImbalance = absFlux;
+          }
         }
       }
       const residualNorm = resCount > 0 ? Math.sqrt(sumResSq / resCount) : 0;
@@ -1062,7 +989,13 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
         const cp_old = getSpecificHeat(mat, tOld[k]);
         E_old += mat.rho * cp_old * (tOld[k] - T_inf) * dx * dx * thickness;
       }
-      const conservationError = (thermalEnergy - E_old) / dt - (energyInflow - energyOutflow);
+      let E_gen = 0;
+      if (qGenRef.current) {
+         for (let k = 0; k < N * N; k++) {
+            if (!isFixed(k)) E_gen += qGenRef.current[k] * dx * dx * thickness;
+         }
+      }
+      const conservationError = (thermalEnergy - E_old) / dt - (energyInflow + E_gen - energyOutflow);
 
       const maxAlpha = MATERIALS["copper"].alpha;
       const stableTimestepLimit = (dx * dx) / (4 * maxAlpha);
@@ -1082,14 +1015,50 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
         energyInflow,
         energyOutflow,
         conservationError,
+        ...(expertiseLevel === "expert" && {
+          infinityNorm: maxAbsRes,
+          localFluxImbalance: maxFluxImbalance,
+          dtSubSteps: numSubSteps,
+        })
       });
     };
 
     const loop = () => {
       if (isPlaying) {
-        for (let s = 0; s < Math.max(1, stepsPerFrame); s++) step();
+        // Adaptive Timestepping Heuristic
+        const maxAlpha = MATERIALS["copper"].alpha;
+        const cflLimit = (dx * dx) / (4 * maxAlpha);
+        
+        const maxT = tempRef.current ? Math.max(...tempRef.current) : ambientTemp;
+        const T_K = maxT + 273.15;
+        const T_inf_K = ambientTemp + 273.15;
+        const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
+        const h_eff = convectionCoeff + h_rad;
+        
+        const minRhoCp = 1.225 * 1005; // Air density * cp
+        const convLimit = (minRhoCp * dx) / (2 * h_eff);
+        
+        // Dynamic substep limit for extreme nonlinear cases
+        const stableLimit = Math.min(cflLimit * 15, convLimit * 5); 
+        
+        let targetDt = dt;
+        let numSubSteps = 1;
+        if (solverMode === "transient") {
+           while (targetDt / numSubSteps > stableLimit && numSubSteps < 20) {
+             numSubSteps++;
+           }
+        }
+        
+        const currentDt = solverMode === "transient" ? (targetDt / numSubSteps) : dt;
+        let iters = solverMode === "transient" ? numSubSteps * stepsPerFrame : Math.max(1, stepsPerFrame);
+
+        for (let s = 0; s < iters; s++) {
+          step(currentDt);
+          if (solverMode === "transient") simTimeRef.current += currentDt;
+        }
+        
         setRenderTick((t) => t + 1);
-        computeTelemetry();
+        computeTelemetry(numSubSteps);
       }
       animId = requestAnimationFrame(loop);
     };

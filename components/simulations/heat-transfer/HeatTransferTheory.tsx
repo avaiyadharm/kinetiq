@@ -4,49 +4,19 @@ import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { BookOpen, HelpCircle, GraduationCap } from "lucide-react";
 
-export const HeatTransferTheory: React.FC = () => {
-  const [level, setLevel] = useState<"beginner" | "intermediate" | "advanced">("beginner");
-
+export const HeatTransferTheory: React.FC<{ expertiseLevel: "beginner" | "intermediate" | "expert" }> = ({ expertiseLevel }) => {
   return (
     <div className="flex-1 p-8 bg-[#18181b] overflow-y-auto text-white">
       <div className="max-w-4xl mx-auto w-full space-y-6 animate-fadeIn">
-        {/* Header */}
-        <div className="flex justify-between items-center border-b border-white/5 pb-6">
-          <div>
-            <h2 className="text-xl font-bold font-display uppercase tracking-widest text-primary flex items-center gap-2">
-              <BookOpen className="w-5 h-5" /> Theoretical Basis & Thermal Dynamics
-            </h2>
-            <p className="text-xs text-white/50 mt-1">Explore the governing equations and numerical solvers behind heat conduction.</p>
-          </div>
-
-          <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
-            {[
-              { id: "beginner", label: "Beginner", icon: HelpCircle },
-              { id: "intermediate", label: "Intermediate", icon: BookOpen },
-              { id: "advanced", label: "Advanced", icon: GraduationCap },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setLevel(item.id as any)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
-                    level === item.id 
-                      ? "bg-primary text-white shadow-lg" 
-                      : "text-white/40 hover:text-white"
-                  )}
-                >
-                  <Icon className="w-4.5 h-4.5" />
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-col border-b border-white/5 pb-6">
+          <h2 className="text-xl font-bold font-display uppercase tracking-widest text-primary flex items-center gap-2">
+            <BookOpen className="w-5 h-5" /> Theoretical Basis & Thermal Dynamics
+          </h2>
+          <p className="text-xs text-white/50 mt-1">Explore the governing equations and numerical solvers behind heat conduction.</p>
         </div>
 
         {/* Beginner Mode */}
-        {level === "beginner" && (
+        {expertiseLevel === "beginner" && (
           <div className="space-y-6 w-full animate-fadeIn">
             <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
               <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">What is Heat Transfer?</h3>
@@ -118,7 +88,7 @@ export const HeatTransferTheory: React.FC = () => {
         )}
 
         {/* Intermediate Mode */}
-        {level === "intermediate" && (
+        {expertiseLevel === "intermediate" && (
           <div className="space-y-6 w-full animate-fadeIn">
             <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
               <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">Fourier's Law & The Heat Equation</h3>
@@ -193,7 +163,7 @@ export const HeatTransferTheory: React.FC = () => {
         )}
 
         {/* Advanced Mode */}
-        {level === "advanced" && (
+        {expertiseLevel === "expert" && (
           <div className="space-y-6 w-full animate-fadeIn">
             <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
               <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">Numerical Discretization</h3>

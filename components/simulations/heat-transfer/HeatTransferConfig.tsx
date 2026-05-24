@@ -32,7 +32,11 @@ interface HeatTransferConfigProps {
     energyInflow: number;
     energyOutflow: number;
     conservationError: number;
+    infinityNorm?: number;
+    localFluxImbalance?: number;
+    dtSubSteps?: number;
   };
+  expertiseLevel: "beginner" | "intermediate" | "expert";
 }
 
 const StatRow = ({ label, value, unit, color = "text-white/80", mono = true, border = true, sub }: {
@@ -104,9 +108,8 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
   solverMode,
   boundaryType,
   telemetry,
+  expertiseLevel,
 }) => {
-  const [educLevel, setEducLevel] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
-
   // Derived computations
   const totalNodes = gridSize * gridSize;
   const plateWidth = gridSize * dx; // m
@@ -128,31 +131,6 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
             <p className="text-[11px] text-white/40 mt-1.5 max-w-xl leading-relaxed">
               Verify simulation stability margins, grid discretization values, physical constants, and convergence rates.
             </p>
-          </div>
-          
-          <div className="flex bg-black/40 p-0.5 rounded-xl border border-white/[0.06] shrink-0">
-            {[
-              { id: "beginner", label: "Beginner", icon: HelpCircle },
-              { id: "intermediate", label: "Standard", icon: BookOpen },
-              { id: "advanced", label: "Expert", icon: GraduationCap },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setEducLevel(item.id as any)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3.5 py-1.5 rounded-[10px] text-[10px] font-bold uppercase tracking-wider transition-all",
-                    educLevel === item.id 
-                      ? "bg-primary text-white shadow-lg" 
-                      : "text-white/35 hover:text-white/70"
-                  )}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {item.label}
-                </button>
-              );
-            })}
           </div>
         </div>
 
@@ -255,6 +233,13 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
               border={false}
               sub="dE/dt - (P_in - P_out)"
             />
+            {expertiseLevel === "expert" && (
+              <>
+                <StatRow label="Max Error Norm (L\u221E)" value={telemetry.infinityNorm?.toExponential(3) || "N/A"} color="text-purple-400" sub="Peak residual across all cells" />
+                <StatRow label="Max Flux Imbalance" value={telemetry.localFluxImbalance?.toExponential(3) || "N/A"} unit="W" color="text-rose-400" sub="Max local error in \u2207\u00B7q" />
+                <StatRow label="Adaptive Substeps" value={telemetry.dtSubSteps?.toString() || "1"} unit="step(s)" color="text-indigo-400" border={false} sub="Steps required per \u0394t to satisfy CFL" />
+              </>
+            )}
           </SectionCard>
         </div>
  
@@ -268,9 +253,9 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
                 color="#06b6d4"
               />
               <p className="text-[10px] text-white/40 leading-relaxed">
-                {educLevel === "beginner" && "Temperature flows from hot to cold — faster in conductors, slower in insulators, controlled by thermal conductivity k and capacity \u03C1c_p."}
-                {educLevel === "intermediate" && "Conservation of energy in a heterogeneous domain. Conductive flux is channeled along pathways of high thermal conductivity k."}
-                {educLevel === "advanced" && "Conservative parabolic PDE. In interfaces, heat flux conservation requires continuous normal derivatives of k\u2207T. Replaced diffusivity formulation to accurately represent high capacity gradients."}
+                {expertiseLevel === "beginner" && "Temperature flows from hot to cold — faster in conductors, slower in insulators, controlled by thermal conductivity k and capacity \u03C1c_p."}
+                {expertiseLevel === "intermediate" && "Conservation of energy in a heterogeneous domain. Conductive flux is channeled along pathways of high thermal conductivity k."}
+                {expertiseLevel === "expert" && "Conservative parabolic PDE. In interfaces, heat flux conservation requires continuous normal derivatives of k\u2207T. Replaced diffusivity formulation to accurately represent high capacity gradients."}
               </p>
             </div>
             <div>
@@ -280,9 +265,9 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
                 color="#10b981"
               />
               <p className="text-[10px] text-white/40 leading-relaxed">
-                {educLevel === "beginner" && "Instead of computing each timestep explicitly (which can blow up), this solver uses a two-pass approach that is always numerically stable regardless of timestep size."}
-                {educLevel === "intermediate" && "The Alternating Direction Implicit (ADI) method splits each timestep into two half-steps: one implicit in x, one implicit in y. Each produces a tridiagonal system solved in O(N) via the Thomas Algorithm (TDMA)."}
-                {educLevel === "advanced" && "Peaceman-Rachford ADI: unconditionally stable with global truncation error O(\u0394t\u00B2 + \u0394x\u00B2). Each half-step is solved with TDMA (forward/backward sweep). Operator splitting exactly factorizes the 2D Crank-Nicolson stencil."}
+                {expertiseLevel === "beginner" && "Instead of computing each timestep explicitly (which can blow up), this solver uses a two-pass approach that is always numerically stable regardless of timestep size."}
+                {expertiseLevel === "intermediate" && "The Alternating Direction Implicit (ADI) method splits each timestep into two half-steps: one implicit in x, one implicit in y. Each produces a tridiagonal system solved in O(N) via the Thomas Algorithm (TDMA)."}
+                {expertiseLevel === "expert" && "Peaceman-Rachford ADI: unconditionally stable with global truncation error O(\u0394t\u00B2 + \u0394x\u00B2). Each half-step is solved with TDMA (forward/backward sweep). Operator splitting exactly factorizes the 2D Crank-Nicolson stencil."}
               </p>
             </div>
             <div>
@@ -292,9 +277,9 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
                 color="#f59e0b"
               />
               <p className="text-[10px] text-white/40 leading-relaxed">
-                {educLevel === "beginner" && "Heat naturally flows from hot to cold — Fourier's law says the flow rate is proportional to how steep the temperature gradient is, and how conductive the material is."}
-                {educLevel === "intermediate" && "Heat flux vector q = -k\u2207T [W/m\u00B2] always points from high to low temperature (negative gradient). k is the material thermal conductivity. Flux vectors are rendered with arrow glyphs colored by magnitude."}
-                {educLevel === "advanced" && "The constitutive relation Q_cond = -k A \u2207T follows from irreversible thermodynamics (Onsager reciprocal relations). Fourier's law assumes local equilibrium — valid except at nanoscales or in phonon-ballistic regimes."}
+                {expertiseLevel === "beginner" && "Heat naturally flows from hot to cold — Fourier's law says the flow rate is proportional to how steep the temperature gradient is, and how conductive the material is."}
+                {expertiseLevel === "intermediate" && "Heat flux vector q = -k\u2207T [W/m\u00B2] always points from high to low temperature (negative gradient). k is the material thermal conductivity. Flux vectors are rendered with arrow glyphs colored by magnitude."}
+                {expertiseLevel === "expert" && "The constitutive relation Q_cond = -k A \u2207T follows from irreversible thermodynamics (Onsager reciprocal relations). Fourier's law assumes local equilibrium — valid except at nanoscales or in phonon-ballistic regimes."}
               </p>
             </div>
           </div>

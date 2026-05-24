@@ -152,6 +152,7 @@ export const HeatTransferSimulator: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("canvas");
   const [isPlaying, setIsPlaying] = useState(true);
   const [activePreset, setActivePreset] = useState("CPU Heatsink");
+  const [expertiseLevel, setExpertiseLevel] = useState<"beginner" | "intermediate" | "expert">("intermediate");
 
   // Physical parameters
   const [gridSize, setGridSize] = useState(48);
@@ -209,7 +210,7 @@ export const HeatTransferSimulator: React.FC = () => {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onReset={handleReset}
-      showValidationTab={true}
+      showValidationTab={expertiseLevel !== "beginner"}
     >
       <div className="flex-1 overflow-hidden">
         {activeTab === "canvas" && (
@@ -239,6 +240,7 @@ export const HeatTransferSimulator: React.FC = () => {
                   activePreset={activePreset}
                   onTelemetryUpdate={setTelemetry}
                   stepsPerFrame={stepsPerFrame}
+                  expertiseLevel={expertiseLevel}
                 />
 
                 {/* Solver HUD */}
@@ -257,16 +259,18 @@ export const HeatTransferSimulator: React.FC = () => {
                 </div>
 
                 {/* Collapsible toggle button */}
-                <button
-                  onClick={() => setShowInspector(!showInspector)}
-                  className="absolute bottom-5 right-5 z-20 px-3 py-2 bg-black/80 hover:bg-white/10 text-[9px] font-bold uppercase tracking-widest border border-white/10 rounded-xl transition-all"
-                >
-                  {showInspector ? "Hide Inspector ◧" : "Show Inspector ◨"}
-                </button>
+                {expertiseLevel !== "beginner" && (
+                  <button
+                    onClick={() => setShowInspector(!showInspector)}
+                    className="absolute bottom-5 right-5 z-20 px-3 py-2 bg-black/80 hover:bg-white/10 text-[9px] font-bold uppercase tracking-widest border border-white/10 rounded-xl transition-all"
+                  >
+                    {showInspector ? "Hide Inspector ◧" : "Show Inspector ◨"}
+                  </button>
+                )}
               </div>
 
               {/* Collapsible Physics Inspector Panel */}
-              {showInspector && (
+              {showInspector && expertiseLevel !== "beginner" && (
                 <div className="w-full md:w-[290px] border-t md:border-t-0 md:border-l border-white/5 bg-[#0f0f11] p-5 overflow-y-auto shrink-0 flex flex-col gap-4 relative z-10 select-none">
                   <div className="flex items-center gap-2 border-b border-white/5 pb-3">
                     <Gauge className="w-4 h-4 text-teal-400" />
@@ -367,6 +371,24 @@ export const HeatTransferSimulator: React.FC = () => {
 
             {/* Sidebar */}
             <aside className="w-full xl:w-[355px] border-t xl:border-t-0 xl:border-l border-border bg-[#18181b] flex flex-col h-1/2 xl:h-full overflow-y-auto shrink-0 select-none">
+              
+              {/* Level Selector */}
+              <div className="p-4 border-b border-white/5 bg-black/40 flex flex-col gap-2">
+                <div className="flex bg-black/40 border border-white/5 rounded-xl p-1">
+                  {(["beginner", "intermediate", "expert"] as const).map(lvl => (
+                    <button
+                      key={lvl}
+                      onClick={() => setExpertiseLevel(lvl)}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all",
+                        expertiseLevel === lvl ? "bg-primary text-white shadow-md" : "text-white/40 hover:text-white"
+                      )}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Playback + Presets */}
               <div className="p-5 border-b border-border flex flex-col gap-4 bg-black/20">
@@ -418,37 +440,39 @@ export const HeatTransferSimulator: React.FC = () => {
               <div className="p-5 space-y-5">
 
                 {/* 1. Solver Mode */}
-                <ControlCard title="Solver Configuration" icon={Sliders} color="#3b82f6">
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Solver Type</label>
-                      <select
-                        value={solverMode}
-                        onChange={(e) => setSolverMode(e.target.value as any)}
-                        className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold uppercase tracking-wide"
-                      >
-                        <option value="transient">Transient — ADI Crank-Nicolson</option>
-                        <option value="steady">Steady-State — Gauss-Seidel</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Outer Boundary Condition</label>
-                      <select
-                        value={boundaryType}
-                        onChange={(e) => setBoundaryType(e.target.value as any)}
-                        className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold uppercase tracking-wide"
-                      >
-                        <option value="insulated">Adiabatic (Neumann ∂T/∂n = 0)</option>
-                        <option value="fixed">Isothermal Wall (Dirichlet T = T∞)</option>
-                        <option value="convective">Convective Cooling (Robin BC)</option>
-                      </select>
-                    </div>
+                {expertiseLevel !== "beginner" && (
+                  <ControlCard title="Solver Configuration" icon={Sliders} color="#3b82f6">
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Solver Type</label>
+                        <select
+                          value={solverMode}
+                          onChange={(e) => setSolverMode(e.target.value as any)}
+                          className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold uppercase tracking-wide"
+                        >
+                          <option value="transient">Transient — ADI Crank-Nicolson</option>
+                          <option value="steady">Steady-State — Gauss-Seidel</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Outer Boundary Condition</label>
+                        <select
+                          value={boundaryType}
+                          onChange={(e) => setBoundaryType(e.target.value as any)}
+                          className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold uppercase tracking-wide"
+                        >
+                          <option value="insulated">Adiabatic (Neumann ∂T/∂n = 0)</option>
+                          <option value="fixed">Isothermal Wall (Dirichlet T = T∞)</option>
+                          <option value="convective">Convective Cooling (Robin BC)</option>
+                        </select>
+                      </div>
 
-                    {solverMode === "transient" && (
-                      <StabilityBadge ratio={telemetry.stabilityRatio} />
-                    )}
-                  </div>
-                </ControlCard>
+                      {solverMode === "transient" && (
+                        <StabilityBadge ratio={telemetry.stabilityRatio} />
+                      )}
+                    </div>
+                  </ControlCard>
+                )}
 
                 {/* 2. Drawing Tools */}
                 <ControlCard title="Grid Painter" icon={Paintbrush} color="#f59e0b">
@@ -504,33 +528,35 @@ export const HeatTransferSimulator: React.FC = () => {
                 </ControlCard>
 
                 {/* 3. Visualization */}
-                <ControlCard title="Visualization" icon={Sparkles} color="#10b981">
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Colormap</label>
-                      <select
-                        value={colormap}
-                        onChange={(e) => setColormap(e.target.value as ColormapName)}
-                        className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold"
-                      >
-                        <option value="thermal">Thermal (Ironbow)</option>
-                        <option value="viridis">Viridis (Perceptual)</option>
-                        <option value="icefire">IceFire Contrast</option>
-                        <option value="jet">Jet (Rainbow)</option>
-                        <option value="grayscale">Grayscale</option>
-                      </select>
+                {expertiseLevel !== "beginner" && (
+                  <ControlCard title="Visualization" icon={Sparkles} color="#10b981">
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Colormap</label>
+                        <select
+                          value={colormap}
+                          onChange={(e) => setColormap(e.target.value as ColormapName)}
+                          className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold"
+                        >
+                          <option value="thermal">Thermal (Ironbow)</option>
+                          <option value="viridis">Viridis (Perceptual)</option>
+                          <option value="icefire">IceFire Contrast</option>
+                          <option value="jet">Jet (Rainbow)</option>
+                          <option value="grayscale">Grayscale</option>
+                        </select>
+                      </div>
+                      <div className="space-y-3 pt-2 border-t border-white/5">
+                        <Toggle label="Isotherm Contours" checked={showIsotherms} onChange={setShowIsotherms} />
+                        <Toggle label="Heat Flux Vectors (q = -k∇T)" checked={showFluxVectors} onChange={setShowFluxVectors} />
+                        <Toggle label="Grid Cell Borders" checked={showGridLines} onChange={setShowGridLines} />
+                        <Toggle label="Temperature Colorbar" checked={showColorbar} onChange={setShowColorbar} />
+                      </div>
                     </div>
-                    <div className="space-y-3 pt-2 border-t border-white/5">
-                      <Toggle label="Isotherm Contours" checked={showIsotherms} onChange={setShowIsotherms} />
-                      <Toggle label="Heat Flux Vectors (q = -k∇T)" checked={showFluxVectors} onChange={setShowFluxVectors} />
-                      <Toggle label="Grid Cell Borders" checked={showGridLines} onChange={setShowGridLines} />
-                      <Toggle label="Temperature Colorbar" checked={showColorbar} onChange={setShowColorbar} />
-                    </div>
-                  </div>
-                </ControlCard>
+                  </ControlCard>
+                )}
 
                 {/* 4. Physical Parameters */}
-                <ControlCard title="Physical Parameters" icon={Thermometer} color="#ec4899">
+                <ControlCard title={expertiseLevel === "beginner" ? "Environment" : "Physical Parameters"} icon={Thermometer} color="#ec4899">
                   <div className="space-y-4">
                     <ClickableValue
                       label="Ambient Temperature T∞"
@@ -540,7 +566,7 @@ export const HeatTransferSimulator: React.FC = () => {
                       colorClass="text-pink-400"
                       format={(v) => v.toFixed(0)}
                     />
-                    {boundaryType === "convective" && (
+                    {expertiseLevel !== "beginner" && boundaryType === "convective" && (
                       <ClickableValue
                         label="Convection Coeff. h"
                         value={convectionCoeff} unit="W/m²·K"
@@ -550,22 +576,26 @@ export const HeatTransferSimulator: React.FC = () => {
                         format={(v) => v.toFixed(0)}
                       />
                     )}
-                    <ClickableValue
-                      label="Node Spacing Δx"
-                      value={dx} unit="m"
-                      min={0.005} max={0.05} step={0.005}
-                      onChange={setDx}
-                      colorClass="text-pink-400"
-                    />
-                    <ClickableValue
-                      label="Plate Thickness t_z"
-                      value={thickness} unit="m"
-                      min={0.001} max={0.05} step={0.001}
-                      onChange={setThickness}
-                      colorClass="text-pink-400"
-                      format={(v) => `${(v * 1000).toFixed(0)} mm`}
-                    />
-                    {solverMode === "transient" && (
+                    {expertiseLevel !== "beginner" && (
+                      <>
+                        <ClickableValue
+                          label="Node Spacing Δx"
+                          value={dx} unit="m"
+                          min={0.005} max={0.05} step={0.005}
+                          onChange={setDx}
+                          colorClass="text-pink-400"
+                        />
+                        <ClickableValue
+                          label="Plate Thickness t_z"
+                          value={thickness} unit="m"
+                          min={0.001} max={0.05} step={0.001}
+                          onChange={setThickness}
+                          colorClass="text-pink-400"
+                          format={(v) => `${(v * 1000).toFixed(0)} mm`}
+                        />
+                      </>
+                    )}
+                    {expertiseLevel !== "beginner" && solverMode === "transient" && (
                       <>
                         <ClickableValue
                           label="Timestep Δt"
@@ -586,7 +616,7 @@ export const HeatTransferSimulator: React.FC = () => {
                         <ClickableValue
                           label="Grid Resolution"
                           value={gridSize} unit="N×N"
-                          min={20} max={80} step={4}
+                          min={20} max={expertiseLevel === "expert" ? 512 : 128} step={4}
                           onChange={v => setGridSize(Math.round(v))}
                           colorClass="text-indigo-400"
                           format={(v) => `${Math.round(v)}`}
@@ -599,28 +629,56 @@ export const HeatTransferSimulator: React.FC = () => {
                 {/* 5. Live Telemetry */}
                 <ControlCard title="Thermal Telemetry" icon={Activity} color="#10b981">
                   <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: "T avg", val: `${telemetry.avgTemp.toFixed(1)} °C`, color: "text-amber-400" },
-                      { label: "T max", val: `${telemetry.maxTemp.toFixed(1)} °C`, color: "text-rose-400" },
-                      { label: "T min", val: `${telemetry.minTemp.toFixed(1)} °C`, color: "text-cyan-400" },
-                      { label: "q max", val: `${(telemetry.maxFluxMag / 1000).toFixed(1)} kW/m²`, color: "text-orange-400" },
-                    ].map(({ label, val, color }) => (
-                      <div key={label} className="p-3 bg-black/40 border border-white/5 rounded-2xl">
-                        <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">{label}</div>
-                        <div className={cn("text-[11px] font-mono font-bold mt-1", color)}>{val}</div>
-                      </div>
-                    ))}
-                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
-                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">
-                        Stored Thermal Energy (above T∞)
-                      </div>
-                      <div className="text-[11px] font-mono font-bold text-pink-400 mt-1">
-                        {telemetry.thermalEnergy >= 0
-                          ? `+${telemetry.thermalEnergy.toExponential(3)} J`
-                          : `${telemetry.thermalEnergy.toExponential(3)} J`}
-                      </div>
+                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">T avg</div>
+                      <div className="text-[11px] font-mono font-bold mt-1 text-amber-400">{telemetry.avgTemp.toFixed(1)} °C</div>
                     </div>
-                    {solverMode === "steady" && (
+                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">T max</div>
+                      <div className="text-[11px] font-mono font-bold mt-1 text-rose-400">{telemetry.maxTemp.toFixed(1)} °C</div>
+                    </div>
+                    {expertiseLevel !== "beginner" && (
+                      <>
+                        <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                          <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">T min</div>
+                          <div className="text-[11px] font-mono font-bold mt-1 text-cyan-400">{telemetry.minTemp.toFixed(1)} °C</div>
+                        </div>
+                        <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                          <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">q max</div>
+                          <div className="text-[11px] font-mono font-bold mt-1 text-orange-400">{(telemetry.maxFluxMag / 1000).toFixed(1)} kW/m²</div>
+                        </div>
+                      </>
+                    )}
+
+                    {expertiseLevel !== "beginner" && (
+                      <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
+                        <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">
+                          Stored Thermal Energy (above T∞)
+                        </div>
+                        <div className="text-[11px] font-mono font-bold text-pink-400 mt-1">
+                          {telemetry.thermalEnergy >= 0
+                            ? `+${telemetry.thermalEnergy.toExponential(3)} J`
+                            : `${telemetry.thermalEnergy.toExponential(3)} J`}
+                        </div>
+                      </div>
+                    )}
+                    {expertiseLevel === "expert" && (
+                      <>
+                        <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                          <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">L∞ Max Error</div>
+                          <div className="text-[11px] font-mono font-bold mt-1 text-purple-400">{(telemetry as any).infinityNorm?.toExponential(3) || "N/A"}</div>
+                        </div>
+                        <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                          <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Flux Imbalance</div>
+                          <div className="text-[11px] font-mono font-bold mt-1 text-rose-400">{(telemetry as any).localFluxImbalance?.toExponential(3) || "N/A"} W</div>
+                        </div>
+                        <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
+                          <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Adaptive Substeps (Current dt)</div>
+                          <div className="text-[11px] font-mono font-bold mt-1 text-indigo-400">{(telemetry as any).dtSubSteps || 1} step(s) per dt</div>
+                        </div>
+                      </>
+                    )}
+                    {expertiseLevel !== "beginner" && solverMode === "steady" && (
                       <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
                         <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Convergence Residual</div>
                         <div className={cn("text-[11px] font-mono font-bold mt-1",
@@ -648,11 +706,12 @@ export const HeatTransferSimulator: React.FC = () => {
             solverMode={solverMode}
             boundaryType={boundaryType}
             telemetry={telemetry}
+            expertiseLevel={expertiseLevel}
           />
         )}
-        {activeTab === "theory" && <HeatTransferTheory />}
+        {activeTab === "theory" && <HeatTransferTheory expertiseLevel={expertiseLevel} />}
         {activeTab === "guide" && <HeatTransferGuide />}
-        {activeTab === "validation" && <HeatTransferValidation />}
+        {activeTab === "validation" && <HeatTransferValidation expertiseLevel={expertiseLevel} />}
       </div>
     </SimulationPageLayout>
   );
