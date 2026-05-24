@@ -28,6 +28,9 @@ interface HeatTransferConfigProps {
     residual: number;
     solverIterations: number;
     stableTimestepLimit: number;
+    energyInflow: number;
+    energyOutflow: number;
+    conservationError: number;
   };
 }
 
@@ -222,47 +225,49 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
 
           {/* Telemetry and physical properties */}
           <SectionCard title="System Thermal Metrics" icon={BarChart2} color="#ec4899">
-            <StatRow label="T max" value={telemetry.maxTemp.toFixed(2)} unit="\u00B0C" color="text-rose-400" />
-            <StatRow label="T min" value={telemetry.minTemp.toFixed(2)} unit="\u00B0C" color="text-cyan-400" />
-            <StatRow label="T avg" value={telemetry.avgTemp.toFixed(2)} unit="\u00B0C" color="text-pink-400" />
+            <StatRow label="T max" value={telemetry.maxTemp.toFixed(2)} unit="°C" color="text-rose-400" />
+            <StatRow label="T min" value={telemetry.minTemp.toFixed(2)} unit="°C" color="text-cyan-400" />
+            <StatRow label="T avg" value={telemetry.avgTemp.toFixed(2)} unit="°C" color="text-pink-400" />
             <StatRow
               label="Peak Heat Flux |q|_max"
               value={(telemetry.maxFluxMag / 1000).toFixed(2)}
-              unit="kW/m\u00B2"
+              unit="kW/m²"
               color="text-orange-400"
-              sub="q = -k\u00B7|\u2207T|"
+              sub="q = -k·|∇T|"
             />
             <StatRow
               label="Stored Thermal Energy"
               value={telemetry.thermalEnergy.toExponential(3)}
               unit="J"
               color="text-pink-400"
-              sub="\u222B\u222B \u03C1\u00B7c_p\u00B7(T - T_ref) dV"
+              sub="∫∫ ρ·c_p·(T - T_ref) dV"
             />
-            <StatRow label="T\u221E Ambient" value={ambientTemp.toFixed(1)} unit="\u00B0C" color="text-white/60" />
+            <StatRow label="Power Inflow P_in" value={telemetry.energyInflow.toFixed(2)} unit="W" color="text-emerald-400" sub="Heat entering the domain" />
+            <StatRow label="Power Outflow P_out" value={telemetry.energyOutflow.toFixed(2)} unit="W" color="text-rose-400" sub="Heat leaving the domain" />
             <StatRow
-              label="h (convection coeff.)"
-              value={convectionCoeff.toFixed(1)}
-              unit="W/m\u00B2K"
-              color="text-white/60"
+              label="Conservation Error"
+              value={telemetry.conservationError.toExponential(3)}
+              unit="W"
+              color={Math.abs(telemetry.conservationError) < 1e-4 ? "text-emerald-400" : "text-amber-400"}
               border={false}
+              sub="dE/dt - (P_in - P_out)"
             />
           </SectionCard>
         </div>
-
+ 
         {/* Governing Equations Cards */}
         <SectionCard title="Governing Physical Equations & Solver Theory" icon={Shield} color="#06b6d4" span={3}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <div>
               <EquationBlock
-                equation={"\u2202T/\u2202t = \u03B1\u2207\u00B2T = \u03B1(\u2202\u00B2T/\u2202x\u00B2 + \u2202\u00B2T/\u2202y\u00B2)"}
-                label="2D Parabolic Heat Equation"
+                equation={"\u03C1c_p\u2202T/\u2202t = \u2207\u00B7(k\u2207T)"}
+                label="Conservative 2D Heat Equation"
                 color="#06b6d4"
               />
               <p className="text-[10px] text-white/40 leading-relaxed">
-                {educLevel === "beginner" && "Temperature flows from hot to cold — faster in conductors, slower in insulators, controlled by thermal diffusivity \u03B1 = k/(\u03C1c_p)."}
-                {educLevel === "intermediate" && "Conservation of energy in an isotropic domain. Thermal diffusivity \u03B1 = k/(\u03C1c_p) is the ratio of a material's ability to conduct vs. store heat."}
-                {educLevel === "advanced" && "Parabolic PDE from \u03C1c_p\u2202T/\u2202t = -\u2207\u00B7q with Fourier's law q = -k\u2207T. Solutions exhibit infinite propagation speed, smoothing of initial data, and maximum principle."}
+                {educLevel === "beginner" && "Temperature flows from hot to cold — faster in conductors, slower in insulators, controlled by thermal conductivity k and capacity \u03C1c_p."}
+                {educLevel === "intermediate" && "Conservation of energy in a heterogeneous domain. Conductive flux is channeled along pathways of high thermal conductivity k."}
+                {educLevel === "advanced" && "Conservative parabolic PDE. In interfaces, heat flux conservation requires continuous normal derivatives of k\u2207T. Replaced diffusivity formulation to accurately represent high capacity gradients."}
               </p>
             </div>
             <div>

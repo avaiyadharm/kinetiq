@@ -81,7 +81,15 @@ export const MATERIALS: Record<string, Material> = {
     color: "bg-zinc-900", canvasColor: "rgb(24,24,27)",
     get alpha() { return this.k / (this.rho * this.cp); } // 2.15e-5
   },
+  silicon: {
+    id: "silicon", name: "Silicon (CPU Die)",
+    k: 148, rho: 2330, cp: 700,
+    color: "bg-indigo-600", canvasColor: "rgb(79,70,229)",
+    get alpha() { return this.k / (this.rho * this.cp); } // 9.08e-5
+  }
 };
+
+export const MATERIAL_KEYS = ["iron", "copper", "aluminum", "glass", "wood", "air", "silicon"];
 
 export type DrawTool = "source" | "sink" | "material" | "erase";
 export type ColormapName = "thermal" | "icefire" | "jet" | "viridis" | "grayscale";
@@ -96,9 +104,12 @@ export interface Telemetry {
   maxFluxMag: number;          // [W/m²] peak heat flux magnitude
   stabilityRatio: number;      // r = α·Δt/Δx² (explicit), ≤ 0.25 for 2D stability
   simTime: number;             // [s] elapsed simulation time
-  residual: number;            // Max |T_new - T_old| for convergence tracking
+  residual: number;            // Solver equation residual (norm of linear system residual)
   solverIterations: number;    // GS iterations this frame
   stableTimestepLimit: number; // [s] CFL-based Δt_max
+  energyInflow: number;        // [W] total heat power entering grid
+  energyOutflow: number;       // [W] total heat power leaving grid
+  conservationError: number;   // [W] net energy conservation mismatch rate
 }
 
 interface HeatTransferCanvasProps {
@@ -225,11 +236,19 @@ function getColormapColor(
 function buildPreset(
   presetName: string, N: number, ambientTemp: number
 ): { temp: Float64Array; fixed: Uint8Array; materialId: Uint8Array } {
-  // materialId index: 0=iron, 1=copper, 2=aluminum, 3=glass, 4=wood, 5=air
-  const MATERIAL_KEYS = ["iron", "copper", "aluminum", "glass", "wood", "air"];
   const temp = new Float64Array(N * N).fill(ambientTemp);
   const fixed = new Uint8Array(N * N); // 0=free, 1=hot, 2=cold
-  const materialId = new Uint8Array(N * N); // default: iron (0)
+  
+  // Set default material based on preset
+  let defaultMat = 0; // default: iron
+  if (presetName === "CPU Heatsink" || presetName === "Fins Array") {
+    defaultMat = 5; // default: air
+  } else if (presetName === "Thermal Bridge") {
+    defaultMat = 4; // default: wood
+  } else if (presetName === "Insulated Box") {
+    defaultMat = 2; // default: aluminum (high conductivity outside box)
+  }
+  const materialId = new Uint8Array(N * N).fill(defaultMat);
 
   const setRect = (
     i0: number, i1: number, j0: number, j1: number,
@@ -269,8 +288,8 @@ function buildPreset(
 
     // Copper heat spreader base
     setRect(cx - dieW - 5, cx + dieW + 5, cy - baseH, cy + baseH, null, 0, 1);
-    // Silicon CPU die (heat source)
-    setRect(cx - dieW, cx + dieW, cy - 2, cy + 2, 95, 1, 3); // glass ≈ silicon
+    // Silicon CPU die (heat source, silicon index 6)
+    setRect(cx - dieW, cx + dieW, cy - 2, cy + 2, 95, 1, 6);
     // Copper fins
     for (let f = 0; f < numFins; f++) {
       const fi = cx - dieW - 4 + f * finSpacing;
@@ -280,8 +299,7 @@ function buildPreset(
   } else if (presetName === "Thermal Bridge") {
     const cy = Math.floor(N / 2);
     const bridgeW = Math.max(2, Math.floor(N * 0.08));
-    // Fill with wood insulator
-    for (let k = 0; k < N * N; k++) materialId[k] = 4;
+    // Fill with wood insulator (defaultMat is already wood)
     // Hot left wall
     for (let j = 1; j < N - 1; j++) { temp[j * N] = 100; fixed[j * N] = 1; }
     // Cold right wall
@@ -291,10 +309,15 @@ function buildPreset(
 
   } else if (presetName === "Corner Heating") {
     const r = Math.floor(N * 0.18);
-    setDisc(0, 0, r, 100, 1, 1);                     // hot TL corner, copper
-    setDisc(N - 1, N - 1, r, 5, 2, 2);               // cold BR corner, aluminum
-    setDisc(N - 1, 0, Math.floor(r * 0.7), null, 0, 4); // insulator SW
-    setDisc(0, N - 1, Math.floor(r * 0.7), null, 0, 4); // insulator NE
+    // Hot TL corner, copper
+    setDisc(0, 0, r, 100, 1, 1);
+    // Cold BR corner, aluminum
+    setDisc(N - 1, N - 1, r, 5, 2, 2);
+    
+    // Add asymmetric wood barriers (forces asymmetric flux channelling)
+    setRect(Math.floor(N * 0.4), Math.floor(N * 0.75), Math.floor(N * 0.15), Math.floor(N * 0.35), null, 0, 4); // wood obstacle SW-ish
+    setDisc(Math.floor(N * 0.3), Math.floor(N * 0.75), Math.floor(r * 0.7), null, 0, 4); // insulator SW
+    setDisc(Math.floor(N * 0.75), Math.floor(N * 0.3), Math.floor(r * 0.7), null, 0, 5); // air pocket NE
 
   } else if (presetName === "Insulated Box") {
     const cx = Math.floor(N / 2), cy = Math.floor(N / 2);
@@ -342,6 +365,13 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
   const materialIdRef = useRef<Uint8Array | null>(null); // index into MATERIAL_KEYS
   const simTimeRef = useRef<number>(0);
 
+  // Preallocated workspace to avoid GC overhead in real-time solvers
+  const aRef = useRef<Float64Array | null>(null);
+  const bRef = useRef<Float64Array | null>(null);
+  const cRef = useRef<Float64Array | null>(null);
+  const dRef = useRef<Float64Array | null>(null);
+  const tHalfRef = useRef<Float64Array | null>(null);
+
   // ── Render-state (for re-draw triggers without re-mounting solver) ─────────
   const [renderTick, setRenderTick] = useState(0);
 
@@ -351,7 +381,6 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
   const [isDraggingSlice, setIsDraggingSlice] = useState(false);
 
   // ── Material lookup array (ordered by index) ──────────────────────────────
-  const MATERIAL_KEYS = ["iron", "copper", "aluminum", "glass", "wood", "air"];
   const getMat = (idx: number) => MATERIALS[MATERIAL_KEYS[idx] ?? "iron"];
 
   // ── Initialize / reload on preset or gridSize change ──────────────────────
@@ -362,6 +391,14 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
     fixedRef.current = fixed;
     materialIdRef.current = materialId;
     simTimeRef.current = 0;
+
+    aRef.current = new Float64Array(N);
+    bRef.current = new Float64Array(N);
+    cRef.current = new Float64Array(N);
+    dRef.current = new Float64Array(N);
+    tHalfRef.current = new Float64Array(N * N);
+    tHalfRef.current.set(temp);
+
     setSliceIndex(Math.floor(N / 2));
     setRenderTick((t) => t + 1);
   }, [ambientTemp]);
@@ -432,6 +469,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
   // ── Physics Solver ─────────────────────────────────────────────────────────
   useEffect(() => {
     let animId: number;
+    const GS_ITERS = 60;
 
     const step = () => {
       const tOld = tempRef.current;
@@ -444,197 +482,586 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
       const h = convectionCoeff;    // [W/m²K]
       const T_inf = ambientTemp;     // [°C]
 
+      // Helper to check if a cell is fixed (sources or air background)
+      const isFixed = (k: number) => fixed[k] > 0 || matId[k] === 5;
+
+      // Force air cells to ambient temperature
+      for (let k = 0; k < N * N; k++) {
+        if (matId[k] === 5) {
+          tOld[k] = T_inf;
+          tNew[k] = T_inf;
+        }
+      }
+
       if (solverMode === "steady") {
-        // ── Gauss-Seidel relaxation (in-place on tOld) ─────────────────────
-        const GS_ITERS = 60;
+        // ── Conservative Gauss-Seidel relaxation (in-place on tOld) ─────────
+        const dy = dx; // isotropic grid
+        
         for (let iter = 0; iter < GS_ITERS; iter++) {
-          for (let j = 1; j < N - 1; j++) {
-            for (let i = 1; i < N - 1; i++) {
+          for (let j = 0; j < N; j++) {
+            for (let i = 0; i < N; i++) {
               const idx = j * N + i;
-              if (fixed[idx] > 0) continue;
+              if (isFixed(idx)) continue;
+
               const mat = getMat(matId[idx]);
-              const kC = mat.k;
-              const kR = (kC + getMat(matId[idx + 1]).k) * 0.5;
-              const kL = (kC + getMat(matId[idx - 1]).k) * 0.5;
-              const kT = (kC + getMat(matId[idx - N]).k) * 0.5;
-              const kB = (kC + getMat(matId[idx + N]).k) * 0.5;
-              const denom = (kR + kL + kT + kB) / (dx * dx) + h / dx;
-              const num =
-                (kR * tOld[idx + 1] + kL * tOld[idx - 1] +
-                 kT * tOld[idx - N] + kB * tOld[idx + N]) / (dx * dx) +
-                h * T_inf / dx;
-              tOld[idx] = num / denom;
+              const k_idx = mat.k;
+              let num = 0;
+              let denom = 0;
+
+              // Left neighbor
+              if (i === 0) {
+                if (boundaryType === "fixed") {
+                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
+                } else if (boundaryType === "convective") {
+                  num += (h * dx) * T_inf; denom += h * dx;
+                }
+              } else {
+                const idxL = idx - 1;
+                const k_nbr = getMat(matId[idxL]).k;
+                let k_interface = 0;
+                let T_val = 0;
+                if (matId[idxL] === 5) { // Air neighbor
+                  k_interface = h * dx; T_val = T_inf;
+                } else {
+                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+                  T_val = tOld[idxL];
+                }
+                num += k_interface * T_val; denom += k_interface;
+              }
+
+              // Right neighbor
+              if (i === N - 1) {
+                if (boundaryType === "fixed") {
+                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
+                } else if (boundaryType === "convective") {
+                  num += (h * dx) * T_inf; denom += h * dx;
+                }
+              } else {
+                const idxR = idx + 1;
+                const k_nbr = getMat(matId[idxR]).k;
+                let k_interface = 0;
+                let T_val = 0;
+                if (matId[idxR] === 5) {
+                  k_interface = h * dx; T_val = T_inf;
+                } else {
+                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+                  T_val = tOld[idxR];
+                }
+                num += k_interface * T_val; denom += k_interface;
+              }
+
+              // Top neighbor
+              if (j === 0) {
+                if (boundaryType === "fixed") {
+                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
+                } else if (boundaryType === "convective") {
+                  num += (h * dy) * T_inf; denom += h * dy;
+                }
+              } else {
+                const idxT = idx - N;
+                const k_nbr = getMat(matId[idxT]).k;
+                let k_interface = 0;
+                let T_val = 0;
+                if (matId[idxT] === 5) {
+                  k_interface = h * dy; T_val = T_inf;
+                } else {
+                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+                  T_val = tOld[idxT];
+                }
+                num += k_interface * T_val; denom += k_interface;
+              }
+
+              // Bottom neighbor
+              if (j === N - 1) {
+                if (boundaryType === "fixed") {
+                  num += 2 * k_idx * T_inf; denom += 2 * k_idx;
+                } else if (boundaryType === "convective") {
+                  num += (h * dy) * T_inf; denom += h * dy;
+                }
+              } else {
+                const idxB = idx + N;
+                const k_nbr = getMat(matId[idxB]).k;
+                let k_interface = 0;
+                let T_val = 0;
+                if (matId[idxB] === 5) {
+                  k_interface = h * dy; T_val = T_inf;
+                } else {
+                  k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+                  T_val = tOld[idxB];
+                }
+                num += k_interface * T_val; denom += k_interface;
+              }
+
+              tOld[idx] = denom > 0 ? num / denom : T_inf;
             }
           }
-          // Apply outer BCs during relaxation
-          applyBoundaryConditions(tOld, N, boundaryType, T_inf, h, dx, dt);
         }
-        // Copy for telemetry
         tNew.set(tOld);
 
       } else {
-        // ── ADI Crank-Nicolson implicit transient solver ────────────────────
-        // Alternating Direction Implicit (ADI) method:
-        //   Half-step: implicit in x, explicit in y
-        //   Half-step: implicit in y, explicit in x
-        // Unconditionally stable, 2nd-order accurate in space and time.
-
+        // ── Conservative ADI Crank-Nicolson implicit solver ─────────────────
         const halfDt = dt * 0.5;
+        const dy = dx;
+        
+        const a = aRef.current;
+        const b = bRef.current;
+        const c = cRef.current;
+        const d = dRef.current;
+        const tHalf = tHalfRef.current;
+        if (!a || !b || !c || !d || !tHalf) return;
 
-        // === Half step 1: x-implicit, y-explicit ===========================
-        // For each row j, solve tridiagonal system
-        const a = new Float64Array(N);
-        const b = new Float64Array(N);
-        const c = new Float64Array(N);
-        const d = new Float64Array(N);
-
-        // Intermediate storage
-        const tHalf = new Float64Array(N * N);
         tHalf.set(tOld);
 
-        for (let j = 1; j < N - 1; j++) {
+        const getNeighborCoeff = (
+          idx: number, idxNbr: number,
+          halfDt: number, dist: number, C_idx: number, k_idx: number
+        ) => {
+          if (matId[idxNbr] === 5) { // Air convective cooling
+            const rConv = h * halfDt / (C_idx * dist);
+            return { r: rConv, isFixed: true, T: T_inf };
+          }
+          const fixNbr = fixed[idxNbr];
+          const k_nbr = getMat(matId[idxNbr]).k;
+          const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+          const rCond = k_interface * halfDt / (C_idx * dist * dist);
+          if (fixNbr > 0) {
+            return { r: rCond, isFixed: true, T: tOld[idxNbr] };
+          }
+          return { r: rCond, isFixed: false, T: 0 };
+        };
+
+        const getNeighborCoeffHalf = (
+          idx: number, idxNbr: number,
+          halfDt: number, dist: number, C_idx: number, k_idx: number
+        ) => {
+          if (matId[idxNbr] === 5) {
+            const rConv = h * halfDt / (C_idx * dist);
+            return { r: rConv, isFixed: true, T: T_inf };
+          }
+          const fixNbr = fixed[idxNbr];
+          const k_nbr = getMat(matId[idxNbr]).k;
+          const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+          const rCond = k_interface * halfDt / (C_idx * dist * dist);
+          if (fixNbr > 0) {
+            return { r: rCond, isFixed: true, T: tHalf[idxNbr] };
+          }
+          return { r: rCond, isFixed: false, T: 0 };
+        };
+
+        // === Half step 1: x-implicit, y-explicit ===========================
+        for (let j = 0; j < N; j++) {
           for (let i = 0; i < N; i++) {
             const idx = j * N + i;
-            if (fixed[idx] > 0) {
+            if (isFixed(idx)) {
               a[i] = 0; b[i] = 1; c[i] = 0; d[i] = tOld[idx];
               continue;
             }
-            if (i === 0 || i === N - 1) {
-              a[i] = 0; b[i] = 1; c[i] = 0;
-              d[i] = boundaryType === "fixed" ? T_inf : tOld[idx];
-              continue;
-            }
-            const mat = getMat(matId[idx]);
-            const alpha = mat.alpha; // [m²/s]
-            const r = alpha * halfDt / (dx * dx);
 
-            const rR = (alpha + getMat(matId[idx + 1]).alpha) * 0.5 * halfDt / (dx * dx);
-            const rL = (alpha + getMat(matId[idx - 1]).alpha) * 0.5 * halfDt / (dx * dx);
-            const rT = (alpha + getMat(matId[idx - N]).alpha) * 0.5 * halfDt / (dx * dx);
-            const rB = (alpha + getMat(matId[idx + N]).alpha) * 0.5 * halfDt / (dx * dx);
+            const mat = getMat(matId[idx]);
+            const C_idx = mat.rho * mat.cp;
+            const k_idx = mat.k;
+            const T_current = tOld[idx];
+
+            let rhsY = 0;
+            let rL = 0;
+            let rR = 0;
+            let lhsExtra = 0;
+            let rhsExtra = 0;
+
+            // --- Y direction (explicit) ---
+            // Top neighbor
+            if (j === 0) {
+              if (boundaryType === "fixed") {
+                const r = (2 * k_idx) * halfDt / (C_idx * dy * dy);
+                rhsY += r * (T_inf - T_current);
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dy);
+                rhsY += r * (T_inf - T_current);
+              }
+            } else {
+              const res = getNeighborCoeff(idx, idx - N, halfDt, dy, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsY += res.r * (res.T - T_current);
+              } else {
+                rhsY += res.r * (tOld[idx - N] - T_current);
+              }
+            }
+            // Bottom neighbor
+            if (j === N - 1) {
+              if (boundaryType === "fixed") {
+                const r = (2 * k_idx) * halfDt / (C_idx * dy * dy);
+                rhsY += r * (T_inf - T_current);
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dy);
+                rhsY += r * (T_inf - T_current);
+              }
+            } else {
+              const res = getNeighborCoeff(idx, idx + N, halfDt, dy, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsY += res.r * (res.T - T_current);
+              } else {
+                rhsY += res.r * (tOld[idx + N] - T_current);
+              }
+            }
+
+            // --- X direction (implicit) ---
+            // Left neighbor
+            if (i === 0) {
+              if (boundaryType === "fixed") {
+                rL = (2 * k_idx) * halfDt / (C_idx * dx * dx);
+                rhsExtra += rL * T_inf;
+                lhsExtra += rL;
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dx);
+                rhsExtra += r * T_inf;
+                lhsExtra += r;
+              }
+            } else {
+              const res = getNeighborCoeff(idx, idx - 1, halfDt, dx, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsExtra += res.r * res.T;
+              } else {
+                rL = res.r;
+              }
+            }
+            // Right neighbor
+            if (i === N - 1) {
+              if (boundaryType === "fixed") {
+                rR = (2 * k_idx) * halfDt / (C_idx * dx * dx);
+                rhsExtra += rR * T_inf;
+                lhsExtra += rR;
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dx);
+                rhsExtra += r * T_inf;
+                lhsExtra += r;
+              }
+            } else {
+              const res = getNeighborCoeff(idx, idx + 1, halfDt, dx, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsExtra += res.r * res.T;
+              } else {
+                rR = res.r;
+              }
+            }
 
             a[i] = -rL;
-            b[i] = 1 + rL + rR;
+            b[i] = 1 + rL + rR + lhsExtra;
             c[i] = -rR;
-            // RHS: explicit y-direction
-            d[i] = tOld[idx]
-              + rT * (tOld[idx - N] - tOld[idx])
-              + rB * (tOld[idx + N] - tOld[idx]);
+            d[i] = T_current + rhsY + rhsExtra;
           }
           tdma(a, b, c, d, N);
           for (let i = 0; i < N; i++) tHalf[j * N + i] = d[i];
         }
-        applyBoundaryConditions(tHalf, N, boundaryType, T_inf, h, dx, halfDt);
 
         // === Half step 2: y-implicit, x-explicit ===========================
-        for (let i = 1; i < N - 1; i++) {
+        for (let i = 0; i < N; i++) {
           for (let j = 0; j < N; j++) {
             const idx = j * N + i;
-            if (fixed[idx] > 0) {
+            if (isFixed(idx)) {
               a[j] = 0; b[j] = 1; c[j] = 0; d[j] = tHalf[idx];
               continue;
             }
-            if (j === 0 || j === N - 1) {
-              a[j] = 0; b[j] = 1; c[j] = 0;
-              d[j] = boundaryType === "fixed" ? T_inf : tHalf[idx];
-              continue;
-            }
-            const mat = getMat(matId[idx]);
-            const alpha = mat.alpha;
 
-            const rR = (alpha + getMat(matId[idx + 1]).alpha) * 0.5 * halfDt / (dx * dx);
-            const rL = (alpha + getMat(matId[idx - 1]).alpha) * 0.5 * halfDt / (dx * dx);
-            const rT = (alpha + getMat(matId[idx - N]).alpha) * 0.5 * halfDt / (dx * dx);
-            const rB = (alpha + getMat(matId[idx + N]).alpha) * 0.5 * halfDt / (dx * dx);
+            const mat = getMat(matId[idx]);
+            const C_idx = mat.rho * mat.cp;
+            const k_idx = mat.k;
+            const T_current = tHalf[idx];
+
+            let rhsX = 0;
+            let rT = 0;
+            let rB = 0;
+            let lhsExtra = 0;
+            let rhsExtra = 0;
+
+            // --- X direction (explicit) ---
+            // Left neighbor
+            if (i === 0) {
+              if (boundaryType === "fixed") {
+                const r = (2 * k_idx) * halfDt / (C_idx * dx * dx);
+                rhsX += r * (T_inf - T_current);
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dx);
+                rhsX += r * (T_inf - T_current);
+              }
+            } else {
+              const res = getNeighborCoeffHalf(idx, idx - 1, halfDt, dx, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsX += res.r * (res.T - T_current);
+              } else {
+                rhsX += res.r * (tHalf[idx - 1] - T_current);
+              }
+            }
+            // Right neighbor
+            if (i === N - 1) {
+              if (boundaryType === "fixed") {
+                const r = (2 * k_idx) * halfDt / (C_idx * dx * dx);
+                rhsX += r * (T_inf - T_current);
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dx);
+                rhsX += r * (T_inf - T_current);
+              }
+            } else {
+              const res = getNeighborCoeffHalf(idx, idx + 1, halfDt, dx, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsX += res.r * (res.T - T_current);
+              } else {
+                rhsX += res.r * (tHalf[idx + 1] - T_current);
+              }
+            }
+
+            // --- Y direction (implicit) ---
+            // Top neighbor
+            if (j === 0) {
+              if (boundaryType === "fixed") {
+                rT = (2 * k_idx) * halfDt / (C_idx * dy * dy);
+                rhsExtra += rT * T_inf;
+                lhsExtra += rT;
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dy);
+                rhsExtra += r * T_inf;
+                lhsExtra += r;
+              }
+            } else {
+              const res = getNeighborCoeffHalf(idx, idx - N, halfDt, dy, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsExtra += res.r * res.T;
+              } else {
+                rT = res.r;
+              }
+            }
+            // Bottom neighbor
+            if (j === N - 1) {
+              if (boundaryType === "fixed") {
+                rB = (2 * k_idx) * halfDt / (C_idx * dy * dy);
+                rhsExtra += rB * T_inf;
+                lhsExtra += rB;
+              } else if (boundaryType === "convective") {
+                const r = h * halfDt / (C_idx * dy);
+                rhsExtra += r * T_inf;
+                lhsExtra += r;
+              }
+            } else {
+              const res = getNeighborCoeffHalf(idx, idx + N, halfDt, dy, C_idx, k_idx);
+              if (res.isFixed) {
+                rhsExtra += res.r * res.T;
+              } else {
+                rB = res.r;
+              }
+            }
 
             a[j] = -rT;
-            b[j] = 1 + rT + rB;
+            b[j] = 1 + rT + rB + lhsExtra;
             c[j] = -rB;
-            // RHS: explicit x-direction
-            d[j] = tHalf[idx]
-              + rL * (tHalf[idx - 1] - tHalf[idx])
-              + rR * (tHalf[idx + 1] - tHalf[idx]);
+            d[j] = T_current + rhsX + rhsExtra;
           }
           tdma(a, b, c, d, N);
           for (let j = 0; j < N; j++) tNew[j * N + i] = d[j];
         }
-
-        // Copy boundary columns
-        for (let j = 0; j < N; j++) {
-          tNew[j * N] = tHalf[j * N];
-          tNew[j * N + N - 1] = tHalf[j * N + N - 1];
-        }
-        for (let i = 0; i < N; i++) {
-          tNew[i] = tHalf[i];
-          tNew[(N - 1) * N + i] = tHalf[(N - 1) * N + i];
-        }
-        applyBoundaryConditions(tNew, N, boundaryType, T_inf, h, dx, dt);
 
         // Advance time
         simTimeRef.current += dt;
 
         // Swap buffers
         tempRef.current = tNew;
-        tempNextRef.current = tOld; // reuse old buffer next step
+        tempNextRef.current = tOld;
       }
     };
 
     // ── Telemetry computation ─────────────────────────────────────────────
     const computeTelemetry = () => {
       const tData = tempRef.current;
+      const tOld = tempNextRef.current;
       const matId = materialIdRef.current;
-      if (!tData || !matId) return;
+      const fixed = fixedRef.current;
+      if (!tData || !matId || !fixed || !tOld) return;
       const N = gridSize;
-      let sumT = 0, maxT = -Infinity, minT = Infinity;
-      let thermalEnergy = 0, maxFlux = 0, residual = 0;
-      const T_ref = ambientTemp + 273.15; // reference for energy
+      const h = convectionCoeff;
+      const T_inf = ambientTemp;
 
-      for (let j = 1; j < N - 1; j++) {
-        for (let i = 1; i < N - 1; i++) {
+      const isFixed = (k: number) => fixed[k] > 0 || matId[k] === 5;
+
+      let sumT = 0, maxT = -Infinity, minT = Infinity;
+      let thermalEnergy = 0, maxFlux = 0;
+      let energyInflow = 0, energyOutflow = 0;
+
+      // Volumetric thermal energy and temperature bounds
+      let freeCount = 0;
+      for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
           const idx = j * N + i;
           const T = tData[idx];
-          sumT += T;
+          if (!isFixed(idx)) {
+            sumT += T;
+            freeCount++;
+          }
           if (T > maxT) maxT = T;
           if (T < minT) minT = T;
 
-          // Thermal energy above ambient reference: E = ρ·cₚ·(T-T_ref)·V
           const mat = getMat(matId[idx]);
-          const cellVol = dx * dx * 0.01; // assuming 1cm thickness
-          thermalEnergy += mat.rho * mat.cp * (T + 273.15 - T_ref) * cellVol;
+          const C_idx = mat.rho * mat.cp;
+          // Volumetric heat energy above ambient reference
+          // V = dx * dy * 1.0 (assuming 1.0 m thickness)
+          thermalEnergy += C_idx * (T - T_inf) * dx * dx;
 
           // Heat flux magnitude: q = k·|∇T|
-          const gx = (tData[idx + 1] - tData[idx - 1]) / (2 * dx);
-          const gy = (tData[idx + N] - tData[idx - N]) / (2 * dx);
-          const flux = getMat(matId[idx]).k * Math.sqrt(gx * gx + gy * gy);
+          let gx = 0;
+          let gy = 0;
+          if (i > 0 && i < N - 1) gx = (tData[idx + 1] - tData[idx - 1]) / (2 * dx);
+          else if (i === 0) gx = (tData[idx + 1] - T) / dx;
+          else gx = (T - tData[idx - 1]) / dx;
+
+          if (j > 0 && j < N - 1) gy = (tData[idx + N] - tData[idx - N]) / (2 * dx);
+          else if (j === 0) gy = (tData[idx + N] - T) / dx;
+          else gy = (T - tData[idx - N]) / dx;
+
+          const flux = mat.k * Math.sqrt(gx * gx + gy * gy);
           if (flux > maxFlux) maxFlux = flux;
+
+          // Energy Inflow and Outflow
+          if (isFixed(idx)) {
+            const neighbors = [
+              { r: idx - 1, cond: i > 0 },
+              { r: idx + 1, cond: i < N - 1 },
+              { r: idx - N, cond: j > 0 },
+              { r: idx + N, cond: j < N - 1 },
+            ];
+            for (const nbr of neighbors) {
+              if (nbr.cond && !isFixed(nbr.r)) {
+                const k_nbr = getMat(matId[nbr.r]).k;
+                let q = 0;
+                if (matId[idx] === 5) {
+                  q = h * (T_inf - tData[nbr.r]);
+                } else {
+                  const k_interface = 2 * mat.k * k_nbr / (mat.k + k_nbr);
+                  q = k_interface * (T - tData[nbr.r]) / dx;
+                }
+                const P = q * dx; // Area = dx * 1.0
+                if (P > 0) energyInflow += P;
+                else energyOutflow += Math.abs(P);
+              }
+            }
+          } else {
+            const boundaries = [
+              { cond: i === 0 },
+              { cond: i === N - 1 },
+              { cond: j === 0 },
+              { cond: j === N - 1 },
+            ];
+            for (const b of boundaries) {
+              if (b.cond) {
+                let P = 0;
+                if (boundaryType === "fixed") {
+                  const q = 2 * mat.k * (T_inf - T) / dx;
+                  P = q * dx;
+                } else if (boundaryType === "convective") {
+                  const q = h * (T_inf - T);
+                  P = q * dx;
+                }
+                if (P > 0) energyInflow += P;
+                else energyOutflow += Math.abs(P);
+              }
+            }
+          }
         }
       }
 
-      // Compute residual (max change from last step) — approximate
-      const tNext = tempNextRef.current;
-      if (tNext && solverMode === "transient") {
-        for (let k = 0; k < N * N; k++) {
-          const diff = Math.abs(tData[k] - tNext[k]);
-          if (diff > residual) residual = diff;
+      // Compute PDE equation residual norm L2 over free cells
+      let sumResSq = 0;
+      let resCount = 0;
+
+      for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+          const idx = j * N + i;
+          if (isFixed(idx)) continue;
+
+          const mat = getMat(matId[idx]);
+          const C_idx = mat.rho * mat.cp;
+          const k_idx = mat.k;
+
+          const getFluxNbr = (idxNbr: number, dist: number) => {
+            if (matId[idxNbr] === 5) {
+              return h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
+            }
+            const k_nbr = getMat(matId[idxNbr]).k;
+            const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+            const T_idx_avg = (tData[idx] + tOld[idx]) * 0.5;
+            const T_nbr_avg = isFixed(idxNbr) ? tOld[idxNbr] : (tData[idxNbr] + tOld[idxNbr]) * 0.5;
+            return k_interface * (T_nbr_avg - T_idx_avg) / dist;
+          };
+
+          // Net spatial flux rate (W/m³)
+          let fluxX = 0;
+          if (i === 0) {
+            const fluxR = getFluxNbr(idx + 1, dx);
+            let fluxL = 0;
+            if (boundaryType === "fixed") fluxL = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            else if (boundaryType === "convective") fluxL = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
+            fluxX = (fluxR + fluxL) / dx;
+          } else if (i === N - 1) {
+            const fluxL = getFluxNbr(idx - 1, dx);
+            let fluxR = 0;
+            if (boundaryType === "fixed") fluxR = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            else if (boundaryType === "convective") fluxR = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
+            fluxX = (fluxR + fluxL) / dx;
+          } else {
+            fluxX = (getFluxNbr(idx + 1, dx) + getFluxNbr(idx - 1, dx)) / dx;
+          }
+
+          let fluxY = 0;
+          if (j === 0) {
+            const fluxB = getFluxNbr(idx + N, dx);
+            let fluxT = 0;
+            if (boundaryType === "fixed") fluxT = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            else if (boundaryType === "convective") fluxT = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
+            fluxY = (fluxB + fluxT) / dx;
+          } else if (j === N - 1) {
+            const fluxT = getFluxNbr(idx - N, dx);
+            let fluxB = 0;
+            if (boundaryType === "fixed") fluxB = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            else if (boundaryType === "convective") fluxB = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
+            fluxY = (fluxB + fluxT) / dx;
+          } else {
+            fluxY = (getFluxNbr(idx + N, dx) + getFluxNbr(idx - N, dx)) / dx;
+          }
+
+          // residual R = C * (dT/dt) - (q_net)
+          const dTdt = (tData[idx] - tOld[idx]) / dt;
+          const R = solverMode === "steady" 
+            ? (fluxX + fluxY) // in steady state, flux sum should be zero
+            : C_idx * dTdt - (fluxX + fluxY);
+
+          sumResSq += R * R;
+          resCount++;
         }
       }
+      const residualNorm = resCount > 0 ? Math.sqrt(sumResSq / resCount) : 0;
 
-      // CFL stability limit for the fastest material (copper)
-      const maxAlpha = MATERIALS["copper"].alpha; // 1.17e-4 m²/s
+      // Energy conservation mismatch error: (E_new - E_old)/dt - (P_in - P_out)
+      let E_old = 0;
+      for (let k = 0; k < N * N; k++) {
+        const mat = getMat(matId[k]);
+        E_old += mat.rho * mat.cp * (tOld[k] - T_inf) * dx * dx;
+      }
+      const conservationError = (thermalEnergy - E_old) / dt - (energyInflow - energyOutflow);
+
+      const maxAlpha = MATERIALS["copper"].alpha;
       const stableTimestepLimit = (dx * dx) / (4 * maxAlpha);
       const stabilityRatio = maxAlpha * dt / (dx * dx);
 
       onTelemetryUpdate({
-        avgTemp: sumT / ((N - 2) * (N - 2)),
+        avgTemp: freeCount > 0 ? sumT / freeCount : ambientTemp,
         maxTemp: maxT === -Infinity ? ambientTemp : maxT,
         minTemp: minT === Infinity ? ambientTemp : minT,
         thermalEnergy,
         maxFluxMag: maxFlux,
         stabilityRatio,
         simTime: simTimeRef.current,
-        residual,
-        solverIterations: solverMode === "steady" ? 60 : stepsPerFrame,
+        residual: residualNorm,
+        solverIterations: solverMode === "steady" ? GS_ITERS : stepsPerFrame,
         stableTimestepLimit,
+        energyInflow,
+        energyOutflow,
+        conservationError,
       });
     };
 
@@ -926,6 +1353,32 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
   const tMax_slice = Math.max(...sliceProfile);
   const range_slice = tMax_slice - tMin_slice;
 
+  const sliceGradients = useMemo(() => {
+    const len = sliceProfile.length;
+    const grads = new Float64Array(len);
+    if (len < 2) return grads;
+    for (let k = 0; k < len; k++) {
+      if (k === 0) {
+        grads[k] = (sliceProfile[1] - sliceProfile[0]) / dx;
+      } else if (k === len - 1) {
+        grads[k] = (sliceProfile[len - 1] - sliceProfile[len - 2]) / dx;
+      } else {
+        grads[k] = (sliceProfile[k + 1] - sliceProfile[k - 1]) / (2 * dx);
+      }
+    }
+    return grads;
+  }, [sliceProfile, dx]);
+
+  const maxGrad_slice = useMemo(() => {
+    if (sliceGradients.length === 0) return 0;
+    let m = 0;
+    for (let k = 0; k < sliceGradients.length; k++) {
+      const a = Math.abs(sliceGradients[k]);
+      if (a > m) m = a;
+    }
+    return m;
+  }, [sliceGradients]);
+
   const chartPath = useMemo(() => {
     if (sliceProfile.length === 0) return "";
     const len = sliceProfile.length;
@@ -939,12 +1392,77 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
     }, "");
   }, [sliceProfile, tMin_slice, range_slice]);
 
+  const gradPath = useMemo(() => {
+    if (sliceProfile.length === 0) return "";
+    const len = sliceProfile.length;
+    const W = 100, H = 80, padX = 8, padY = 8;
+    const scaleX = (W - 2 * padX) / (len - 1);
+    const scaleY = maxGrad_slice > 0.1 ? (H - 2 * padY) / maxGrad_slice : 1;
+    return Array.from(sliceGradients).reduce((acc, val, i) => {
+      const px = padX + i * scaleX;
+      const py = H - padY - Math.abs(val) * scaleY;
+      return acc + (i === 0 ? `M ${px} ${py}` : ` L ${px} ${py}`);
+    }, "");
+  }, [sliceGradients, maxGrad_slice]);
+
+  const sliceExtrema = useMemo(() => {
+    const len = sliceProfile.length;
+    if (len < 2) return [];
+    let minIdx = 0, maxIdx = 0;
+    for (let k = 1; k < len; k++) {
+      if (sliceProfile[k] < sliceProfile[minIdx]) minIdx = k;
+      if (sliceProfile[k] > sliceProfile[maxIdx]) maxIdx = k;
+    }
+    const pts: { idx: number; type: "max" | "min"; val: number }[] = [
+      { idx: maxIdx, type: "max", val: sliceProfile[maxIdx] }
+    ];
+    if (minIdx !== maxIdx) {
+      pts.push({ idx: minIdx, type: "min", val: sliceProfile[minIdx] });
+    }
+    return pts;
+  }, [sliceProfile]);
+
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const handleSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pad = 0.08;
+    if (pct < pad || pct > 1 - pad) {
+      setHoverIndex(null);
+      return;
+    }
+    const innerPct = (pct - pad) / (1 - 2 * pad);
+    const idx = Math.round(innerPct * (gridSize - 1));
+    setHoverIndex(Math.max(0, Math.min(gridSize - 1, idx)));
+  };
+
+  const handleSvgMouseLeave = () => setHoverIndex(null);
+
+  // Helper to format units
+  const L = gridSize * dx;
+
+  // Retrieve hover details
+  const hoverDetails = useMemo(() => {
+    if (hoverIndex === null || !materialIdRef.current || !tempRef.current) return null;
+    const cellIdx = sliceAxis === "horizontal"
+      ? sliceIndex * gridSize + hoverIndex
+      : hoverIndex * gridSize + sliceIndex;
+    const temp = tempRef.current[cellIdx];
+    const gradVal = sliceGradients[hoverIndex];
+    const matIdx = materialIdRef.current[cellIdx];
+    const mat = getMat(matIdx);
+    const flux = mat.k * Math.abs(gradVal);
+    const pos = hoverIndex * dx;
+    return { temp, grad: gradVal, flux, matName: mat.name, pos };
+  }, [hoverIndex, sliceIndex, sliceAxis, gridSize, dx, sliceGradients]);
+
   return (
     <div className="h-full flex flex-col gap-4 p-5">
-      {/* Main Simulation Canvas */}
-      <div className="flex-1 bg-black rounded-2xl border border-white/5 relative overflow-hidden flex items-center justify-center min-h-[280px]">
-        {/* Slice toggle */}
-        <div className="absolute top-3 right-3 z-10">
+      {/* Main Simulation Canvas with CAD-style Rulers */}
+      <div className="flex-1 bg-black rounded-2xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center p-6 min-h-[300px]">
+        {/* Slice axis selection */}
+        <div className="absolute top-3 right-3 z-10 flex gap-2">
           <button
             onClick={() => { setSliceAxis(a => a === "horizontal" ? "vertical" : "horizontal"); setSliceIndex(Math.floor(gridSize / 2)); }}
             className="px-2.5 py-1 bg-black/80 backdrop-blur rounded-lg border border-white/10 text-[9px] font-bold uppercase tracking-wider hover:bg-white/5 transition-all text-white/50 hover:text-white"
@@ -953,19 +1471,57 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           </button>
         </div>
 
-        <canvas
-          ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          width={520}
-          height={520}
-          className={cn(
-            "max-w-full max-h-full aspect-square rounded-xl cursor-crosshair border border-white/5",
-            isDraggingSlice && "cursor-ns-resize"
-          )}
-        />
+        {/* Ruler Layout */}
+        <div className="flex flex-col items-center select-none w-full max-w-[530px] mx-auto">
+          {/* Top ruler */}
+          <div className="flex w-full">
+            <div className="w-[30px] shrink-0" />
+            <div className="flex-1 h-[18px] relative border-b border-white/10">
+              <svg className="w-full h-full text-white/30 text-[8px] font-mono">
+                <line x1="0%" y1="100%" x2="100%" y2="100%" stroke="currentColor" strokeWidth="0.5" />
+                <line x1="0%" y1="50%" x2="0%" y2="100%" stroke="currentColor" strokeWidth="0.5" />
+                <line x1="50%" y1="50%" x2="50%" y2="100%" stroke="currentColor" strokeWidth="0.5" />
+                <line x1="100%" y1="50%" x2="100%" y2="100%" stroke="currentColor" strokeWidth="0.5" />
+                <text x="2%" y="60%" fill="currentColor">0.00m</text>
+                <text x="47%" y="60%" fill="currentColor">{(L * 0.5).toFixed(2)}m</text>
+                <text x="90%" y="60%" fill="currentColor">{L.toFixed(2)}m</text>
+              </svg>
+            </div>
+          </div>
+
+          <div className="flex w-full items-stretch">
+            {/* Left ruler */}
+            <div className="w-[30px] relative border-r border-white/10 shrink-0">
+              <svg className="w-full h-full text-white/30 text-[8px] font-mono">
+                <line x1="100%" y1="0%" x2="100%" y2="100%" stroke="currentColor" strokeWidth="0.5" />
+                <line x1="50%" y1="0%" x2="100%" y2="0%" stroke="currentColor" strokeWidth="0.5" />
+                <line x1="50%" y1="50%" x2="100%" y2="50%" stroke="currentColor" strokeWidth="0.5" />
+                <line x1="50%" y1="100%" x2="100%" y2="100%" stroke="currentColor" strokeWidth="0.5" />
+                <text x="0%" y="8%" fill="currentColor">0.00m</text>
+                <text x="0%" y="52%" fill="currentColor">{(L * 0.5).toFixed(2)}m</text>
+                <text x="0%" y="96%" fill="currentColor">{L.toFixed(2)}m</text>
+              </svg>
+            </div>
+
+            {/* Canvas wrapper */}
+            <div className="flex-1 aspect-square bg-[#09090b] rounded-xl border border-white/5 relative overflow-hidden flex items-center justify-center">
+              <canvas
+                ref={canvasRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                width={520}
+                height={520}
+                className={cn(
+                  "max-w-full max-h-full aspect-square rounded-xl cursor-crosshair",
+                  isDraggingSlice && "cursor-ns-resize"
+                )}
+                style={{ imageRendering: "pixelated" }}
+              />
+            </div>
+          </div>
+        </div>
 
         {/* Slice coordinate HUD */}
         <div className="absolute bottom-3 left-3 px-3 py-2 bg-black/80 backdrop-blur rounded-xl border border-white/5 pointer-events-none">
@@ -976,53 +1532,139 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
         </div>
       </div>
 
-      {/* 1D Temperature Profile Chart */}
-      <div className="h-36 bg-[#141416] rounded-2xl border border-white/5 p-3 flex flex-col">
+      {/* 1D Temperature Profile and Thermal Gradient Chart */}
+      <div className="bg-[#141416] rounded-2xl border border-white/5 p-3 flex flex-col relative">
         <div className="flex justify-between items-center mb-1.5 px-1">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
-            <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">
-              1D Temperature Cross-Section
-            </span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-teal-400" />
+              <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest">
+                Temperature (°C)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-[1px] border-t border-dashed border-orange-400" />
+              <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">
+                Gradient |dT/dn| (°C/m)
+              </span>
+            </div>
           </div>
           <div className="text-[8px] font-mono text-white/25 uppercase">
-            {tMin_slice.toFixed(1)}°C → {tMax_slice.toFixed(1)}°C | L = {(gridSize * dx).toFixed(2)} m
+            Slice Length: {L.toFixed(2)} m
           </div>
         </div>
 
-        <div className="flex-1 relative">
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 100 80" preserveAspectRatio="none">
-            {/* Background grid */}
-            {[20, 40, 60].map(y => (
-              <line key={y} x1="8" y1={y} x2="92" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
-            ))}
-            {/* Profile */}
-            {chartPath && (
-              <path
-                d={chartPath}
-                fill="none"
-                stroke="#14b8a6"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {/* Gradient fill under curve */}
-            {chartPath && (
-              <>
-                <defs>
-                  <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#14b8a6" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
+        <div className="flex gap-4 items-stretch">
+          {/* SVG Plot */}
+          <div className="flex-1 h-36 relative">
+            <svg
+              className="w-full h-full overflow-visible"
+              viewBox="0 0 100 80"
+              preserveAspectRatio="none"
+              onMouseMove={handleSvgMouseMove}
+              onMouseLeave={handleSvgMouseLeave}
+            >
+              {/* Background grid */}
+              {[20, 40, 60].map(y => (
+                <line key={y} x1="8" y1={y} x2="92" y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
+              ))}
+
+              {/* Temperature Curve */}
+              {chartPath && (
                 <path
-                  d={chartPath + ` L 92 72 L 8 72 Z`}
-                  fill="url(#chartFill)"
+                  d={chartPath}
+                  fill="none"
+                  stroke="#14b8a6"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
+              )}
+
+              {/* Gradient Curve (Dashed Orange) */}
+              {gradPath && maxGrad_slice > 0.1 && (
+                <path
+                  d={gradPath}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth="1"
+                  strokeDasharray="2,2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+
+              {/* Extrema Circles & Text */}
+              {sliceExtrema.map(({ idx, type, val }) => {
+                const W = 100, H = 80, padX = 8, padY = 8;
+                const scaleX = (W - 2 * padX) / (sliceProfile.length - 1);
+                const scaleY = range_slice > 0.1 ? (H - 2 * padY) / range_slice : 1;
+                const px = padX + idx * scaleX;
+                const py = H - padY - (val - tMin_slice) * scaleY;
+                return (
+                  <g key={`${type}-${idx}`}>
+                    <circle cx={px} cy={py} r="2.5" fill={type === "max" ? "#ef4444" : "#3b82f6"} stroke="white" strokeWidth="0.5" />
+                    <text
+                      x={px}
+                      y={type === "max" ? py - 5 : py + 8}
+                      className="text-[4px] font-bold font-mono fill-white/80"
+                      textAnchor="middle"
+                    >
+                      {type.toUpperCase()}: {val.toFixed(1)}°
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Dotted Hover Line */}
+              {hoverIndex !== null && (
+                <line
+                  x1={8 + (hoverIndex / (gridSize - 1)) * 84}
+                  y1={8}
+                  x2={8 + (hoverIndex / (gridSize - 1)) * 84}
+                  y2={72}
+                  stroke="rgba(255,255,255,0.4)"
+                  strokeWidth="0.5"
+                  strokeDasharray="2,2"
+                />
+              )}
+            </svg>
+          </div>
+
+          {/* Interactive Hover HUD */}
+          <div className="w-[140px] shrink-0 bg-black/40 border border-white/5 rounded-xl p-2.5 flex flex-col justify-center gap-1.5 font-mono text-[9px]">
+            {hoverDetails ? (
+              <>
+                <div className="text-white/40 uppercase text-[8px] font-bold tracking-wider border-b border-white/5 pb-1">
+                  Cell Analyzer
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/40">Pos:</span>
+                  <span className="text-teal-400 font-bold">{hoverDetails.pos.toFixed(3)} m</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/40">Temp:</span>
+                  <span className="text-teal-400 font-bold">{hoverDetails.temp.toFixed(1)} °C</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/40">Grad:</span>
+                  <span className="text-orange-400 font-bold">{hoverDetails.grad.toFixed(1)} °C/m</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/40">Flux:</span>
+                  <span className="text-rose-400 font-bold">{(hoverDetails.flux / 1000).toFixed(2)} kW/m²</span>
+                </div>
+                <div className="flex justify-between truncate">
+                  <span className="text-white/40">Mat:</span>
+                  <span className="text-white/70 font-bold truncate max-w-[80px]">{hoverDetails.matName}</span>
+                </div>
               </>
+            ) : (
+              <div className="text-white/20 text-center py-4 flex flex-col items-center justify-center h-full">
+                <span>Hover plot to analyze cells</span>
+              </div>
             )}
-          </svg>
+          </div>
         </div>
       </div>
     </div>

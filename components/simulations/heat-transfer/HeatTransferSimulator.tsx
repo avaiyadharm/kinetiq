@@ -174,12 +174,15 @@ export const HeatTransferSimulator: React.FC = () => {
   const [showGridLines, setShowGridLines] = useState(false);
   const [showColorbar, setShowColorbar] = useState(true);
 
+  const [showInspector, setShowInspector] = useState(true);
+
   // Live telemetry
   const [telemetry, setTelemetry] = useState<Telemetry>({
     avgTemp: 22, maxTemp: 95, minTemp: 22,
     thermalEnergy: 0, maxFluxMag: 0,
     stabilityRatio: 0, simTime: 0, residual: 0,
     solverIterations: 3, stableTimestepLimit: 0.034,
+    energyInflow: 0, energyOutflow: 0, conservationError: 0,
   });
 
   const handleReset = () => {
@@ -193,6 +196,7 @@ export const HeatTransferSimulator: React.FC = () => {
     setShowGridLines(false); setShowColorbar(true);
     setStepsPerFrame(3);
     setActivePreset("CPU Heatsink");
+    setShowInspector(true);
   };
 
   const PRESETS = ["CPU Heatsink", "Thermal Bridge", "Corner Heating", "Insulated Box", "Fins Array"];
@@ -208,44 +212,153 @@ export const HeatTransferSimulator: React.FC = () => {
         {activeTab === "canvas" && (
           <div className="h-full flex flex-col xl:flex-row">
 
-            {/* Main Canvas */}
-            <div className="flex-1 min-h-[450px] xl:h-full bg-black relative">
-              <HeatTransferCanvas
-                gridSize={gridSize}
-                dx={dx}
-                dt={dt}
-                ambientTemp={ambientTemp}
-                convectionCoeff={convectionCoeff}
-                solverMode={solverMode}
-                boundaryType={boundaryType}
-                drawTool={drawTool}
-                selectedMaterial={selectedMaterial}
-                brushSize={brushSize}
-                colormap={colormap}
-                showFluxVectors={showFluxVectors}
-                showIsotherms={showIsotherms}
-                showGridLines={showGridLines}
-                showColorbar={showColorbar}
-                isPlaying={isPlaying}
-                activePreset={activePreset}
-                onTelemetryUpdate={setTelemetry}
-                stepsPerFrame={stepsPerFrame}
-              />
+            {/* Main Canvas Area */}
+            <div className="flex-1 flex flex-col md:flex-row min-h-[450px] xl:h-full bg-black relative overflow-hidden">
+              <div className="flex-1 relative flex flex-col justify-center">
+                <HeatTransferCanvas
+                  gridSize={gridSize}
+                  dx={dx}
+                  dt={dt}
+                  ambientTemp={ambientTemp}
+                  convectionCoeff={convectionCoeff}
+                  solverMode={solverMode}
+                  boundaryType={boundaryType}
+                  drawTool={drawTool}
+                  selectedMaterial={selectedMaterial}
+                  brushSize={brushSize}
+                  colormap={colormap}
+                  showFluxVectors={showFluxVectors}
+                  showIsotherms={showIsotherms}
+                  showGridLines={showGridLines}
+                  showColorbar={showColorbar}
+                  isPlaying={isPlaying}
+                  activePreset={activePreset}
+                  onTelemetryUpdate={setTelemetry}
+                  stepsPerFrame={stepsPerFrame}
+                />
 
-              {/* Solver HUD */}
-              <div className="absolute top-5 left-5 p-3.5 bg-black/85 backdrop-blur-md rounded-2xl border border-white/5 space-y-1 select-none pointer-events-none z-10">
-                <div className="text-[9px] text-white/30 uppercase tracking-[0.2em] font-bold">Active Solver</div>
-                <div className="text-[11px] font-mono text-cyan-400 font-bold">
-                  {solverMode === "transient"
-                    ? "ADI Crank-Nicolson (2nd order)"
-                    : "Gauss-Seidel Relaxation (60 iters)"}
+                {/* Solver HUD */}
+                <div className="absolute top-5 left-5 p-3.5 bg-black/85 backdrop-blur-md rounded-2xl border border-white/5 space-y-1 select-none pointer-events-none z-10">
+                  <div className="text-[9px] text-white/30 uppercase tracking-[0.2em] font-bold">Active Solver</div>
+                  <div className="text-[11px] font-mono text-cyan-400 font-bold">
+                    {solverMode === "transient"
+                      ? "ADI Crank-Nicolson (2nd order)"
+                      : "Gauss-Seidel Relaxation (60 iters)"}
+                  </div>
+                  <div className="text-[9px] text-white/40 font-mono">
+                    t = {telemetry.simTime.toFixed(3)} s
+                    {" | "}Δt = {(dt * 1000).toFixed(1)} ms
+                    {" | "}N = {gridSize}²
+                  </div>
                 </div>
-                <div className="text-[9px] text-white/40 font-mono">
-                  t = {telemetry.simTime.toFixed(3)} s
-                  {" | "}Δt = {(dt * 1000).toFixed(1)} ms
-                  {" | "}N = {gridSize}²
-                </div>
+
+                {/* Collapsible toggle button */}
+                <button
+                  onClick={() => setShowInspector(!showInspector)}
+                  className="absolute bottom-5 right-5 z-20 px-3 py-2 bg-black/80 hover:bg-white/10 text-[9px] font-bold uppercase tracking-widest border border-white/10 rounded-xl transition-all"
+                >
+                  {showInspector ? "Hide Inspector ◧" : "Show Inspector ◨"}
+                </button>
               </div>
+
+              {/* Collapsible Physics Inspector Panel */}
+              {showInspector && (
+                <div className="w-full md:w-[290px] border-t md:border-t-0 md:border-l border-white/5 bg-[#0f0f11] p-5 overflow-y-auto shrink-0 flex flex-col gap-4 relative z-10 select-none">
+                  <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+                    <Gauge className="w-4 h-4 text-teal-400" />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-white">Physics Inspector</span>
+                  </div>
+
+                  {/* Governing Equation */}
+                  <div className="space-y-1.5">
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">Governing Equation</div>
+                    <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-center font-mono text-[11px] text-teal-400 font-bold leading-relaxed">
+                      {solverMode === "transient" 
+                        ? "ρ c_p ∂T/∂t = ∇·(k ∇T)" 
+                        : "∇·(k ∇T) = 0"}
+                    </div>
+                  </div>
+
+                  {/* Numerical Discretization */}
+                  <div className="space-y-1.5">
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">Numerical Discretization</div>
+                    <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-[9px] text-white/50 space-y-1 font-mono leading-relaxed">
+                      {solverMode === "transient" ? (
+                        <>
+                          <div className="text-white/80 font-bold border-b border-white/5 pb-1 mb-1">Crank-Nicolson ADI</div>
+                          <div>Sweep 1 (X): (I - r_x δ_x²) Tⁿ⁺¹/² = RHS_y</div>
+                          <div>Sweep 2 (Y): (I - r_y δ_y²) Tⁿ⁺¹ = RHS_x</div>
+                          <div>TDMA Solver: Thomas Algorithm</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-white/80 font-bold border-b border-white/5 pb-1 mb-1">Gauss-Seidel Elliptic</div>
+                          <div>Stencil: 5-point harmonic mean</div>
+                          <div>Iterations: 60 sweeps/frame</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CFL Stability check */}
+                  <div className="space-y-1.5">
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">CFL Stability Check</div>
+                    <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-[9.5px] text-white/60 space-y-2">
+                      <div className="flex justify-between">
+                        <span>Time step Δt:</span>
+                        <span className="font-mono font-bold text-white">{dt.toFixed(4)} s</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Explicit limit:</span>
+                        <span className="font-mono font-bold text-white">{telemetry.stableTimestepLimit.toFixed(4)} s</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Stability r:</span>
+                        <span className={cn("font-mono font-bold", telemetry.stabilityRatio < 0.25 ? "text-emerald-400" : "text-cyan-400")}>
+                          {telemetry.stabilityRatio.toFixed(4)}
+                        </span>
+                      </div>
+                      <div className="text-[8px] text-white/30 leading-normal border-t border-white/5 pt-1.5 mt-1">
+                        {solverMode === "transient" 
+                          ? "ADI Crank-Nicolson is unconditionally stable. Stability ratio r can safely exceed 0.25." 
+                          : "Gauss-Seidel relaxation is stable for all cell spacings."}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* System Conservation Diagnostics */}
+                  <div className="space-y-1.5">
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">Conservation Metrics</div>
+                    <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-[9.5px] text-white/60 space-y-2">
+                      <div className="flex justify-between">
+                        <span>Total Energy E:</span>
+                        <span className="font-mono font-bold text-pink-400">{telemetry.thermalEnergy.toExponential(3)} J</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Inflow P_in:</span>
+                        <span className="font-mono font-bold text-emerald-400">{telemetry.energyInflow.toFixed(2)} W</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Outflow P_out:</span>
+                        <span className="font-mono font-bold text-rose-400">{telemetry.energyOutflow.toFixed(2)} W</span>
+                      </div>
+                      <div className="flex justify-between border-t border-white/5 pt-2 mt-1">
+                        <span>Cons. Error:</span>
+                        <span className={cn("font-mono font-bold", Math.abs(telemetry.conservationError) < 1e-4 ? "text-emerald-400" : "text-amber-400")}>
+                          {telemetry.conservationError.toExponential(3)} W
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>L₂ Res. Norm:</span>
+                        <span className={cn("font-mono font-bold", telemetry.residual < 1e-3 ? "text-emerald-400" : "text-amber-400")}>
+                          {telemetry.residual.toExponential(3)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </div>
 
             {/* Sidebar */}
