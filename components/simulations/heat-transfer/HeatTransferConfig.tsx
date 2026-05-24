@@ -7,6 +7,8 @@ import {
   HelpCircle, GraduationCap, CheckCircle2, AlertTriangle, Info
 } from "lucide-react";
 
+import { MATERIALS } from "./HeatTransferCanvas";
+
 interface HeatTransferConfigProps {
   gridSize: number;
   dx: number;
@@ -20,7 +22,11 @@ interface HeatTransferConfigProps {
     maxTemp: number;
     minTemp: number;
     thermalEnergy: number;
-    iterations: number;
+    maxFluxMag: number;
+    stabilityRatio: number;
+    simTime: number;
+    residual: number;
+    solverIterations: number;
     stableTimestepLimit: number;
   };
 }
@@ -99,15 +105,9 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
   // Derived computations
   const totalNodes = gridSize * gridSize;
   const plateWidth = gridSize * dx; // m
-  const maxAlpha = 1.0; // Normalized Copper conductivity
-  const stabilityCriteriaValue = (maxAlpha * dt) / (dx * dx); // r = alpha * dt / dx^2
-  
-  // 2D Explicit FDTD stability requires r <= 0.25
-  const stabilityStatus = stabilityCriteriaValue <= 0.23 
-    ? "stable" 
-    : stabilityCriteriaValue <= 0.25 
-      ? "warning" 
-      : "critical";
+  const r = telemetry.stabilityRatio;
+  // ADI CN is unconditionally stable; we report vs explicit limit for education
+  const stabilityStatus = r < 0.15 ? "stable" : r < 0.25 ? "warning" : "stable"; // ADI always stable
 
   return (
     <div className="flex-1 bg-[#111113] overflow-y-auto">
@@ -153,18 +153,24 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
 
         {/* Live Status Indicators */}
         <div className="flex flex-wrap gap-3">
-          <StatusIndicator 
-            status={stabilityStatus} 
-            label={`FTCS Stability parameter (r): ${stabilityCriteriaValue.toFixed(4)}`} 
+          <StatusIndicator
+            status={stabilityStatus}
+            label={`Stability r = ${r.toFixed(4)} (explicit limit = 0.25)`}
           />
-          <StatusIndicator 
-            status={stabilityStatus === "critical" ? "critical" : "stable"} 
-            label={solverMode === "transient" ? "FDTD Dynamic Mode" : "Gauss-Seidel Steady Mode"} 
+          <StatusIndicator
+            status="stable"
+            label={solverMode === "transient" ? "ADI Crank-Nicolson (Implicit)" : "Gauss-Seidel Relaxation"}
           />
-          <StatusIndicator 
-            status="stable" 
-            label={`${gridSize} \u00D7 ${gridSize} (${totalNodes} nodes)`} 
+          <StatusIndicator
+            status="stable"
+            label={`${gridSize}\u00D7${gridSize} grid (${totalNodes.toLocaleString()} nodes)`}
           />
+          {solverMode === "transient" && (
+            <StatusIndicator
+              status="stable"
+              label={`Sim time: ${telemetry.simTime.toFixed(3)} s`}
+            />
+          )}
         </div>
 
         {/* Configurations Dashboard */}
@@ -188,77 +194,129 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
 
           {/* Solver settings */}
           <SectionCard title="Temporal & Solver Diagnostics" icon={Zap} color="#f59e0b">
-            <StatRow label="Time Step (\u0394t)" value={(dt * 1000).toFixed(2)} unit="ms" color="text-amber-400" sub={`${dt.toFixed(5)} seconds`} />
-            <StatRow label="Solver Type" value={solverMode === "transient" ? "Explicit FDTD" : "Gauss-Seidel"} unit="" color="text-amber-400" />
-            <StatRow 
-              label="Stability Limit (\u0394t_max)" 
-              value={(telemetry.stableTimestepLimit * 1000).toFixed(2)} 
-              unit="ms" 
-              color="text-amber-400" 
-              sub="Maximum stable timestep limit" 
+            <StatRow label="Solver Algorithm" value={solverMode === "transient" ? "ADI Crank-Nicolson" : "Gauss-Seidel"} unit="" color="text-amber-400" sub={solverMode === "transient" ? "Unconditionally stable, 2nd-order" : "Iterative relaxation"} />
+            <StatRow label="Time Step (\u0394t)" value={(dt * 1000).toFixed(1)} unit="ms" color="text-amber-400" sub={`${dt.toFixed(4)} s`} />
+            <StatRow
+              label="Expl. Stability Limit (\u0394t_crit)"
+              value={(telemetry.stableTimestepLimit * 1000).toFixed(2)}
+              unit="ms"
+              color={telemetry.stabilityRatio > 0.25 ? "text-cyan-400" : "text-amber-400"}
+              sub={telemetry.stabilityRatio > 0.25 ? "ADI allows exceeding explicit limit" : "Within explicit stable zone"}
             />
+            <StatRow label="Stability Parameter r" value={r.toFixed(4)} unit="" color={r < 0.25 ? "text-emerald-400" : "text-cyan-400"} sub="r = \u03B1\u00B7\u0394t / \u0394x\u00B2" />
             {solverMode === "steady" && (
-              <StatRow label="Gauss-Seidel Iterations" value={`${telemetry.iterations}`} unit="steps/frame" color="text-amber-400" />
+              <StatRow label="GS Iters / Frame" value={`${telemetry.solverIterations}`} unit="" color="text-amber-400" sub="Convergence residual below" />
             )}
-            <StatRow 
-              label="Numerical Precision" 
-              value="Float32" 
-              unit="bit" 
-              color="text-white/60" 
-              border={false} 
-              sub="Single-precision floating grid" 
+            {solverMode === "steady" && (
+              <StatRow label="Max Residual" value={telemetry.residual.toExponential(2)} unit="\u00B0C" color={telemetry.residual < 0.01 ? "text-emerald-400" : "text-amber-400"} sub="Max |\u0394T| per sweep" />
+            )}
+            <StatRow
+              label="Numerical Precision"
+              value="Float64"
+              unit="bit"
+              color="text-white/60"
+              border={false}
+              sub="Double-precision physics buffers"
             />
           </SectionCard>
 
           {/* Telemetry and physical properties */}
           <SectionCard title="System Thermal Metrics" icon={BarChart2} color="#ec4899">
-            <StatRow label="Max Grid Temp" value={telemetry.maxTemp.toFixed(1)} unit="\u00B0C" color="text-pink-400" />
-            <StatRow label="Min Grid Temp" value={telemetry.minTemp.toFixed(1)} unit="\u00B0C" color="text-pink-400" />
-            <StatRow label="Average Temperature" value={telemetry.avgTemp.toFixed(2)} unit="\u00B0C" color="text-pink-400" />
-            <StatRow 
-              label="Total Stored Heat" 
-              value={telemetry.thermalEnergy.toExponential(3)} 
-              unit="J" 
-              color="text-pink-400" 
-              sub="\u222B\u222B \u03C1\u00B7c_p\u00B7T dA"
+            <StatRow label="T max" value={telemetry.maxTemp.toFixed(2)} unit="\u00B0C" color="text-rose-400" />
+            <StatRow label="T min" value={telemetry.minTemp.toFixed(2)} unit="\u00B0C" color="text-cyan-400" />
+            <StatRow label="T avg" value={telemetry.avgTemp.toFixed(2)} unit="\u00B0C" color="text-pink-400" />
+            <StatRow
+              label="Peak Heat Flux |q|_max"
+              value={(telemetry.maxFluxMag / 1000).toFixed(2)}
+              unit="kW/m\u00B2"
+              color="text-orange-400"
+              sub="q = -k\u00B7|\u2207T|"
             />
-            <StatRow label="Ambient Environment (T_amb)" value={ambientTemp.toFixed(1)} unit="\u00B0C" color="text-white/60" />
-            <StatRow 
-              label="Convective Loss (h)" 
-              value={convectionCoeff.toFixed(2)} 
-              unit="W/m\u00B2K" 
-              color="text-white/60" 
+            <StatRow
+              label="Stored Thermal Energy"
+              value={telemetry.thermalEnergy.toExponential(3)}
+              unit="J"
+              color="text-pink-400"
+              sub="\u222B\u222B \u03C1\u00B7c_p\u00B7(T - T_ref) dV"
+            />
+            <StatRow label="T\u221E Ambient" value={ambientTemp.toFixed(1)} unit="\u00B0C" color="text-white/60" />
+            <StatRow
+              label="h (convection coeff.)"
+              value={convectionCoeff.toFixed(1)}
+              unit="W/m\u00B2K"
+              color="text-white/60"
               border={false}
             />
           </SectionCard>
         </div>
 
         {/* Governing Equations Cards */}
-        <SectionCard title="Governing Physical Equations" icon={Shield} color="#06b6d4" span={3}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <SectionCard title="Governing Physical Equations & Solver Theory" icon={Shield} color="#06b6d4" span={3}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <div>
-              <EquationBlock 
-                equation={"\u2202T/\u2202t = \u03B1 \u2207\u2212\u00B2 T = \u03B1 (\u2202\u00B2T/\u2202x\u00B2 + \u2202\u00B2T/\u2202y\u00B2)"} 
-                label="Continuous 2D Heat Equation (Transient conduction)" 
-                color="#06b6d4" 
+              <EquationBlock
+                equation={"\u2202T/\u2202t = \u03B1\u2207\u00B2T = \u03B1(\u2202\u00B2T/\u2202x\u00B2 + \u2202\u00B2T/\u2202y\u00B2)"}
+                label="2D Parabolic Heat Equation"
+                color="#06b6d4"
               />
               <p className="text-[10px] text-white/40 leading-relaxed">
-                {educLevel === "beginner" && "This describes how temperature shifts over time in a material: it flows outward from hot peaks to cold valleys at a rate determined by diffusivity (\u03B1)."}
-                {educLevel === "intermediate" && "Partial differential equation representing conservation of energy in an isotropic conduction domain. Thermal diffusivity \u03B1 is k / (\u03C1\u00B7c_p)."}
-                {educLevel === "advanced" && "Derived from local conservation of thermal energy: \u03C1\u00B7c_p\u00B7\u2202T/\u2202t = -\u2207\u00B7q. Substituting Fourier's linear conduction law (q = -k\u2207T) yields the classic parabolic diffusion equation."}
+                {educLevel === "beginner" && "Temperature flows from hot to cold — faster in conductors, slower in insulators, controlled by thermal diffusivity \u03B1 = k/(\u03C1c_p)."}
+                {educLevel === "intermediate" && "Conservation of energy in an isotropic domain. Thermal diffusivity \u03B1 = k/(\u03C1c_p) is the ratio of a material's ability to conduct vs. store heat."}
+                {educLevel === "advanced" && "Parabolic PDE from \u03C1c_p\u2202T/\u2202t = -\u2207\u00B7q with Fourier's law q = -k\u2207T. Solutions exhibit infinite propagation speed, smoothing of initial data, and maximum principle."}
               </p>
             </div>
             <div>
-              <EquationBlock 
-                equation={"r = \u03B1 \u0394t / \u0394x\u00B2 \u2264 0.25"} 
-                label="Von Neumann Stability Limit (2D FTCS)" 
-                color="#10b981" 
+              <EquationBlock
+                equation={"ADI CN: (I - r\u03B4x\u00B2)(I - r\u03B4y\u00B2)T^n+1 = ..."}
+                label="ADI Crank-Nicolson Discretization"
+                color="#10b981"
               />
               <p className="text-[10px] text-white/40 leading-relaxed">
-                {educLevel === "beginner" && "To prevent calculations from blowing up to infinity, the time step must be kept small compared to the physical cell size."}
-                {educLevel === "intermediate" && "Explicit time integration (Forward-Time Central-Space) is conditionally stable. The Courant diffusion number must satisfy r \u2264 1/4 in 2D."}
-                {educLevel === "advanced" && "Derived by substituting harmonic error modes T_ij^n = e^(j(k_x x_i + k_y y_j)) into the discretization stencil. The amplification factor must remain \u2264 1, imposing dt \u2264 dx\u00B2 / (4\u03B1) in isotropic grids."}
+                {educLevel === "beginner" && "Instead of computing each timestep explicitly (which can blow up), this solver uses a two-pass approach that is always numerically stable regardless of timestep size."}
+                {educLevel === "intermediate" && "The Alternating Direction Implicit (ADI) method splits each timestep into two half-steps: one implicit in x, one implicit in y. Each produces a tridiagonal system solved in O(N) via the Thomas Algorithm (TDMA)."}
+                {educLevel === "advanced" && "Peaceman-Rachford ADI: unconditionally stable with global truncation error O(\u0394t\u00B2 + \u0394x\u00B2). Each half-step is solved with TDMA (forward/backward sweep). Operator splitting exactly factorizes the 2D Crank-Nicolson stencil."}
               </p>
+            </div>
+            <div>
+              <EquationBlock
+                equation={"q\u20D7 = -k \u2207T [W/m\u00B2]"}
+                label="Fourier's Law of Heat Conduction"
+                color="#f59e0b"
+              />
+              <p className="text-[10px] text-white/40 leading-relaxed">
+                {educLevel === "beginner" && "Heat naturally flows from hot to cold — Fourier's law says the flow rate is proportional to how steep the temperature gradient is, and how conductive the material is."}
+                {educLevel === "intermediate" && "Heat flux vector q = -k\u2207T [W/m\u00B2] always points from high to low temperature (negative gradient). k is the material thermal conductivity. Flux vectors are rendered with arrow glyphs colored by magnitude."}
+                {educLevel === "advanced" && "The constitutive relation Q_cond = -k A \u2207T follows from irreversible thermodynamics (Onsager reciprocal relations). Fourier's law assumes local equilibrium — valid except at nanoscales or in phonon-ballistic regimes."}
+              </p>
+            </div>
+          </div>
+
+          {/* Material Properties Table */}
+          <div className="mt-6 border-t border-white/[0.05] pt-5">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Physical Material Properties</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px] font-mono border-collapse">
+                <thead>
+                  <tr className="text-white/30 uppercase tracking-wider">
+                    <th className="text-left py-2 pr-4 font-bold">Material</th>
+                    <th className="text-right py-2 pr-4 font-bold">k [W/m\u00B7K]</th>
+                    <th className="text-right py-2 pr-4 font-bold">\u03C1 [kg/m\u00B3]</th>
+                    <th className="text-right py-2 pr-4 font-bold">c_p [J/kg\u00B7K]</th>
+                    <th className="text-right py-2 font-bold">\u03B1 [m\u00B2/s]</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.values(MATERIALS).map((m) => (
+                    <tr key={m.id} className="border-t border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                      <td className="py-2 pr-4 text-white/70 font-bold text-[11px]">{m.name}</td>
+                      <td className="py-2 pr-4 text-amber-400 text-right">{m.k}</td>
+                      <td className="py-2 pr-4 text-cyan-400 text-right">{m.rho.toLocaleString()}</td>
+                      <td className="py-2 pr-4 text-pink-400 text-right">{m.cp}</td>
+                      <td className="py-2 text-emerald-400 text-right">{m.alpha.toExponential(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </SectionCard>
