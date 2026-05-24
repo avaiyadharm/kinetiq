@@ -15,8 +15,6 @@ export const TrajectoryGraph: React.FC<Readonly<TrajectoryGraphProps>> = ({ angl
   const data = useMemo(() => {
     const vx = velocity * Math.cos(rad);
     const vy = velocity * Math.sin(rad);
-    
-    // Theoretical symmetric formulas
     const tFlight = Math.max(0.01, (2 * vy) / gravity);
     const totalRange = vx * tFlight;
     const maxHeight = (vy * vy) / (2 * gravity);

@@ -13,6 +13,7 @@ interface HeatTransferConfigProps {
   gridSize: number;
   dx: number;
   dt: number;
+  thickness: number;
   ambientTemp: number;
   convectionCoeff: number;
   solverMode: "transient" | "steady";
@@ -97,6 +98,7 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
   gridSize,
   dx,
   dt,
+  thickness,
   ambientTemp,
   convectionCoeff,
   solverMode,
@@ -185,6 +187,7 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
             <StatRow label="Total Compute Cells" value={totalNodes.toLocaleString()} unit="cells" color="text-teal-400" />
             <StatRow label="Cell Pitch (\u0394x = \u0394y)" value={(dx * 1000).toFixed(1)} unit="mm" color="text-cyan-400" sub={`${dx} m`} />
             <StatRow label="Plate Physical Size" value={`${plateWidth.toFixed(2)} \u00D7 ${plateWidth.toFixed(2)}`} unit="m" color="text-cyan-400" sub="Total simulated surface area" />
+            <StatRow label="Plate Thickness (t_z)" value={(thickness * 1000).toFixed(0)} unit="mm" color="text-purple-400" sub={`${thickness} m`} />
             <StatRow 
               label="Boundary Condition" 
               value={boundaryType.toUpperCase()} 

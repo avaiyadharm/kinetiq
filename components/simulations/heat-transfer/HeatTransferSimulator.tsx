@@ -6,6 +6,7 @@ import { HeatTransferCanvas, MATERIALS, DrawTool, ColormapName, Telemetry } from
 import { HeatTransferConfig } from "./HeatTransferConfig";
 import { HeatTransferTheory } from "./HeatTransferTheory";
 import { HeatTransferGuide } from "./HeatTransferGuide";
+import { HeatTransferValidation } from "./HeatTransferValidation";
 import {
   Play, Pause, RotateCcw, Activity, Thermometer, Settings2,
   Sparkles, Sliders, Layers, Paintbrush, Flame, Snowflake, Eraser,
@@ -156,6 +157,7 @@ export const HeatTransferSimulator: React.FC = () => {
   const [gridSize, setGridSize] = useState(48);
   const [dx, setDx] = useState(0.02);            // 2 cm node spacing
   const [dt, setDt] = useState(0.05);            // 50 ms (ADI is unconditionally stable)
+  const [thickness, setThickness] = useState(0.005); // 5 mm plate thickness
   const [ambientTemp, setAmbientTemp] = useState(22.0);
   const [convectionCoeff, setConvectionCoeff] = useState(5.0);
   const [solverMode, setSolverMode] = useState<"transient" | "steady">("transient");
@@ -187,7 +189,7 @@ export const HeatTransferSimulator: React.FC = () => {
 
   const handleReset = () => {
     setIsPlaying(true);
-    setGridSize(48); setDx(0.02); setDt(0.05);
+    setGridSize(48); setDx(0.02); setDt(0.05); setThickness(0.005);
     setAmbientTemp(22); setConvectionCoeff(5);
     setSolverMode("transient"); setBoundaryType("insulated");
     setDrawTool("source"); setSelectedMaterial("copper");
@@ -207,6 +209,7 @@ export const HeatTransferSimulator: React.FC = () => {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onReset={handleReset}
+      showValidationTab={true}
     >
       <div className="flex-1 overflow-hidden">
         {activeTab === "canvas" && (
@@ -219,6 +222,7 @@ export const HeatTransferSimulator: React.FC = () => {
                   gridSize={gridSize}
                   dx={dx}
                   dt={dt}
+                  thickness={thickness}
                   ambientTemp={ambientTemp}
                   convectionCoeff={convectionCoeff}
                   solverMode={solverMode}
@@ -553,6 +557,14 @@ export const HeatTransferSimulator: React.FC = () => {
                       onChange={setDx}
                       colorClass="text-pink-400"
                     />
+                    <ClickableValue
+                      label="Plate Thickness t_z"
+                      value={thickness} unit="m"
+                      min={0.001} max={0.05} step={0.001}
+                      onChange={setThickness}
+                      colorClass="text-pink-400"
+                      format={(v) => `${(v * 1000).toFixed(0)} mm`}
+                    />
                     {solverMode === "transient" && (
                       <>
                         <ClickableValue
@@ -630,6 +642,7 @@ export const HeatTransferSimulator: React.FC = () => {
             gridSize={gridSize}
             dx={dx}
             dt={dt}
+            thickness={thickness}
             ambientTemp={ambientTemp}
             convectionCoeff={convectionCoeff}
             solverMode={solverMode}
@@ -639,6 +652,7 @@ export const HeatTransferSimulator: React.FC = () => {
         )}
         {activeTab === "theory" && <HeatTransferTheory />}
         {activeTab === "guide" && <HeatTransferGuide />}
+        {activeTab === "validation" && <HeatTransferValidation />}
       </div>
     </SimulationPageLayout>
   );

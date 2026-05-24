@@ -2,11 +2,11 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, LayoutGrid, Info, Settings, RotateCcw, Share2, HelpCircle } from "lucide-react";
+import { ArrowLeft, LayoutGrid, Info, Settings, RotateCcw, Share2, HelpCircle, Activity } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type TabType = "canvas" | "config" | "theory" | "guide";
+export type TabType = "canvas" | "config" | "theory" | "guide" | "validation";
 
 interface SimulationPageLayoutProps {
   title: string;
@@ -14,6 +14,7 @@ interface SimulationPageLayoutProps {
   activeTab?: TabType;
   onTabChange?: (tab: TabType) => void;
   onReset?: () => void;
+  showValidationTab?: boolean;
 }
 
 export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>> = ({ 
@@ -21,7 +22,8 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
   children,
   activeTab = "canvas",
   onTabChange,
-  onReset
+  onReset,
+  showValidationTab = false
 }) => {
   return (
     <div className="flex h-screen w-full bg-[#09090b] overflow-hidden text-white font-sans antialiased selection:bg-primary/30">
@@ -89,6 +91,20 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
             <HelpCircle className="w-4.5 h-4.5" /> 
             User Guide
           </button>
+          {showValidationTab && (
+            <button 
+              onClick={() => onTabChange?.("validation")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+                activeTab === "validation" 
+                  ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                  : "text-white/60 hover:text-primary hover:bg-primary/10"
+              )}
+            >
+              <Activity className="w-4.5 h-4.5" /> 
+              Solver Validation
+            </button>
+          )}
         </nav>
 
         <div className="p-8 border-t border-border bg-black/20">

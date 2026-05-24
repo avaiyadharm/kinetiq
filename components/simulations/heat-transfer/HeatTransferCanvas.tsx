@@ -8,12 +8,14 @@ import { cn } from "@/lib/utils";
 export interface Material {
   id: string;
   name: string;
-  k: number;          // Thermal conductivity [W/m·K]
+  k: number;          // Thermal conductivity [W/m·K] at 20°C
   rho: number;        // Density [kg/m³]
-  cp: number;         // Specific heat [J/kg·K]
+  cp: number;         // Specific heat [J/kg·K] at 20°C
+  alpha_k: number;    // Temp coeff for k [1/K]
+  alpha_cp: number;   // Temp coeff for cp [1/K]
   color: string;      // Tailwind for UI
   canvasColor: string;
-  get alpha(): number; // Thermal diffusivity [m²/s]
+  get alpha(): number; // Thermal diffusivity [m²/s] at 20°C
 }
 
 export class PhysicalMaterial implements Material {
@@ -22,6 +24,8 @@ export class PhysicalMaterial implements Material {
   k: number;
   rho: number;
   cp: number;
+  alpha_k: number;
+  alpha_cp: number;
   color: string;
   canvasColor: string;
 
@@ -31,6 +35,8 @@ export class PhysicalMaterial implements Material {
     this.k = data.k;
     this.rho = data.rho;
     this.cp = data.cp;
+    this.alpha_k = data.alpha_k;
+    this.alpha_cp = data.alpha_cp;
     this.color = data.color;
     this.canvasColor = data.canvasColor;
   }
@@ -38,56 +44,67 @@ export class PhysicalMaterial implements Material {
   get alpha() { return this.k / (this.rho * this.cp); }
 }
 
-// Thermal diffusivity: α = k/(ρ·cₚ) [m²/s]
-// Copper:  α ≈ 1.17e-4 m²/s
-// Iron:    α ≈ 2.34e-5 m²/s
-// Glass:   α ≈ 3.40e-7 m²/s
-// Wood:    α ≈ 1.26e-7 m²/s
-
 export const MATERIALS: Record<string, Material> = {
   copper: {
     id: "copper", name: "Copper",
     k: 401, rho: 8960, cp: 385,
+    alpha_k: -0.00039, alpha_cp: 0.00035,
     color: "bg-orange-500", canvasColor: "rgb(249,115,22)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 1.165e-4
+    get alpha() { return this.k / (this.rho * this.cp); }
   },
   aluminum: {
     id: "aluminum", name: "Aluminum",
-    k: 237, rho: 2700, cp: 900,
+    k: 237, rho: 2700, cp: 897,
+    alpha_k: -0.0005, alpha_cp: 0.00045,
     color: "bg-slate-300", canvasColor: "rgb(203,213,225)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 9.74e-5
+    get alpha() { return this.k / (this.rho * this.cp); }
   },
   iron: {
-    id: "iron", name: "Steel / Iron",
-    k: 50, rho: 7870, cp: 490,
+    id: "iron", name: "Steel",
+    k: 50, rho: 7850, cp: 490,
+    alpha_k: -0.0005, alpha_cp: 0.0006,
     color: "bg-zinc-500", canvasColor: "rgb(113,113,122)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 1.30e-5
+    get alpha() { return this.k / (this.rho * this.cp); }
   },
   glass: {
-    id: "glass", name: "Borosilicate Glass",
-    k: 1.0, rho: 2230, cp: 835,
+    id: "glass", name: "Ceramic",
+    k: 2.0, rho: 3000, cp: 800,
+    alpha_k: -0.0001, alpha_cp: 0.0008,
     color: "bg-sky-400", canvasColor: "rgb(56,189,248)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 5.37e-7
+    get alpha() { return this.k / (this.rho * this.cp); }
   },
   wood: {
     id: "wood", name: "Oak Wood",
     k: 0.17, rho: 700, cp: 1700,
+    alpha_k: 0.0001, alpha_cp: 0.001,
     color: "bg-amber-800", canvasColor: "rgb(146,64,14)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 1.43e-7
+    get alpha() { return this.k / (this.rho * this.cp); }
   },
   air: {
     id: "air", name: "Air / Void",
-    k: 0.026, rho: 1.2, cp: 1005,
+    k: 0.026, rho: 1.225, cp: 1005,
+    alpha_k: 0.0028, alpha_cp: 0.0001,
     color: "bg-zinc-900", canvasColor: "rgb(24,24,27)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 2.15e-5
+    get alpha() { return this.k / (this.rho * this.cp); }
   },
   silicon: {
     id: "silicon", name: "Silicon (CPU Die)",
-    k: 148, rho: 2330, cp: 700,
+    k: 149, rho: 2330, cp: 700,
+    alpha_k: -0.0015, alpha_cp: 0.0007,
     color: "bg-indigo-600", canvasColor: "rgb(79,70,229)",
-    get alpha() { return this.k / (this.rho * this.cp); } // 9.08e-5
+    get alpha() { return this.k / (this.rho * this.cp); }
   }
 };
+
+export function getConductivity(mat: Material, T: number): number {
+  const dT = T - 20.0;
+  return Math.max(1e-4, mat.k * (1.0 + mat.alpha_k * dT));
+}
+
+export function getSpecificHeat(mat: Material, T: number): number {
+  const dT = T - 20.0;
+  return Math.max(10.0, mat.cp * (1.0 + mat.alpha_cp * dT));
+}
 
 export const MATERIAL_KEYS = ["iron", "copper", "aluminum", "glass", "wood", "air", "silicon"];
 
@@ -116,6 +133,7 @@ interface HeatTransferCanvasProps {
   gridSize: number;
   dx: number;          // [m] node spacing
   dt: number;          // [s] timestep (transient mode)
+  thickness: number;   // [m] plate thickness
   ambientTemp: number; // [°C] T_∞
   convectionCoeff: number; // [W/m²K] h
   solverMode: SolverMode;
@@ -351,7 +369,7 @@ function buildPreset(
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
-  gridSize, dx, dt, ambientTemp, convectionCoeff,
+  gridSize, dx, dt, thickness, ambientTemp, convectionCoeff,
   solverMode, boundaryType, drawTool, selectedMaterial,
   brushSize, colormap, showFluxVectors, showIsotherms, showGridLines, showColorbar,
   isPlaying, activePreset, onTelemetryUpdate, stepsPerFrame,
@@ -504,7 +522,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
               if (isFixed(idx)) continue;
 
               const mat = getMat(matId[idx]);
-              const k_idx = mat.k;
+              const k_idx = getConductivity(mat, tOld[idx]);
               let num = 0;
               let denom = 0;
 
@@ -517,7 +535,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
                 }
               } else {
                 const idxL = idx - 1;
-                const k_nbr = getMat(matId[idxL]).k;
+                const k_nbr = getConductivity(getMat(matId[idxL]), tOld[idxL]);
                 let k_interface = 0;
                 let T_val = 0;
                 if (matId[idxL] === 5) { // Air neighbor
@@ -538,7 +556,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
                 }
               } else {
                 const idxR = idx + 1;
-                const k_nbr = getMat(matId[idxR]).k;
+                const k_nbr = getConductivity(getMat(matId[idxR]), tOld[idxR]);
                 let k_interface = 0;
                 let T_val = 0;
                 if (matId[idxR] === 5) {
@@ -559,7 +577,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
                 }
               } else {
                 const idxT = idx - N;
-                const k_nbr = getMat(matId[idxT]).k;
+                const k_nbr = getConductivity(getMat(matId[idxT]), tOld[idxT]);
                 let k_interface = 0;
                 let T_val = 0;
                 if (matId[idxT] === 5) {
@@ -580,7 +598,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
                 }
               } else {
                 const idxB = idx + N;
-                const k_nbr = getMat(matId[idxB]).k;
+                const k_nbr = getConductivity(getMat(matId[idxB]), tOld[idxB]);
                 let k_interface = 0;
                 let T_val = 0;
                 if (matId[idxB] === 5) {
@@ -621,7 +639,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             return { r: rConv, isFixed: true, T: T_inf };
           }
           const fixNbr = fixed[idxNbr];
-          const k_nbr = getMat(matId[idxNbr]).k;
+          const k_nbr = getConductivity(getMat(matId[idxNbr]), tOld[idxNbr]);
           const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
           const rCond = k_interface * halfDt / (C_idx * dist * dist);
           if (fixNbr > 0) {
@@ -639,7 +657,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             return { r: rConv, isFixed: true, T: T_inf };
           }
           const fixNbr = fixed[idxNbr];
-          const k_nbr = getMat(matId[idxNbr]).k;
+          const k_nbr = getConductivity(getMat(matId[idxNbr]), tHalf[idxNbr]);
           const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
           const rCond = k_interface * halfDt / (C_idx * dist * dist);
           if (fixNbr > 0) {
@@ -658,8 +676,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             }
 
             const mat = getMat(matId[idx]);
-            const C_idx = mat.rho * mat.cp;
-            const k_idx = mat.k;
+            const C_idx = mat.rho * getSpecificHeat(mat, tOld[idx]);
+            const k_idx = getConductivity(mat, tOld[idx]);
             const T_current = tOld[idx];
 
             let rhsY = 0;
@@ -763,8 +781,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             }
 
             const mat = getMat(matId[idx]);
-            const C_idx = mat.rho * mat.cp;
-            const k_idx = mat.k;
+            const C_idx = mat.rho * getSpecificHeat(mat, tHalf[idx]);
+            const k_idx = getConductivity(mat, tHalf[idx]);
             const T_current = tHalf[idx];
 
             let rhsX = 0;
@@ -898,10 +916,10 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           if (T < minT) minT = T;
 
           const mat = getMat(matId[idx]);
-          const C_idx = mat.rho * mat.cp;
+          const C_idx = mat.rho * getSpecificHeat(mat, T);
           // Volumetric heat energy above ambient reference
-          // V = dx * dy * 1.0 (assuming 1.0 m thickness)
-          thermalEnergy += C_idx * (T - T_inf) * dx * dx;
+          // V = dx * dy * thickness
+          thermalEnergy += C_idx * (T - T_inf) * dx * dx * thickness;
 
           // Heat flux magnitude: q = k·|∇T|
           let gx = 0;
@@ -914,7 +932,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           else if (j === 0) gy = (tData[idx + N] - T) / dx;
           else gy = (T - tData[idx - N]) / dx;
 
-          const flux = mat.k * Math.sqrt(gx * gx + gy * gy);
+          const currentK = getConductivity(mat, T);
+          const flux = currentK * Math.sqrt(gx * gx + gy * gy);
           if (flux > maxFlux) maxFlux = flux;
 
           // Energy Inflow and Outflow
@@ -927,15 +946,15 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             ];
             for (const nbr of neighbors) {
               if (nbr.cond && !isFixed(nbr.r)) {
-                const k_nbr = getMat(matId[nbr.r]).k;
+                const k_nbr = getConductivity(getMat(matId[nbr.r]), tData[nbr.r]);
                 let q = 0;
                 if (matId[idx] === 5) {
                   q = h * (T_inf - tData[nbr.r]);
                 } else {
-                  const k_interface = 2 * mat.k * k_nbr / (mat.k + k_nbr);
+                  const k_interface = 2 * currentK * k_nbr / (currentK + k_nbr);
                   q = k_interface * (T - tData[nbr.r]) / dx;
                 }
-                const P = q * dx; // Area = dx * 1.0
+                const P = q * dx * thickness; // Area = dx * thickness
                 if (P > 0) energyInflow += P;
                 else energyOutflow += Math.abs(P);
               }
@@ -951,11 +970,11 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
               if (b.cond) {
                 let P = 0;
                 if (boundaryType === "fixed") {
-                  const q = 2 * mat.k * (T_inf - T) / dx;
-                  P = q * dx;
+                  const q = 2 * currentK * (T_inf - T) / dx;
+                  P = q * dx * thickness;
                 } else if (boundaryType === "convective") {
                   const q = h * (T_inf - T);
-                  P = q * dx;
+                  P = q * dx * thickness;
                 }
                 if (P > 0) energyInflow += P;
                 else energyOutflow += Math.abs(P);
@@ -975,15 +994,15 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           if (isFixed(idx)) continue;
 
           const mat = getMat(matId[idx]);
-          const C_idx = mat.rho * mat.cp;
-          const k_idx = mat.k;
+          const C_idx = mat.rho * getSpecificHeat(mat, (tData[idx] + tOld[idx]) * 0.5);
+          const k_idx_avg = getConductivity(mat, (tData[idx] + tOld[idx]) * 0.5);
 
           const getFluxNbr = (idxNbr: number, dist: number) => {
             if (matId[idxNbr] === 5) {
               return h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
             }
-            const k_nbr = getMat(matId[idxNbr]).k;
-            const k_interface = 2 * k_idx * k_nbr / (k_idx + k_nbr);
+            const k_nbr_avg = getConductivity(getMat(matId[idxNbr]), (tData[idxNbr] + tOld[idxNbr]) * 0.5);
+            const k_interface = 2 * k_idx_avg * k_nbr_avg / (k_idx_avg + k_nbr_avg);
             const T_idx_avg = (tData[idx] + tOld[idx]) * 0.5;
             const T_nbr_avg = isFixed(idxNbr) ? tOld[idxNbr] : (tData[idxNbr] + tOld[idxNbr]) * 0.5;
             return k_interface * (T_nbr_avg - T_idx_avg) / dist;
@@ -994,13 +1013,13 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           if (i === 0) {
             const fluxR = getFluxNbr(idx + 1, dx);
             let fluxL = 0;
-            if (boundaryType === "fixed") fluxL = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            if (boundaryType === "fixed") fluxL = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
             else if (boundaryType === "convective") fluxL = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
             fluxX = (fluxR + fluxL) / dx;
           } else if (i === N - 1) {
             const fluxL = getFluxNbr(idx - 1, dx);
             let fluxR = 0;
-            if (boundaryType === "fixed") fluxR = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            if (boundaryType === "fixed") fluxR = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
             else if (boundaryType === "convective") fluxR = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
             fluxX = (fluxR + fluxL) / dx;
           } else {
@@ -1011,13 +1030,13 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           if (j === 0) {
             const fluxB = getFluxNbr(idx + N, dx);
             let fluxT = 0;
-            if (boundaryType === "fixed") fluxT = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            if (boundaryType === "fixed") fluxT = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
             else if (boundaryType === "convective") fluxT = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
             fluxY = (fluxB + fluxT) / dx;
           } else if (j === N - 1) {
             const fluxT = getFluxNbr(idx - N, dx);
             let fluxB = 0;
-            if (boundaryType === "fixed") fluxB = 2 * k_idx * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
+            if (boundaryType === "fixed") fluxB = 2 * k_idx_avg * (T_inf - (tData[idx] + tOld[idx]) * 0.5) / dx;
             else if (boundaryType === "convective") fluxB = h * (T_inf - (tData[idx] + tOld[idx]) * 0.5);
             fluxY = (fluxB + fluxT) / dx;
           } else {
@@ -1040,7 +1059,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
       let E_old = 0;
       for (let k = 0; k < N * N; k++) {
         const mat = getMat(matId[k]);
-        E_old += mat.rho * mat.cp * (tOld[k] - T_inf) * dx * dx;
+        const cp_old = getSpecificHeat(mat, tOld[k]);
+        E_old += mat.rho * cp_old * (tOld[k] - T_inf) * dx * dx * thickness;
       }
       const conservationError = (thermalEnergy - E_old) / dt - (energyInflow - energyOutflow);
 
@@ -1076,7 +1096,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [isPlaying, gridSize, dx, dt, solverMode, boundaryType, convectionCoeff, ambientTemp, stepsPerFrame, onTelemetryUpdate]);
+  }, [isPlaying, gridSize, dx, dt, thickness, solverMode, boundaryType, convectionCoeff, ambientTemp, stepsPerFrame, onTelemetryUpdate]);
 
   // ── Canvas Rendering ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -1214,7 +1234,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           const idx = j * N + i;
           const gx = (tData[idx + 1] - tData[idx - 1]) / (2 * dx);
           const gy = (tData[idx + N] - tData[idx - N]) / (2 * dx);
-          const k = getMat(matId[idx]).k;
+          const mat = getMat(matId[idx]);
+          const k = getConductivity(mat, tData[idx]);
           const mag = k * Math.sqrt(gx * gx + gy * gy);
           if (mag > maxFluxLocal) maxFluxLocal = mag;
         }
@@ -1226,7 +1247,8 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           const idx = j * N + i;
           const gx = (tData[idx + 1] - tData[idx - 1]) / (2 * dx);
           const gy = (tData[idx + N] - tData[idx - N]) / (2 * dx);
-          const k = getMat(matId[idx]).k;
+          const mat = getMat(matId[idx]);
+          const k = getConductivity(mat, tData[idx]);
           const qx = -k * gx, qy = -k * gy;
           const mag = Math.sqrt(qx * qx + qy * qy);
           if (mag < 0.01 * maxFluxLocal) continue;
@@ -1452,7 +1474,7 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
     const gradVal = sliceGradients[hoverIndex];
     const matIdx = materialIdRef.current[cellIdx];
     const mat = getMat(matIdx);
-    const flux = mat.k * Math.abs(gradVal);
+    const flux = getConductivity(mat, temp) * Math.abs(gradVal);
     const pos = hoverIndex * dx;
     return { temp, grad: gradVal, flux, matName: mat.name, pos };
   }, [hoverIndex, sliceIndex, sliceAxis, gridSize, dx, sliceGradients]);
