@@ -229,7 +229,7 @@ export const HeatTransferSimulator: React.FC = () => {
       onReset={handleReset}
       showValidationTab={expertiseLevel !== "beginner"}
     >
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden flex flex-col">
         {activeTab === "canvas" && (
           <div className="h-full flex flex-col xl:flex-row">
 
