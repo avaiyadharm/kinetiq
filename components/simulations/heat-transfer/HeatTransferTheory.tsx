@@ -136,17 +136,17 @@ export const HeatTransferTheory: React.FC<{ expertiseLevel: "beginner" | "interm
             <div className="bg-[#141416] border border-white/5 p-6 rounded-2xl">
               <h5 className="font-bold text-white uppercase tracking-widest text-xs mb-2 text-rose-400">Dirichlet (Fixed Temperature)</h5>
               <p className="text-sm text-white/60 mb-4">Enforces a prescribed temperature. Computationally, this acts as an infinite thermal reservoir capable of infinite heat flux.</p>
-              <MathEq block>T(x,y,t) = T<Sub>fixed</Sub> \quad (on Γ)</MathEq>
+              <MathEq block>T(x,y,t) = T<Sub>fixed</Sub> &nbsp;&nbsp;&nbsp; (on Γ)</MathEq>
             </div>
             <div className="bg-[#141416] border border-white/5 p-6 rounded-2xl">
               <h5 className="font-bold text-white uppercase tracking-widest text-xs mb-2 text-amber-400">Neumann (Adiabatic / Insulated)</h5>
               <p className="text-sm text-white/60 mb-4">Specifies zero heat flux normal to the boundary (<MathEq>n</MathEq>). Conserves total energy within the closed system.</p>
-              <MathEq block><MathFrac num="∂T" den="∂n" /> = 0 \quad (on Γ)</MathEq>
+              <MathEq block><MathFrac num="∂T" den="∂n" /> = 0 &nbsp;&nbsp;&nbsp; (on Γ)</MathEq>
             </div>
             <div className="bg-[#141416] border border-white/5 p-6 rounded-2xl">
               <h5 className="font-bold text-white uppercase tracking-widest text-xs mb-2 text-cyan-400">Robin (Convective Cooling)</h5>
               <p className="text-sm text-white/60 mb-4">Couples conduction at the surface to a convective ambient fluid <MathEq>T<Sub>∞</Sub></MathEq> via the heat transfer coefficient <MathEq>h</MathEq>. The solver linearizes radiation heat transfer into an effective convective term.</p>
-              <MathEq block>-k <MathFrac num="∂T" den="∂n" /> = h(T - T<Sub>∞</Sub>) \quad (on Γ)</MathEq>
+              <MathEq block>-k <MathFrac num="∂T" den="∂n" /> = h(T - T<Sub>∞</Sub>) &nbsp;&nbsp;&nbsp; (on Γ)</MathEq>
             </div>
           </div>
         </section>
@@ -166,7 +166,7 @@ export const HeatTransferTheory: React.FC<{ expertiseLevel: "beginner" | "interm
             The transient simulator utilizes the implicit Crank-Nicolson scheme, which averages the explicit (Forward Euler) and fully implicit (Backward Euler) derivatives in time. This guarantees unconditional stability and second-order temporal accuracy <MathEq>O(Δt²)</MathEq>:
           </p>
           <MathEq block label="Crank-Nicolson Step">
-            <MathFrac num={<>T<Sub>i,j</Sub><Sup>n+1</Sup> - T<Sub>i,j</Sub><Sup>n</Sup></>} den="Δt" /> = \frac{"{"}α{"}"}{"{"}2{"}"} \left( ∇²T<Sub>i,j</Sub><Sup>n+1</Sup> + ∇²T<Sub>i,j</Sub><Sup>n</Sup> \right)
+            <MathFrac num={<>T<Sub>i,j</Sub><Sup>n+1</Sup> - T<Sub>i,j</Sub><Sup>n</Sup></>} den="Δt" /> = <MathFrac num="α" den="2" /> ( ∇²T<Sub>i,j</Sub><Sup>n+1</Sup> + ∇²T<Sub>i,j</Sub><Sup>n</Sup> )
           </MathEq>
 
           <h4 className="text-sm font-bold text-teal-400 uppercase tracking-widest mt-10 mb-4">Alternating Direction Implicit (ADI) Formulation</h4>
@@ -175,10 +175,10 @@ export const HeatTransferTheory: React.FC<{ expertiseLevel: "beginner" | "interm
           </p>
           <div className="space-y-4">
             <MathEq block label="Sweep 1 (Implicit in X)">
-              <MathFrac num={<>T<Sup>n+1/2</Sup> - T<Sup>n</Sup></>} den="Δt/2" /> = α \left( δ<Sub>x</Sub><Sup>2</Sup> T<Sup>n+1/2</Sup> + δ<Sub>y</Sub><Sup>2</Sup> T<Sup>n</Sup> \right)
+              <MathFrac num={<>T<Sup>n+1/2</Sup> - T<Sup>n</Sup></>} den="Δt/2" /> = α ( δ<Sub>x</Sub><Sup>2</Sup> T<Sup>n+1/2</Sup> + δ<Sub>y</Sub><Sup>2</Sup> T<Sup>n</Sup> )
             </MathEq>
             <MathEq block label="Sweep 2 (Implicit in Y)">
-              <MathFrac num={<>T<Sup>n+1</Sup> - T<Sup>n+1/2</Sup></>} den="Δt/2" /> = α \left( δ<Sub>x</Sub><Sup>2</Sup> T<Sup>n+1/2</Sup> + δ<Sub>y</Sub><Sup>2</Sup> T<Sup>n+1</Sup> \right)
+              <MathFrac num={<>T<Sup>n+1</Sup> - T<Sup>n+1/2</Sup></>} den="Δt/2" /> = α ( δ<Sub>x</Sub><Sup>2</Sup> T<Sup>n+1/2</Sup> + δ<Sub>y</Sub><Sup>2</Sup> T<Sup>n+1</Sup> )
             </MathEq>
           </div>
           <p className="text-sm text-white/70 leading-relaxed mt-6">
@@ -199,7 +199,7 @@ export const HeatTransferTheory: React.FC<{ expertiseLevel: "beginner" | "interm
             For standard explicit finite difference (FTCS) schemes in 2D, von Neumann stability analysis demands that the spectral radius of the amplification matrix remains less than or equal to unity, yielding the explicit stability constraint:
           </p>
           <MathEq block label="Explicit Stability Limit">
-            F<Sub>o</Sub> ≤ \frac{"{"}1{"}"}{"{"}4{"}"}
+            F<Sub>o</Sub> ≤ <MathFrac num="1" den="4" />
           </MathEq>
           <p className="text-sm text-white/70 leading-relaxed mt-6">
             Exceeding this limit in explicit schemes causes non-physical oscillatory divergence. However, because our numerical engine leverages the implicit ADI formulation, the scheme is <strong>unconditionally stable</strong> for any <MathEq>F<Sub>o</Sub></MathEq>.

@@ -1,8 +1,36 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Play, Pause, RotateCcw, ShieldCheck, HelpCircle, LineChart, TrendingUp, Cpu } from "lucide-react";
+import { Play, Pause, RotateCcw, ShieldCheck, HelpCircle, LineChart, TrendingUp, Cpu, BookOpen, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ─── Mathematical Typography Components ──────────────────────────────────────
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.3em] font-serif">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.3em] font-serif">{children}</sup>;
+
+const MathEq = ({ children, block = false, label }: { children: React.ReactNode, block?: boolean, label?: string }) => {
+  if (!block) {
+    return <span className="font-serif italic mx-0.5 text-slate-200 tracking-wide">{children}</span>;
+  }
+  return (
+    <div className="my-5 relative group w-full">
+      {label && <div className="absolute -top-2.5 left-4 bg-[#18181b] px-2 text-[8px] uppercase tracking-[0.2em] text-teal-500 font-black z-10 shadow-sm">{label}</div>}
+      <div className="bg-black/40 border border-white/10 rounded-xl py-5 px-4 flex flex-col items-center justify-center overflow-x-auto shadow-inner relative">
+        <div className="font-serif text-[13px] tracking-wider text-white whitespace-nowrap flex items-center gap-1">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MathFrac = ({ num, den }: { num: React.ReactNode, den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-1 font-serif text-[0.85em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[2px] mb-[2px] px-0.5">{num}</span>
+    <span className="pt-[1px] px-0.5">{den}</span>
+  </span>
+);
+
 
 // ─── Validation Case Definitions ─────────────────────────────────────────────
 type CaseId = "gaussian" | "slab" | "laplace" | "conservation" | "mms" | "point";
@@ -482,12 +510,12 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
     return () => cancelAnimationFrame(animId);
   }, [isPlaying, caseId, N, dt, stepsPerFrame, simTime, solveStep, updateAnalytical]);
 
-  // Compute L2 and Max Errors
   const stats = useMemo(() => {
     const num = tempNumRef.current;
     const ana = tempAnaRef.current;
-    if (!num || !ana) return { l2: 0, max: 0, consError: 0, initialEnergy: 0, currentEnergy: 0 };
+    if (!num || !ana) return { l1: 0, l2: 0, max: 0, consError: 0, initialEnergy: 0, currentEnergy: 0 };
     
+    let sumAbs = 0;
     let sumSq = 0;
     let maxErr = 0;
     
@@ -498,8 +526,9 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
     
     for (let k = 0; k < N * N; k++) {
       const diff = num[k] - ana[k];
-      sumSq += diff * diff;
       const absDiff = Math.abs(diff);
+      sumAbs += absDiff;
+      sumSq += diff * diff;
       if (absDiff > maxErr) maxErr = absDiff;
 
       // Energy integral relative to ambient: E = rho * cp * (T - T_inf) * dx * dy * thickness
@@ -513,10 +542,11 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
       energyCurr += activeCase.rho * activeCase.cp * (num[k] - T_inf) * gridDx * gridDx * thickness;
     }
     
+    const l1 = sumAbs / (N * N);
     const l2 = Math.sqrt(sumSq / (N * N));
     const consError = energyCurr - energyInit;
 
-    return { l2, max: maxErr, consError, initialEnergy: energyInit, currentEnergy: energyCurr };
+    return { l1, l2, max: maxErr, consError, initialEnergy: energyInit, currentEnergy: energyCurr };
   }, [simTime, N, caseId, activeCase.rho, activeCase.cp, T_0]);
 
   // Grid Refinement Convergence Study (executed on-demand)
@@ -752,10 +782,10 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
         <div>
           <div className="text-[10px] font-bold text-teal-400 uppercase tracking-[0.2em] mb-1">PDE Solver Validation Module</div>
           <h2 className="text-xl font-bold tracking-tight text-white uppercase font-display">
-            Analytical Benchmark Suite
+            Computational PDE Verification Suite
           </h2>
           <p className="text-[11.5px] text-white/40 leading-relaxed mt-1 max-w-2xl">
-            Compare numerical results side-by-side with exact mathematical boundary-value solutions to establish the absolute correctness of our Alternating Direction Implicit (ADI) stencil.
+            Mathematically rigorous benchmarking of the Alternating Direction Implicit (ADI) finite-difference engine against exact analytical solutions.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -781,18 +811,16 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
         </div>
       </div>
 
-      {/* Main Validation Panel */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         
-        {/* Controls Card */}
-        <div className="xl:col-span-1 bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-5 flex flex-col justify-between">
-          <div className="space-y-4">
+        {/* Left Col: Config & Mathematical Formulation */}
+        <div className="xl:col-span-1 space-y-6">
+          <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-5">
             <div className="flex items-center gap-2.5 pb-3 border-b border-white/5">
               <Cpu className="w-4.5 h-4.5 text-teal-400" />
               <span className="text-[10px] font-black uppercase tracking-wider text-white">Validation Config</span>
             </div>
 
-            {/* Validation case select */}
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Selected Case</label>
               <select
@@ -806,7 +834,6 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
               </select>
             </div>
 
-            {/* Mesh resolution select */}
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Grid Resolution (N)</label>
               <div className="grid grid-cols-3 gap-2 bg-black/40 p-1 rounded-xl border border-white/5">
@@ -825,7 +852,6 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
               </div>
             </div>
 
-            {/* Timestep selection */}
             {caseId !== "laplace" && (
               <div className="space-y-1.5">
                 <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Time Step (Δt)</label>
@@ -845,238 +871,198 @@ export const HeatTransferValidation: React.FC<{ expertiseLevel: "beginner" | "in
                 </div>
               </div>
             )}
-
-            {/* Speeds selector */}
-            {caseId !== "laplace" && (
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Simulation Speed</label>
-                <div className="grid grid-cols-4 gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5">
-                  {[1, 2, 5, 10].map(sp => (
-                    <button
-                      key={sp}
-                      onClick={() => setStepsPerFrame(sp)}
-                      className={cn(
-                        "py-1.5 rounded-lg text-[10px] font-bold transition-all",
-                        stepsPerFrame === sp ? "bg-teal-500 text-white" : "text-white/40 hover:text-white"
-                      )}
-                    >
-                      {sp}x
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Description HUD */}
-          <div className="bg-black/30 border border-white/5 rounded-2xl p-4 space-y-2 mt-4">
-            <div className="text-[8.5px] text-white/30 uppercase tracking-wider font-bold">Physics Diagnostic</div>
-            <div className="text-[10px] text-white/70 leading-normal font-mono">
-              Material: <span className="text-teal-400">{activeCase.material}</span><br />
-              Conductivity k: <span className="text-teal-400">{activeCase.k} W/mK</span><br />
-              Diffusivity α: <span className="text-teal-400">{activeCase.alpha.toExponential(3)} m²/s</span>
+          <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
+              <BookOpen className="w-4.5 h-4.5 text-teal-400" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-white">PDE Formulation</span>
             </div>
-            <p className="text-[10px] text-white/40 leading-normal pt-1.5 border-t border-white/5">
-              {activeCase.description}
-            </p>
-          </div>
-        </div>
-
-        {/* Canvases View (Side-by-side heatmaps) */}
-        <div className="xl:col-span-3 bg-[#18181b] border border-white/5 rounded-3xl p-5 flex flex-col justify-between space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-white/5">
-            <ShieldCheck className="w-4.5 h-4.5 text-teal-400" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-white">Spatial Error Verification Map</span>
-            <span className="ml-auto text-[10px] font-mono text-teal-400 font-bold bg-teal-400/10 px-2 py-0.5 rounded-lg">
-              {caseId === "laplace" ? `Steady-State Iterations` : `Simulation Time: ${simTime.toFixed(3)} s`}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
             
-            {/* Numerical canvas */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-[10px] text-white/50 uppercase tracking-wider font-bold">1. Numerical Solver</div>
-              <div className="aspect-square w-full max-w-[210px] border border-teal-500/20 bg-black rounded-2xl overflow-hidden flex items-center justify-center p-2">
-                <canvas ref={canvasNumRef} width={200} height={200} className="w-full h-full rounded-xl" style={{ imageRendering: "pixelated" }} />
-              </div>
-              <div className="text-[8px] text-white/20 font-mono">ADI Crank-Nicolson Grid</div>
-            </div>
+            <p className="text-[10px] text-white/60 leading-relaxed font-mono">
+              <strong>Material:</strong> <span className="text-teal-400">{activeCase.material}</span><br />
+              α = {activeCase.alpha.toExponential(3)} m²/s
+            </p>
 
-            {/* Analytical canvas */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-[10px] text-white/50 uppercase tracking-wider font-bold">2. Analytical Solution</div>
-              <div className="aspect-square w-full max-w-[210px] border border-indigo-500/20 bg-black rounded-2xl overflow-hidden flex items-center justify-center p-2">
-                <canvas ref={canvasAnaRef} width={200} height={200} className="w-full h-full rounded-xl" style={{ imageRendering: "pixelated" }} />
-              </div>
-              <div className="text-[8px] text-white/20 font-mono">Exact Fourier Expansion</div>
-            </div>
+            <MathEq block label="Governing PDE">
+              <MathFrac num="∂T" den="∂t" /> = α ∇²T
+            </MathEq>
 
-            {/* Spatial Error canvas */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-[10px] text-white/50 uppercase tracking-wider font-bold text-rose-400">3. Spatial Error (Absolute)</div>
-              <div className="aspect-square w-full max-w-[210px] border border-rose-500/20 bg-black rounded-2xl overflow-hidden flex items-center justify-center p-2">
-                <canvas ref={canvasErrRef} width={200} height={200} className="w-full h-full rounded-xl" style={{ imageRendering: "pixelated" }} />
-              </div>
-              <div className="text-[8px] text-white/20 font-mono">|T_num - T_ana| Error Spectrum</div>
-            </div>
-
-          </div>
-        </div>
-
-      </div>
-
-      {/* Quantitative Plots & Error Analysis System */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        {/* Error metrics card */}
-        <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-white/5">
-            <LineChart className="w-4 h-4 text-rose-400" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-white">Quantitative Error Analysis</span>
-          </div>
-          <div className="space-y-3 pt-1">
-            <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-              <span className="text-[10.5px] text-white/50">L₂ Error Norm (RMS):</span>
-              <span className="text-xs font-mono font-bold text-rose-400">{stats.l2.toExponential(4)}</span>
-            </div>
-            <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-              <span className="text-[10.5px] text-white/50">L∞ Max Error Norm (Peak):</span>
-              <span className="text-xs font-mono font-bold text-rose-400">{stats.max.toExponential(4)} °C</span>
-            </div>
-            {caseId === "conservation" ? (
+            {caseId === "gaussian" && (
               <>
-                <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-                  <span className="text-[10.5px] text-white/50">Initial Energy E(0):</span>
-                  <span className="text-xs font-mono font-bold text-pink-400">{stats.initialEnergy.toExponential(4)} J</span>
-                </div>
-                <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
-                  <span className="text-[10.5px] text-white/50">Current Energy E(t):</span>
-                  <span className="text-xs font-mono font-bold text-pink-400">{stats.currentEnergy.toExponential(4)} J</span>
-                </div>
-                <div className="flex justify-between items-baseline py-1">
-                  <span className="text-[10.5px] text-white/50">Conservation Error ΔE:</span>
-                  <span className={cn("text-xs font-mono font-bold", Math.abs(stats.consError) < 1e-8 ? "text-emerald-400" : "text-amber-400")}>
-                    {stats.consError.toExponential(4)} J
-                  </span>
+                <MathEq block label="Exact Analytical Form">
+                  T(r,t) = T<Sub>∞</Sub> + <MathFrac num="Q" den="4πα t" /> exp(-<MathFrac num="r²" den="4α t" />)
+                </MathEq>
+                <div className="p-3 bg-rose-500/10 border-l-2 border-rose-500 text-[9px] text-rose-300">
+                  <strong>Boundary Consistency Warning:</strong> Analytical form assumes infinite domain. Numerical solver uses fixed finite Dirichlet boundaries. Error will grow near edges as diffusion radius increases.
                 </div>
               </>
-            ) : (
-              <div className="text-[10px] text-white/30 leading-normal leading-relaxed pt-2">
-                Under Dirichlet fixed boundary conditions, energy is exchanged with the environment. L₂ norm represents spatial convergence accuracy across {N}² computational nodes.
+            )}
+            {caseId === "slab" && (
+              <MathEq block label="1D Analytical Form">
+                T(x,t) = T<Sub>∞</Sub> + T<Sub>0</Sub> sin(<MathFrac num="π x" den="L" />) exp(-α(<MathFrac num="π" den="L" />)² t)
+              </MathEq>
+            )}
+            {caseId === "mms" && (
+              <MathEq block label="MMS Decay Mode">
+                T(x,y,t) = ... exp(-2α(<MathFrac num="π" den="L" />)² t)
+              </MathEq>
+            )}
+            {caseId === "laplace" && (
+              <MathEq block label="Harmonic Limit">
+                ∇²T = 0 → T(x,y) = Σ C<Sub>n</Sub> sin(...) sinh(...)
+              </MathEq>
+            )}
+            {caseId === "point" && (
+              <MathEq block label="Dirac Point Heat Kernel">
+                G(x,y,t) = <MathFrac num="1" den="4πα t" /> exp(-<MathFrac num="x² + y²" den="4α t" />)
+              </MathEq>
+            )}
+          </div>
+        </div>
+
+        {/* Right Col: Canvases and Metrics */}
+        <div className="xl:col-span-3 space-y-6">
+          <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 flex flex-col space-y-4">
+            <div className="flex items-center gap-2 pb-3 border-b border-white/5">
+              <ShieldCheck className="w-4.5 h-4.5 text-teal-400" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-white">Operator Validation & Error Fields</span>
+              <span className="ml-auto text-[10px] font-mono text-teal-400 font-bold bg-teal-400/10 px-2 py-0.5 rounded-lg">
+                {caseId === "laplace" ? `Steady-State Solver` : `Simulation Time: ${simTime.toFixed(3)} s`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-[10px] text-white/50 uppercase tracking-wider font-bold">Numerical Discretization</div>
+                <div className="aspect-square w-full max-w-[250px] border border-teal-500/20 bg-black rounded-2xl overflow-hidden flex items-center justify-center p-2">
+                  <canvas ref={canvasNumRef} width={200} height={200} className="w-full h-full rounded-xl" style={{ imageRendering: "pixelated" }} />
+                </div>
+                <div className="text-[8px] text-white/30 font-mono text-center">ADI Crank-Nicolson O(Δt², Δx²)</div>
               </div>
-            )}
+
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-[10px] text-white/50 uppercase tracking-wider font-bold">Exact Solution</div>
+                <div className="aspect-square w-full max-w-[250px] border border-indigo-500/20 bg-black rounded-2xl overflow-hidden flex items-center justify-center p-2">
+                  <canvas ref={canvasAnaRef} width={200} height={200} className="w-full h-full rounded-xl" style={{ imageRendering: "pixelated" }} />
+                </div>
+                <div className="text-[8px] text-white/30 font-mono text-center">Continuous T(x,y,t) Evaluation</div>
+              </div>
+
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-[10px] text-white/50 uppercase tracking-wider font-bold text-rose-400">Absolute Truncation Error</div>
+                <div className="aspect-square w-full max-w-[250px] border border-rose-500/20 bg-black rounded-2xl overflow-hidden flex items-center justify-center p-2">
+                  <canvas ref={canvasErrRef} width={200} height={200} className="w-full h-full rounded-xl" style={{ imageRendering: "pixelated" }} />
+                </div>
+                <div className="text-[8px] text-white/30 font-mono text-center">|T<Sub>num</Sub> - T<Sub>ana</Sub>| Field</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+                <LineChart className="w-4 h-4 text-rose-400" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-white">Multi-Norm Residuals</span>
+              </div>
+              <div className="space-y-3 pt-1">
+                <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
+                  <span className="text-[10px] font-mono text-white/50">L₁ Norm (Mean):</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">{stats.l1.toExponential(4)}</span>
+                </div>
+                <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
+                  <span className="text-[10px] font-mono text-white/50">L₂ Norm (RMS):</span>
+                  <span className="text-xs font-mono font-bold text-rose-400">{stats.l2.toExponential(4)}</span>
+                </div>
+                <div className="flex justify-between items-baseline py-1 border-b border-white/[0.04]">
+                  <span className="text-[10px] font-mono text-white/50">L∞ Norm (Max):</span>
+                  <span className="text-xs font-mono font-bold text-purple-400">{stats.max.toExponential(4)}</span>
+                </div>
+                {caseId === "conservation" && (
+                  <div className="flex justify-between items-baseline py-1">
+                    <span className="text-[10.5px] text-white/50">Energy ΔE:</span>
+                    <span className={cn("text-xs font-mono font-bold", Math.abs(stats.consError) < 1e-8 ? "text-emerald-400" : "text-amber-400")}>
+                      {stats.consError.toExponential(4)} J
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-teal-400" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-white">Centerline Profile</span>
+                </div>
+              </div>
+              <div className="h-32 relative pt-2">
+                {profilePlots.pathNum ? (
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 300 100" preserveAspectRatio="none">
+                    {[20, 50, 80].map(y => (
+                      <line key={y} x1="10" y1={y} x2="290" y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
+                    ))}
+                    <path d={profilePlots.pathNum} fill="none" stroke="#0d9488" strokeWidth="1.5" />
+                    <path d={profilePlots.pathAna} fill="none" stroke="#6366f1" strokeWidth="1.5" strokeDasharray="3,3" />
+                    <text x="12" y="16" fill="rgba(255,255,255,0.4)" className="text-[7px] font-mono font-bold">{profilePlots.maxVal.toFixed(1)}</text>
+                    <text x="12" y="94" fill="rgba(255,255,255,0.4)" className="text-[7px] font-mono font-bold">{profilePlots.minVal.toFixed(1)}</text>
+                  </svg>
+                ) : (
+                  <div className="text-white/20 text-center py-10 text-xs">No profile data</div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-white">Grid Convergence</span>
+                </div>
+                <button
+                  onClick={runConvergenceStudy}
+                  className="px-2 py-0.5 bg-white/5 border border-white/5 text-[9px] font-bold text-white/50 hover:text-white rounded-md transition-all active:scale-95"
+                >
+                  Re-Run
+                </button>
+              </div>
+              <div className="h-32 relative pt-2">
+                {convergencePlot ? (
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 300 100" preserveAspectRatio="none">
+                    {[20, 50, 80].map(y => (
+                      <line key={y} x1="20" y1={y} x2="280" y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
+                    ))}
+                    <path d={convergencePlot} fill="none" stroke="#10b981" strokeWidth="1.5" />
+                    {refinementErrors.map((pt) => {
+                      const W = 300, H = 100, padX = 20, padY = 15;
+                      const logMinX = Math.log(16), logMaxX = Math.log(64);
+                      const errors = refinementErrors.map(e => e.err);
+                      const logMinY = Math.log(Math.min(...errors, 1e-6)), logMaxY = Math.log(Math.max(...errors, 1e-1));
+                      const scaleX = (W - 2 * padX) / (logMaxX - logMinX);
+                      const scaleY = (logMaxY - logMinY) > 0.01 ? (H - 2 * padY) / (logMaxY - logMinY) : 1;
+                      const px = padX + (Math.log(pt.N) - logMinX) * scaleX;
+                      const py = H - padY - (Math.log(Math.max(pt.err, 1e-8)) - logMinY) * scaleY;
+                      return (
+                        <g key={pt.N}>
+                          <circle cx={px} cy={py} r="2.5" fill="#10b981" stroke="white" strokeWidth="0.5" />
+                          <text x={px} y={py - 6} fill="rgba(255,255,255,0.6)" className="text-[6.5px] font-mono" textAnchor="middle">N={pt.N}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                ) : (
+                  <div className="text-white/20 text-center py-10 text-xs">No data</div>
+                )}
+              </div>
+              <div className="flex justify-between items-center text-[9px] pt-1.5 border-t border-white/[0.04]">
+                <span className="text-white/40 uppercase font-bold tracking-wider">Spatial Order p:</span>
+                <span className="font-mono font-black text-emerald-400 text-[10.5px]">
+                  {convergenceOrder !== null ? `${convergenceOrder.toFixed(2)} (O(Δx²))` : "N/A"}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* 1D Centerline Slice Plot */}
-        <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
-          <div className="flex justify-between items-center pb-2 border-b border-white/5">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-teal-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-white">Centerline Profile Comparison</span>
-            </div>
-            <div className="text-[8px] font-mono text-white/40">Slice at y = 0.50m</div>
-          </div>
-          <div className="h-32 relative pt-2">
-            {profilePlots.pathNum ? (
-              <svg className="w-full h-full overflow-visible" viewBox="0 0 300 100" preserveAspectRatio="none">
-                {/* Gridlines */}
-                {[20, 50, 80].map(y => (
-                  <line key={y} x1="10" y1={y} x2="290" y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
-                ))}
-                {/* Numerical curve (Teal) */}
-                <path d={profilePlots.pathNum} fill="none" stroke="#0d9488" strokeWidth="1.5" />
-                {/* Analytical curve (Indigo dash) */}
-                <path d={profilePlots.pathAna} fill="none" stroke="#6366f1" strokeWidth="1.5" strokeDasharray="3,3" />
-
-                {/* Min / Max Labels */}
-                <text x="12" y="16" fill="rgba(255,255,255,0.4)" className="text-[7px] font-mono font-bold">
-                  {profilePlots.maxVal.toFixed(1)} °C
-                </text>
-                <text x="12" y="94" fill="rgba(255,255,255,0.4)" className="text-[7px] font-mono font-bold">
-                  {profilePlots.minVal.toFixed(1)} °C
-                </text>
-              </svg>
-            ) : (
-              <div className="text-white/20 text-center py-10 text-xs">No profile data available</div>
-            )}
-          </div>
-          <div className="flex justify-center gap-5 text-[9px] font-bold uppercase tracking-wider pt-1 border-t border-white/[0.04]">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-1 bg-teal-500 rounded" />
-              <span className="text-white/50">Numerical (ADI)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-0.5 border-t border-dashed border-indigo-400" />
-              <span className="text-white/50">Analytical Exact</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Mesh Convergence Study Log-Log Chart */}
-        <div className="bg-[#18181b] border border-white/5 rounded-3xl p-5 space-y-4">
-          <div className="flex justify-between items-center pb-2 border-b border-white/5">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-white">Grid Convergence Study</span>
-            </div>
-            <button
-              onClick={runConvergenceStudy}
-              className="px-2 py-0.5 bg-white/5 border border-white/5 text-[9px] font-bold text-white/50 hover:text-white rounded-md transition-all active:scale-95"
-            >
-              Re-Run
-            </button>
-          </div>
-          <div className="h-32 relative pt-2">
-            {convergencePlot ? (
-              <svg className="w-full h-full overflow-visible" viewBox="0 0 300 100" preserveAspectRatio="none">
-                {/* Horizontal reference lines */}
-                {[20, 50, 80].map(y => (
-                  <line key={y} x1="20" y1={y} x2="280" y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
-                ))}
-                
-                {/* Spatial error curve (Teal line with circles) */}
-                <path d={convergencePlot} fill="none" stroke="#10b981" strokeWidth="1.5" />
-                {refinementErrors.map((pt, i) => {
-                  // Recompute px/py coordinates to place data point circles exactly on the curve
-                  const W = 300, H = 100;
-                  const padX = 20, padY = 15;
-                  const logMinX = Math.log(16);
-                  const logMaxX = Math.log(64);
-                  const dxLog = logMaxX - logMinX;
-                  const errors = refinementErrors.map(e => e.err);
-                  const logMinY = Math.log(Math.min(...errors, 1e-6));
-                  const logMaxY = Math.log(Math.max(...errors, 1e-1));
-                  const dyLog = logMaxY - logMinY;
-                  const scaleX = (W - 2 * padX) / dxLog;
-                  const scaleY = dyLog > 0.01 ? (H - 2 * padY) / dyLog : 1;
-                  const lx = Math.log(pt.N);
-                  const ly = Math.log(Math.max(pt.err, 1e-8));
-                  const px = padX + (lx - logMinX) * scaleX;
-                  const py = H - padY - (ly - logMinY) * scaleY;
-                  return (
-                    <g key={pt.N}>
-                      <circle cx={px} cy={py} r="2.5" fill="#10b981" stroke="white" strokeWidth="0.5" />
-                      <text x={px} y={py - 6} fill="rgba(255,255,255,0.6)" className="text-[6.5px] font-mono" textAnchor="middle">
-                        N={pt.N}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            ) : (
-              <div className="text-white/20 text-center py-10 text-xs">No convergence data available</div>
-            )}
-          </div>
-          <div className="flex justify-between items-center text-[9px] pt-1.5 border-t border-white/[0.04]">
-            <span className="text-white/40 uppercase font-bold tracking-wider">Spatial Convergence Order:</span>
-            <span className="font-mono font-black text-emerald-400 text-[10.5px]">
-              {convergenceOrder !== null ? `${convergenceOrder.toFixed(2)} (O(Δx²))` : "N/A"}
-            </span>
-          </div>
-        </div>
-
       </div>
     </div>
   );
