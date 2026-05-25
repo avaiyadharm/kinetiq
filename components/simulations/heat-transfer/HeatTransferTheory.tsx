@@ -1,218 +1,217 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { cn } from "@/lib/utils";
-import { BookOpen, HelpCircle, GraduationCap } from "lucide-react";
+import { BookOpen, Activity, Box, Variable, Layers, Cpu } from "lucide-react";
+
+// Scientific Typography Components
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.3em] font-serif">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.3em] font-serif">{children}</sup>;
+
+const MathEq = ({ children, block = false, label }: { children: React.ReactNode, block?: boolean, label?: string }) => {
+  if (!block) {
+    return <span className="font-serif italic mx-0.5 text-slate-200 tracking-wide">{children}</span>;
+  }
+  return (
+    <div className="my-8 relative group w-full">
+      {label && <div className="absolute -top-3 left-6 bg-[#18181b] px-3 text-[9px] uppercase tracking-[0.2em] text-teal-500 font-black z-10 shadow-sm">{label}</div>}
+      <div className="bg-black/40 border border-white/10 rounded-2xl py-8 px-6 flex items-center justify-center overflow-x-auto shadow-inner relative">
+        <div className="font-serif text-lg tracking-wider text-white whitespace-nowrap flex items-center gap-1">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MathFrac = ({ num, den }: { num: React.ReactNode, den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-2 font-serif text-[0.9em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[3px] mb-[3px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
+const SectionHeader = ({ title, icon: Icon, id }: { title: string, icon: React.ElementType, id?: string }) => (
+  <div className="flex items-center gap-3 border-b border-white/10 pb-4 mt-16 mb-8" id={id}>
+    <div className="p-2.5 bg-teal-500/10 rounded-xl text-teal-400 border border-teal-500/20 shadow-[0_0_15px_rgba(20,184,166,0.15)]">
+      <Icon className="w-5 h-5" />
+    </div>
+    <h3 className="text-xl font-black font-display uppercase tracking-widest text-white">{title}</h3>
+  </div>
+);
+
+const DefItem = ({ term, sym, unit, desc }: { term: string, sym: React.ReactNode, unit: string, desc: string }) => (
+  <div className="flex flex-col md:flex-row md:items-baseline gap-3 py-4 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-3 rounded-lg transition-colors">
+    <div className="md:w-1/3 flex items-baseline gap-2 shrink-0">
+      <span className="font-bold text-white/90 text-sm tracking-wide">{term}</span>
+      <span className="font-serif italic text-teal-400 font-bold">{sym}</span>
+    </div>
+    <div className="md:w-2/3 flex flex-col gap-1.5">
+      <span className="text-[10px] font-mono text-white/50 bg-white/5 w-fit px-2 py-0.5 rounded uppercase tracking-widest border border-white/5">{unit}</span>
+      <span className="text-sm text-white/60 leading-relaxed">{desc}</span>
+    </div>
+  </div>
+);
 
 export const HeatTransferTheory: React.FC<{ expertiseLevel: "beginner" | "intermediate" | "expert" }> = ({ expertiseLevel }) => {
   return (
-    <div className="flex-1 p-8 bg-[#18181b] overflow-y-auto text-white">
-      <div className="max-w-4xl mx-auto w-full space-y-6 animate-fadeIn">
-        <div className="flex flex-col border-b border-white/5 pb-6">
-          <h2 className="text-xl font-bold font-display uppercase tracking-widest text-primary flex items-center gap-2">
-            <BookOpen className="w-5 h-5" /> Theoretical Basis & Thermal Dynamics
+    <div className="flex-1 p-6 md:p-10 lg:p-14 bg-[#18181b] overflow-y-auto text-white selection:bg-teal-500/30">
+      <div className="max-w-[900px] mx-auto w-full space-y-8 animate-fadeIn pb-24">
+        
+        {/* Header */}
+        <div className="flex flex-col border-b border-white/10 pb-10">
+          <div className="text-[10px] font-bold text-teal-500 uppercase tracking-[0.25em] mb-3">Computational Thermodynamics</div>
+          <h2 className="text-2xl md:text-3xl font-black font-display uppercase tracking-widest text-white flex items-center gap-4">
+            <BookOpen className="w-8 h-8 text-teal-400" /> Theoretical Basis & Numerical Formulation
           </h2>
-          <p className="text-xs text-white/50 mt-1">Explore the governing equations and numerical solvers behind heat conduction.</p>
+          <p className="text-sm md:text-base text-white/50 mt-5 leading-relaxed max-w-2xl font-serif">
+            A rigorous mathematical foundation and finite difference discretization theory driving the kinetic thermal solver.
+          </p>
         </div>
 
-        {/* Beginner Mode */}
-        {expertiseLevel === "beginner" && (
-          <div className="space-y-6 w-full animate-fadeIn">
-            <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-              <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">What is Heat Transfer?</h3>
-              <p className="text-sm text-white/80 leading-relaxed font-sans">
-                At the microscopic level, temperature represents the average kinetic energy of vibrating atoms and molecules. Heat is the thermal energy transferred between systems due to a temperature difference. Heat naturally flows from regions of hot temperatures (faster atomic vibrations) to cold temperatures (slower vibrations).
-              </p>
-              <p className="text-sm text-white/80 leading-relaxed font-sans">
-                There are three fundamental mechanisms of heat transfer:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                <div className="p-4 bg-black/40 border border-white/5 rounded-2xl">
-                  <span className="text-xs font-bold text-teal-400 uppercase tracking-widest block mb-2">1. Conduction</span>
-                  <p className="text-xs text-white/60 leading-relaxed">
-                    Direct transfer of energy between adjacent atoms through collisions. This is the dominant mode in solids. Metals are excellent conductors because free electrons help carry energy.
-                  </p>
-                </div>
-                <div className="p-4 bg-black/40 border border-white/5 rounded-2xl">
-                  <span className="text-xs font-bold text-amber-400 uppercase tracking-widest block mb-2">2. Convection</span>
-                  <p className="text-xs text-white/60 leading-relaxed">
-                    Transfer of heat by the physical movement of a fluid (liquid or gas). Warm fluid expands, becomes less dense, rises, and is replaced by cooler fluid, creating convection currents.
-                  </p>
-                </div>
-                <div className="p-4 bg-black/40 border border-white/5 rounded-2xl">
-                  <span className="text-xs font-bold text-rose-400 uppercase tracking-widest block mb-2">3. Radiation</span>
-                  <p className="text-xs text-white/60 leading-relaxed">
-                    Transfer of energy via electromagnetic waves (primarily infrared light). Unlike conduction and convection, radiation requires no physical medium and can travel through a vacuum.
-                  </p>
-                </div>
-              </div>
-            </div>
+        {/* 1. Governing Equations */}
+        <section>
+          <SectionHeader title="1. Governing Equations" icon={Activity} />
+          <p className="text-sm text-white/70 leading-relaxed mb-4">
+            Heat transfer within a continuum is strictly governed by the first law of thermodynamics (conservation of energy) combined with phenomenological transport laws.
+          </p>
 
-            <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-              <h3 className="text-base font-bold text-amber-400 uppercase tracking-wider font-display">Understanding the 2D Grid Simulation</h3>
-              <p className="text-sm text-white/80 leading-relaxed font-sans">
-                This simulation models 2D Thermal Conduction through a flat sheet of material. By drawing on the grid, you can construct custom experiments:
-              </p>
-              <div className="space-y-3 text-xs text-white/70">
-                <div className="flex items-start gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                  <span className="w-3 h-3 rounded-full bg-rose-500 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-rose-400 block">Heat Sources (Red Brush)</strong>
-                    Places a fixed-temperature hot node (e.g. 100°C). Heat will flow outward from this region into surrounding cooler cells.
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                  <span className="w-3 h-3 rounded-full bg-cyan-500 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-cyan-400 block">Cold Sinks (Blue Brush)</strong>
-                    Places a fixed-temperature cold node (e.g. 0°C). These act as thermal drains, absorbing heat and maintaining their low temperature.
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                  <span className="w-3 h-3 rounded-full bg-amber-500 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-amber-400 block">Conductivity Paint (Material Brush)</strong>
-                    Allows you to draw structures with different conductivities: Copper (very fast diffusion), Iron (intermediate), Wood/Insulator (very slow), or Vacuum (zero heat transfer).
-                  </div>
-                </div>
-              </div>
-            </div>
+          <h4 className="text-sm font-bold text-teal-400 uppercase tracking-widest mt-10 mb-4">Fourier's Law of Heat Conduction</h4>
+          <p className="text-sm text-white/70 leading-relaxed">
+            The fundamental constitutive relation for thermal conduction in an isotropic medium is Fourier's Law, which postulates that the local heat flux vector <MathEq>q</MathEq> is proportional to the negative temperature gradient:
+          </p>
+          <MathEq block label="Fourier's Law">
+            q = -k ∇T
+          </MathEq>
+          
+          <h4 className="text-sm font-bold text-teal-400 uppercase tracking-widest mt-10 mb-4">Conservation of Thermal Energy</h4>
+          <p className="text-sm text-white/70 leading-relaxed">
+            Applying the Reynolds Transport Theorem or a differential control volume analysis, the rate of change of stored thermal energy must balance the net heat flux divergence and volumetric heat generation <MathEq>Q</MathEq>:
+          </p>
+          <MathEq block label="Energy Conservation">
+            ρ C<Sub>p</Sub> <MathFrac num="∂T" den="∂t" /> = -∇ · q + Q
+          </MathEq>
+          <p className="text-sm text-white/70 leading-relaxed mt-4">
+            Substituting Fourier's Law yields the general Heat Diffusion Equation. For a homogeneous medium with constant thermal conductivity <MathEq>k</MathEq>, and assuming no internal generation (<MathEq>Q = 0</MathEq>), the equation simplifies to the parabolic parabolic PDE:
+          </p>
+          <MathEq block label="Heat Diffusion Equation">
+            <MathFrac num="∂T" den="∂t" /> = α ∇²T
+          </MathEq>
+        </section>
 
-            <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-              <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider font-display">Thermal Equilibrium</h3>
-              <p className="text-sm text-white/80 leading-relaxed font-sans">
-                If you leave the simulation running, heat will diffuse until the system reaches a steady-state (equilibrium). In this state, the temperature at each point no longer changes over time because the heat entering any sub-region is exactly equal to the heat leaving it.
-              </p>
+        {/* 2. Dimensional Analysis */}
+        <section>
+          <SectionHeader title="2. Dimensional Analysis" icon={Variable} />
+          <div className="bg-[#141416] border border-white/5 rounded-2xl p-2 shadow-lg">
+            <DefItem 
+              term="Heat Flux" sym="q" unit="W / m²"
+              desc="Vector quantity representing the rate of thermal energy transfer per unit cross-sectional area. The solver calculates this as the spatial gradient norm multiplied by local conductivity."
+            />
+            <DefItem 
+              term="Thermal Conductivity" sym="k" unit="W / (m · K)"
+              desc="Material property defining the ability to conduct heat. High conductivity implies rapid heat transfer (e.g., Copper). In the solver, interfacial conductivity employs a harmonic mean to preserve flux continuity."
+            />
+            <DefItem 
+              term="Density" sym="ρ" unit="kg / m³"
+              desc="Volumetric mass density of the continuum."
+            />
+            <DefItem 
+              term="Specific Heat Capacity" sym={<>C<Sub>p</Sub></>} unit="J / (kg · K)"
+              desc="Amount of thermal energy required to raise the temperature of a unit mass by one degree. The simulator accounts for temperature-dependent specific heat via exact integration."
+            />
+            <DefItem 
+              term="Thermal Diffusivity" sym="α" unit="m² / s"
+              desc="Defined as α = k / (ρ C_p). Represents how rapidly a material responds to changes in its thermal environment relative to its ability to store energy."
+            />
+          </div>
+        </section>
+
+        {/* 3. Boundary Constraints */}
+        <section>
+          <SectionHeader title="3. Boundary Constraints" icon={Box} />
+          <p className="text-sm text-white/70 leading-relaxed mb-6">
+            The parabolic PDE requires well-posed spatial constraints at the domain boundary <MathEq>Γ</MathEq>. The numerical solver rigorously implements three classical boundary conditions:
+          </p>
+          <div className="space-y-6">
+            <div className="bg-[#141416] border border-white/5 p-6 rounded-2xl">
+              <h5 className="font-bold text-white uppercase tracking-widest text-xs mb-2 text-rose-400">Dirichlet (Fixed Temperature)</h5>
+              <p className="text-sm text-white/60 mb-4">Enforces a prescribed temperature. Computationally, this acts as an infinite thermal reservoir capable of infinite heat flux.</p>
+              <MathEq block>T(x,y,t) = T<Sub>fixed</Sub> \quad (on Γ)</MathEq>
+            </div>
+            <div className="bg-[#141416] border border-white/5 p-6 rounded-2xl">
+              <h5 className="font-bold text-white uppercase tracking-widest text-xs mb-2 text-amber-400">Neumann (Adiabatic / Insulated)</h5>
+              <p className="text-sm text-white/60 mb-4">Specifies zero heat flux normal to the boundary (<MathEq>n</MathEq>). Conserves total energy within the closed system.</p>
+              <MathEq block><MathFrac num="∂T" den="∂n" /> = 0 \quad (on Γ)</MathEq>
+            </div>
+            <div className="bg-[#141416] border border-white/5 p-6 rounded-2xl">
+              <h5 className="font-bold text-white uppercase tracking-widest text-xs mb-2 text-cyan-400">Robin (Convective Cooling)</h5>
+              <p className="text-sm text-white/60 mb-4">Couples conduction at the surface to a convective ambient fluid <MathEq>T<Sub>∞</Sub></MathEq> via the heat transfer coefficient <MathEq>h</MathEq>. The solver linearizes radiation heat transfer into an effective convective term.</p>
+              <MathEq block>-k <MathFrac num="∂T" den="∂n" /> = h(T - T<Sub>∞</Sub>) \quad (on Γ)</MathEq>
             </div>
           </div>
-        )}
+        </section>
 
-        {/* Intermediate Mode */}
-        {expertiseLevel === "intermediate" && (
-          <div className="space-y-6 w-full animate-fadeIn">
-            <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-              <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">Fourier's Law & The Heat Equation</h3>
-              <p className="text-sm text-white/80 leading-relaxed">
-                The physics of thermal conduction is governed by two physical laws:
-              </p>
-              <div className="space-y-4 pt-2">
-                <div className="p-5 bg-black/40 border border-white/5 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold text-white uppercase tracking-widest block font-display">1. Fourier's Law of Heat Conduction</span>
-                  <p className="text-xs text-white/70 leading-relaxed">
-                    The local heat flux density vector q (amount of thermal energy flowing per unit area per unit time, measured in W/m²) is proportional to the negative temperature gradient:
-                  </p>
-                  <div className="font-mono text-xs text-teal-300 text-center py-2 bg-black/50 rounded-xl">
-                    q = -k · ∇T
-                  </div>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Where k is the material's thermal conductivity (W/(m·K)). The negative sign shows that heat flows down the temperature gradient (from hot to cold).
-                  </p>
-                </div>
+        {/* 4. Numerical Discretization */}
+        <section>
+          <SectionHeader title="4. Numerical Discretization" icon={Layers} />
+          <p className="text-sm text-white/70 leading-relaxed mb-4">
+            The continuous physical domain is discretized into a Cartesian mesh with uniform spacing <MathEq>Δx = Δy</MathEq>. The spatial Laplacian <MathEq>∇²T</MathEq> is approximated using second-order central finite differences:
+          </p>
+          <MathEq block label="Spatial Discretization">
+            ∇²T<Sub>i,j</Sub> ≈ <MathFrac num={<>T<Sub>i+1,j</Sub> - 2T<Sub>i,j</Sub> + T<Sub>i-1,j</Sub></>} den="Δx²" /> + <MathFrac num={<>T<Sub>i,j+1</Sub> - 2T<Sub>i,j</Sub> + T<Sub>i,j-1</Sub></>} den="Δy²" />
+          </MathEq>
+          
+          <h4 className="text-sm font-bold text-teal-400 uppercase tracking-widest mt-10 mb-4">Temporal Integration: Crank-Nicolson Method</h4>
+          <p className="text-sm text-white/70 leading-relaxed">
+            The transient simulator utilizes the implicit Crank-Nicolson scheme, which averages the explicit (Forward Euler) and fully implicit (Backward Euler) derivatives in time. This guarantees unconditional stability and second-order temporal accuracy <MathEq>O(Δt²)</MathEq>:
+          </p>
+          <MathEq block label="Crank-Nicolson Step">
+            <MathFrac num={<>T<Sub>i,j</Sub><Sup>n+1</Sup> - T<Sub>i,j</Sub><Sup>n</Sup></>} den="Δt" /> = \frac{"{"}α{"}"}{"{"}2{"}"} \left( ∇²T<Sub>i,j</Sub><Sup>n+1</Sup> + ∇²T<Sub>i,j</Sub><Sup>n</Sup> \right)
+          </MathEq>
 
-                <div className="p-5 bg-black/40 border border-white/5 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold text-white uppercase tracking-widest block font-display">2. Conservation of Energy</span>
-                  <p className="text-xs text-white/70 leading-relaxed">
-                    By stating that the rate of thermal energy storage in an infinitesimal volume must equal the net heat flow in, we obtain the Heat Diffusion Equation:
-                  </p>
-                  <div className="font-mono text-xs text-teal-300 text-center py-2 bg-black/50 rounded-xl">
-                    ρ · c_p · ∂T/∂t = ∇ · (k · ∇T)
-                  </div>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Where ρ is the material density (kg/m³) and c_p is the specific heat capacity (J/(kg·K)). For a uniform medium where conductivity k is constant, this simplifies to:
-                  </p>
-                  <div className="font-mono text-xs text-teal-300 text-center py-2 bg-black/50 rounded-xl">
-                    ∂T/∂t = α · ∇²T
-                  </div>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Where α = k / (ρ · c_p) is the thermal diffusivity (m²/s). Diffusivity measures how fast a material responds to thermal changes.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-              <h3 className="text-base font-bold text-cyan-400 uppercase tracking-wider font-display">Boundary Conditions</h3>
-              <p className="text-sm text-white/80 leading-relaxed">
-                The evolution and final state of temperature profiles depend entirely on the boundaries of the grid:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
-                <div className="p-4 bg-black/40 border border-white/5 rounded-xl space-y-1">
-                  <strong className="text-rose-400 block font-display">Fixed Temperature (Dirichlet)</strong>
-                  <p className="text-white/60">
-                    The boundary is held at a constant temperature (e.g. connected to a reservoir).
-                    T(boundary) = T_fixed
-                  </p>
-                </div>
-                <div className="p-4 bg-black/40 border border-white/5 rounded-xl space-y-1">
-                  <strong className="text-amber-400 block font-display">Insulated / Zero-Flux (Neumann)</strong>
-                  <p className="text-white/60">
-                    No heat can cross the boundary. Mathematically, the normal gradient is zero:
-                    ∂T/∂n = 0
-                  </p>
-                </div>
-                <div className="p-4 bg-black/40 border border-white/5 rounded-xl space-y-1">
-                  <strong className="text-cyan-400 block font-display">Convective Cooling (Mixed/Robin)</strong>
-                  <p className="text-white/60">
-                    Heat is lost to surrounding air at temperature T_amb proportional to heat transfer coefficient h:
-                    -k · ∂T/∂n = h · (T - T_amb)
-                  </p>
-                </div>
-              </div>
-            </div>
+          <h4 className="text-sm font-bold text-teal-400 uppercase tracking-widest mt-10 mb-4">Alternating Direction Implicit (ADI) Formulation</h4>
+          <p className="text-sm text-white/70 leading-relaxed">
+            Direct inversion of the full 2D implicit matrix is computationally prohibitive, requiring <MathEq>O(N³)</MathEq> operations. Instead, the solver employs the Peaceman-Rachford ADI algorithm, splitting the temporal step into two fractional sub-steps. This factorization reduces the operator to two tridiagonal matrices:
+          </p>
+          <div className="space-y-4">
+            <MathEq block label="Sweep 1 (Implicit in X)">
+              <MathFrac num={<>T<Sup>n+1/2</Sup> - T<Sup>n</Sup></>} den="Δt/2" /> = α \left( δ<Sub>x</Sub><Sup>2</Sup> T<Sup>n+1/2</Sup> + δ<Sub>y</Sub><Sup>2</Sup> T<Sup>n</Sup> \right)
+            </MathEq>
+            <MathEq block label="Sweep 2 (Implicit in Y)">
+              <MathFrac num={<>T<Sup>n+1</Sup> - T<Sup>n+1/2</Sup></>} den="Δt/2" /> = α \left( δ<Sub>x</Sub><Sup>2</Sup> T<Sup>n+1/2</Sup> + δ<Sub>y</Sub><Sup>2</Sup> T<Sup>n+1</Sup> \right)
+            </MathEq>
           </div>
-        )}
+          <p className="text-sm text-white/70 leading-relaxed mt-6">
+            Each directional sweep produces a block-tridiagonal system that is strictly diagonally dominant, solvable in linear <MathEq>O(N)</MathEq> time using the Thomas Algorithm (TDMA).
+          </p>
+        </section>
 
-        {/* Advanced Mode */}
-        {expertiseLevel === "expert" && (
-          <div className="space-y-6 w-full animate-fadeIn">
-            <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-              <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">Numerical Discretization</h3>
-              <p className="text-sm text-white/80 leading-relaxed font-sans">
-                Since analytical solutions to the heat equation only exist for simple geometries, we solve the partial differential equation (PDE) numerically on a grid with spacing Δx = Δy.
-              </p>
-
-              <div className="p-5 bg-black/40 border border-white/5 rounded-2xl space-y-3">
-                <span className="text-xs font-bold text-teal-400 uppercase tracking-widest block font-display">1. Transient Solver: FTCS Explicit Scheme</span>
-                <p className="text-xs text-white/70 leading-relaxed">
-                  We approximate the time derivative with a forward difference, and the spatial laplacian with a central second difference:
-                </p>
-                <div className="font-mono text-xs text-cyan-300 bg-black/50 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">
-{`T_ij^(n+1) = T_ij^n + Δt · [ (α_R · (T_i+1,j - T_ij) - α_L · (T_ij - T_i-1,j)) / Δx² 
-                 + (α_T · (T_i,j+1 - T_ij) - α_B · (T_ij - T_i,j-1)) / Δy² ]`}
-                </div>
-                <p className="text-xs text-white/50 leading-relaxed">
-                  Here, the thermal conductivities are averaged at cell faces (e.g. α_R = (α_i,j + α_i+1,j)/2) to correctly conserve heat energy across interfaces between different materials.
-                </p>
-              </div>
-
-              <div className="p-5 bg-black/40 border border-white/5 rounded-2xl space-y-3">
-                <span className="text-xs font-bold text-amber-400 uppercase tracking-widest block font-display">2. Stability & The Courant Criterion</span>
-                <p className="text-xs text-white/70 leading-relaxed">
-                  The explicit Forward-Time Central-Space (FTCS) scheme is conditionally stable. Applying von Neumann stability analysis, we discover that if the time step Δt is too large, round-off errors grow exponentially, leading to numerical divergence (blow-up). The stability limit is:
-                </p>
-                <div className="font-mono text-xs text-amber-300 text-center py-2 bg-black/50 rounded-xl">
-                  r = α · Δt / Δx² ≤ 0.25  (in 2D)
-                </div>
-                <p className="text-xs text-white/50 leading-relaxed">
-                  Our simulation core automatically computes the maximum stable timestep Δt_max = Δx² / (4 · α_max) and restricts the simulator speed to guarantee stability.
-                </p>
-              </div>
-
-              <div className="p-5 bg-black/40 border border-white/5 rounded-2xl space-y-3">
-                <span className="text-xs font-bold text-rose-400 uppercase tracking-widest block font-display">3. Steady-State Solver: Gauss-Seidel Iteration</span>
-                <p className="text-xs text-white/70 leading-relaxed">
-                  To find the equilibrium state directly without waiting for slow transient diffusion, we solve the elliptic Laplace equation ∇ · (α · ∇T) = 0. Discretizing this gives an algebraic system where the temperature at each cell is the weighted average of its neighbors:
-                </p>
-                <div className="font-mono text-xs text-rose-300 bg-black/50 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">
-{`T_ij^(k+1) = [ α_R·T_i+1,j + α_L·T_i-1,j + α_T·T_i,j+1 + α_B·T_i,j-1 ] / (α_R + α_L + α_T + α_B)`}
-                </div>
-                <p className="text-xs text-white/70 leading-relaxed font-sans">
-                  We use Gauss-Seidel relaxation (updating values in-place so newer values are used immediately) to accelerate convergence.
-                </p>
-              </div>
-            </div>
+        {/* 5. Computational Stability Analysis */}
+        <section>
+          <SectionHeader title="5. Computational Stability Analysis" icon={Cpu} />
+          <p className="text-sm text-white/70 leading-relaxed mb-4">
+            The dimensionless parameter governing temporal stability and diffusion distance per step is the Fourier Number (<MathEq>F<Sub>o</Sub></MathEq>):
+          </p>
+          <MathEq block label="Fourier Number">
+            F<Sub>o</Sub> = <MathFrac num="α Δt" den="Δx²" />
+          </MathEq>
+          <p className="text-sm text-white/70 leading-relaxed">
+            For standard explicit finite difference (FTCS) schemes in 2D, von Neumann stability analysis demands that the spectral radius of the amplification matrix remains less than or equal to unity, yielding the explicit stability constraint:
+          </p>
+          <MathEq block label="Explicit Stability Limit">
+            F<Sub>o</Sub> ≤ \frac{"{"}1{"}"}{"{"}4{"}"}
+          </MathEq>
+          <p className="text-sm text-white/70 leading-relaxed mt-6">
+            Exceeding this limit in explicit schemes causes non-physical oscillatory divergence. However, because our numerical engine leverages the implicit ADI formulation, the scheme is <strong>unconditionally stable</strong> for any <MathEq>F<Sub>o</Sub></MathEq>.
+          </p>
+          <div className="mt-8 p-6 bg-teal-500/10 border-l-4 border-teal-500 rounded-r-xl shadow-lg">
+            <h5 className="font-bold text-teal-400 uppercase tracking-widest text-xs mb-3">Simulator Diagnostic Mapping</h5>
+            <p className="text-sm text-white/70 leading-relaxed">
+              In the simulator's <strong>System Diagnostics</strong> panel, you will observe the live Fourier number. While the ADI solver remains mathematically stable at <MathEq>F<Sub>o</Sub> {">"} 10.0</MathEq>, large time steps induce a temporal splitting error (truncation error of order <MathEq>O(Δt³)</MathEq>) arising from the cross-derivative terms. This is visible in the metrics dashboard as an elevated <strong>Temporal Truncation Error</strong>. 
+            </p>
           </div>
-        )}
+        </section>
+
       </div>
     </div>
   );
