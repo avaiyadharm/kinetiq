@@ -32,6 +32,11 @@ interface HeatTransferConfigProps {
     energyInflow: number;
     energyOutflow: number;
     conservationError: number;
+    fourierNumber?: number;
+    truncationErrorEstimate?: number;
+    temporalError?: number;
+    gridIndependence?: number;
+    nodeDensity?: number;
     infinityNorm?: number;
     localFluxImbalance?: number;
     dtSubSteps?: number;
@@ -113,9 +118,12 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
   // Derived computations
   const totalNodes = gridSize * gridSize;
   const plateWidth = gridSize * dx; // m
-  const r = telemetry.stabilityRatio;
+  const fo = telemetry.fourierNumber || telemetry.stabilityRatio;
   // ADI CN is unconditionally stable; we report vs explicit limit for education
-  const stabilityStatus = r < 0.15 ? "stable" : r < 0.25 ? "warning" : "stable"; // ADI always stable
+  let stabilityStatus: "stable" | "warning" | "critical" = "stable";
+  if (fo >= 10.0) stabilityStatus = "critical";
+  else if (fo >= 0.25) stabilityStatus = "stable";
+  else if (fo >= 0.15) stabilityStatus = "warning";
 
   return (
     <div className="flex-1 bg-[#111113] overflow-y-auto">
@@ -138,7 +146,7 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
         <div className="flex flex-wrap gap-3">
           <StatusIndicator
             status={stabilityStatus}
-            label={`Stability r = ${r.toFixed(4)} (explicit limit = 0.25)`}
+            label={`Fourier Fo = ${fo.toFixed(4)} (explicit limit = 0.25)`}
           />
           <StatusIndicator
             status="stable"
@@ -184,10 +192,10 @@ export const HeatTransferConfig: React.FC<HeatTransferConfigProps> = ({
               label="Expl. Stability Limit (\u0394t_crit)"
               value={(telemetry.stableTimestepLimit * 1000).toFixed(2)}
               unit="ms"
-              color={telemetry.stabilityRatio > 0.25 ? "text-cyan-400" : "text-amber-400"}
-              sub={telemetry.stabilityRatio > 0.25 ? "ADI allows exceeding explicit limit" : "Within explicit stable zone"}
+              color={fo > 0.25 ? "text-cyan-400" : "text-amber-400"}
+              sub={fo > 0.25 ? "ADI allows exceeding explicit limit" : "Within explicit stable zone"}
             />
-            <StatRow label="Stability Parameter r" value={r.toFixed(4)} unit="" color={r < 0.25 ? "text-emerald-400" : "text-cyan-400"} sub="r = \u03B1\u00B7\u0394t / \u0394x\u00B2" />
+            <StatRow label="Fourier Number Fo" value={fo.toFixed(4)} unit="" color={fo < 0.25 ? "text-emerald-400" : "text-cyan-400"} sub="Fo = \u03B1\u00B7\u0394t / \u0394x\u00B2" />
             {solverMode === "steady" && (
               <StatRow label="GS Iters / Frame" value={`${telemetry.solverIterations}`} unit="" color="text-amber-400" sub="Convergence residual below" />
             )}

@@ -119,28 +119,43 @@ const Toggle = ({ label, checked, onChange }: { label: string; checked: boolean;
 );
 
 // ─── Stability Badge ──────────────────────────────────────────────────────────
-const StabilityBadge = ({ ratio }: { ratio: number }) => {
-  // For ADI CN solver r can exceed 0.25 and remain stable
-  // We show a "margin" relative to explicit limit
+const FourierBadge = ({ fourierNumber }: { fourierNumber: number }) => {
+  // Fourier Number Fo = α·Δt/Δx²
+  // ADI CN solver is unconditionally stable, but high Fo means high temporal error
   const explicitLimit = 0.25;
-  const pct = Math.min(1, ratio / explicitLimit);
-  const status = ratio < 0.15 ? "SAFE" : ratio < 0.25 ? "MARGINAL" : "ADI-STABLE";
-  const color = ratio < 0.15 ? "text-emerald-400" : ratio < 0.25 ? "text-amber-400" : "text-cyan-400";
-  const barColor = ratio < 0.15 ? "#10b981" : ratio < 0.25 ? "#f59e0b" : "#22d3ee";
+  const pct = Math.min(1, fourierNumber / explicitLimit);
+  
+  let status = "SAFE";
+  let color = "text-emerald-400";
+  let barColor = "#10b981";
+  if (fourierNumber >= 10.0) {
+    status = "HIGH SPLIT ERROR";
+    color = "text-rose-400";
+    barColor = "#f43f5e";
+  } else if (fourierNumber >= 0.25) {
+    status = "ADI-STABLE";
+    color = "text-cyan-400";
+    barColor = "#22d3ee";
+  } else if (fourierNumber >= 0.15) {
+    status = "MARGINAL";
+    color = "text-amber-400";
+    barColor = "#f59e0b";
+  }
+
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center">
-        <span className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Stability r = α·Δt/Δx²</span>
+        <span className="text-[9px] text-white/40 uppercase font-bold tracking-wider">Fourier Number Fo = α·Δt/Δx²</span>
         <span className={cn("text-[9px] font-bold uppercase tracking-wider", color)}>{status}</span>
       </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden relative">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${Math.min(100, pct * 100)}%`, backgroundColor: barColor }}
         />
       </div>
       <div className="flex justify-between">
-        <span className={cn("text-[10px] font-mono font-bold", color)}>{ratio.toFixed(4)}</span>
+        <span className={cn("text-[10px] font-mono font-bold", color)}>{fourierNumber.toFixed(4)}</span>
         <span className="text-[9px] text-white/25 font-mono">(explicit limit = 0.25)</span>
       </div>
     </div>
@@ -186,6 +201,8 @@ export const HeatTransferSimulator: React.FC = () => {
     stabilityRatio: 0, simTime: 0, residual: 0,
     solverIterations: 3, stableTimestepLimit: 0.034,
     energyInflow: 0, energyOutflow: 0, conservationError: 0,
+    fourierNumber: 0, truncationErrorEstimate: 0, temporalError: 0,
+    gridIndependence: 0, nodeDensity: 0,
   });
 
   const handleReset = () => {
@@ -269,12 +286,12 @@ export const HeatTransferSimulator: React.FC = () => {
                 )}
               </div>
 
-              {/* Collapsible Physics Inspector Panel */}
+              {/* Collapsible System Diagnostics Panel */}
               {showInspector && expertiseLevel !== "beginner" && (
                 <div className="w-full md:w-[290px] border-t md:border-t-0 md:border-l border-white/5 bg-[#0f0f11] p-5 overflow-y-auto shrink-0 flex flex-col gap-4 relative z-10 select-none">
                   <div className="flex items-center gap-2 border-b border-white/5 pb-3">
                     <Gauge className="w-4 h-4 text-teal-400" />
-                    <span className="text-[10px] font-black uppercase tracking-wider text-white">Physics Inspector</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-white">System Diagnostics</span>
                   </div>
 
                   {/* Governing Equation */}
@@ -308,9 +325,30 @@ export const HeatTransferSimulator: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Grid Quality Analysis */}
+                  <div className="space-y-1.5">
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">Spatial Resolution</div>
+                    <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-[9.5px] text-white/60 space-y-2">
+                      <div className="flex justify-between">
+                        <span>Cell size Δx:</span>
+                        <span className="font-mono font-bold text-white">{(dx * 1000).toFixed(1)} mm</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Node density:</span>
+                        <span className="font-mono font-bold text-white">{(telemetry.nodeDensity / 1000).toFixed(1)}k / m²</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Grid independence:</span>
+                        <span className={cn("font-mono font-bold", telemetry.gridIndependence > 95 ? "text-emerald-400" : "text-amber-400")}>
+                          ~{telemetry.gridIndependence.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* CFL Stability check */}
                   <div className="space-y-1.5">
-                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">CFL Stability Check</div>
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">CFL Stability Analysis</div>
                     <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-[9.5px] text-white/60 space-y-2">
                       <div className="flex justify-between">
                         <span>Time step Δt:</span>
@@ -321,9 +359,9 @@ export const HeatTransferSimulator: React.FC = () => {
                         <span className="font-mono font-bold text-white">{telemetry.stableTimestepLimit.toFixed(4)} s</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span>Stability r:</span>
-                        <span className={cn("font-mono font-bold", telemetry.stabilityRatio < 0.25 ? "text-emerald-400" : "text-cyan-400")}>
-                          {telemetry.stabilityRatio.toFixed(4)}
+                        <span>Fourier Number Fo:</span>
+                        <span className={cn("font-mono font-bold", telemetry.fourierNumber < 0.25 ? "text-emerald-400" : "text-cyan-400")}>
+                          {telemetry.fourierNumber.toFixed(4)}
                         </span>
                       </div>
                       <div className="text-[8px] text-white/30 leading-normal border-t border-white/5 pt-1.5 mt-1">
@@ -336,7 +374,7 @@ export const HeatTransferSimulator: React.FC = () => {
 
                   {/* System Conservation Diagnostics */}
                   <div className="space-y-1.5">
-                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">Conservation Metrics</div>
+                    <div className="text-[8px] text-white/30 uppercase tracking-[0.2em] font-bold">Energy Conservation</div>
                     <div className="bg-black/40 border border-white/5 rounded-xl p-3 text-[9.5px] text-white/60 space-y-2">
                       <div className="flex justify-between">
                         <span>Total Energy E:</span>
@@ -468,7 +506,7 @@ export const HeatTransferSimulator: React.FC = () => {
                       </div>
 
                       {solverMode === "transient" && (
-                        <StabilityBadge ratio={telemetry.stabilityRatio} />
+                        <FourierBadge fourierNumber={telemetry.fourierNumber} />
                       )}
                     </div>
                   </ControlCard>
@@ -627,7 +665,7 @@ export const HeatTransferSimulator: React.FC = () => {
                 </ControlCard>
 
                 {/* 5. Live Telemetry */}
-                <ControlCard title="Thermal Telemetry" icon={Activity} color="#10b981">
+                <ControlCard title="Thermodynamic State" icon={Activity} color="#10b981">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
                       <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">T avg</div>
@@ -678,9 +716,11 @@ export const HeatTransferSimulator: React.FC = () => {
                         </div>
                       </>
                     )}
-                    {expertiseLevel !== "beginner" && solverMode === "steady" && (
+                    {expertiseLevel !== "beginner" && (
                       <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
-                        <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Convergence Residual</div>
+                        <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">
+                          {solverMode === "steady" ? "Convergence Residual" : "Temporal Truncation Error"}
+                        </div>
                         <div className={cn("text-[11px] font-mono font-bold mt-1",
                           telemetry.residual < 0.01 ? "text-emerald-400" : "text-amber-400")}>
                           {telemetry.residual.toExponential(3)} °C

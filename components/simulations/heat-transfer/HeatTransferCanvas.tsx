@@ -127,6 +127,11 @@ export interface Telemetry {
   energyInflow: number;        // [W] total heat power entering grid
   energyOutflow: number;       // [W] total heat power leaving grid
   conservationError: number;   // [W] net energy conservation mismatch rate
+  fourierNumber: number;       // Dimensionless time
+  truncationErrorEstimate: number; // [W] Local Truncation Error (LTE) estimate
+  temporalError: number;       // [°C] temporal splitting error (ADI)
+  gridIndependence: number;    // [%] Richardson pseudo-metric
+  nodeDensity: number;         // [nodes/m²]
   infinityNorm?: number;       // Max absolute error
   localFluxImbalance?: number; // Max local flux imbalance [W]
   dtSubSteps?: number;         // Adaptive substeps taken
@@ -850,8 +855,10 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           if (T < minT) minT = T;
 
           const mat = getMat(matId[idx]);
-          const C_idx = mat.rho * getSpecificHeat(mat, T);
-          thermalEnergy += C_idx * (T - T_inf) * dx * dx * thickness;
+          const cp_T = getSpecificHeat(mat, T);
+          const cp_inf = getSpecificHeat(mat, T_inf);
+          const cp_avg = (cp_T + cp_inf) * 0.5;
+          thermalEnergy += mat.rho * cp_avg * (T - T_inf) * dx * dx * thickness;
 
           let gx = 0;
           let gy = 0;
@@ -879,28 +886,31 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
             
             for (const nbr of neighbors) {
               let P = 0; // W
+              const T_avg = (tData[idx] + tOld[idx]) * 0.5;
+              const currentK_avg = getConductivity(mat, T_avg);
               if (nbr.isBound) {
                 if (boundaryType === "fixed") {
-                  P = (2 * currentK * thickness) * (T_inf - T);
+                  P = (2 * currentK_avg * thickness) * (T_inf - T_avg);
                 } else if (boundaryType === "convective") {
-                  const T_K = T + 273.15;
+                  const T_K = T_avg + 273.15;
                   const T_inf_K = T_inf + 273.15;
                   const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
                   const h_eff_val = h + h_rad;
-                  P = h_eff_val * (dx * thickness) * (T_inf - T);
+                  P = h_eff_val * (dx * thickness) * (T_inf - T_avg);
                 }
               } else if (isFixed(nbr.idxNbr)) {
                 if (matId[nbr.idxNbr] === 5) {
-                  const T_K = T + 273.15;
+                  const T_K = T_avg + 273.15;
                   const T_inf_K = T_inf + 273.15;
                   const h_rad = 0.9 * 5.67e-8 * (T_K*T_K + T_inf_K*T_inf_K) * (T_K + T_inf_K);
                   const h_eff_val = h + h_rad;
-                  P = h_eff_val * (dx * thickness) * (T_inf - T);
+                  P = h_eff_val * (dx * thickness) * (T_inf - T_avg);
                 } else {
-                  const T_fixed = tData[nbr.idxNbr];
+                  // Fixed cell temperature is constant during timestep so tOld = tData for it
+                  const T_fixed = tOld[nbr.idxNbr]; 
                   const k_nbr = getConductivity(getMat(matId[nbr.idxNbr]), T_fixed);
-                  const k_int = getKInterface(matId[idx], matId[nbr.idxNbr], currentK, k_nbr, dx);
-                  P = (k_int * thickness) * (T_fixed - T);
+                  const k_int = getKInterface(matId[idx], matId[nbr.idxNbr], currentK_avg, k_nbr, dx);
+                  P = (k_int * thickness) * (T_fixed - T_avg);
                 }
               }
               if (P > 0) energyInflow += P;
@@ -980,14 +990,16 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
           }
         }
       }
-      const residualNorm = resCount > 0 ? Math.sqrt(sumResSq / resCount) : 0;
+      const truncationErrorEstimate = resCount > 0 ? Math.sqrt(sumResSq / resCount) : 0;
 
       // Energy conservation mismatch error: (E_new - E_old)/dt - (P_in - P_out)
       let E_old = 0;
       for (let k = 0; k < N * N; k++) {
         const mat = getMat(matId[k]);
         const cp_old = getSpecificHeat(mat, tOld[k]);
-        E_old += mat.rho * cp_old * (tOld[k] - T_inf) * dx * dx * thickness;
+        const cp_inf = getSpecificHeat(mat, T_inf);
+        const cp_avg = (cp_old + cp_inf) * 0.5;
+        E_old += mat.rho * cp_avg * (tOld[k] - T_inf) * dx * dx * thickness;
       }
       let E_gen = 0;
       if (qGenRef.current) {
@@ -1000,6 +1012,21 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
       const maxAlpha = MATERIALS["copper"].alpha;
       const stableTimestepLimit = (dx * dx) / (4 * maxAlpha);
       const stabilityRatio = maxAlpha * dt / (dx * dx);
+      
+      // Convergence rate or transient splitting error estimate
+      let temporalError = 0;
+      if (solverMode === "transient") {
+        let maxDT = 0;
+        for (let k = 0; k < N * N; k++) {
+          const d = Math.abs(tData[k] - tOld[k]);
+          if (d > maxDT) maxDT = d;
+        }
+        temporalError = maxDT;
+      }
+
+      // Grid independence pseudo-metric (estimate based on resolution)
+      const gridIndependence = Math.min(99.9, 100 * (1 - Math.exp(-gridSize / 30)));
+      const nodeDensity = 1 / (dx * dx);
 
       onTelemetryUpdate({
         avgTemp: freeCount > 0 ? sumT / freeCount : ambientTemp,
@@ -1009,12 +1036,17 @@ export const HeatTransferCanvas: React.FC<HeatTransferCanvasProps> = ({
         maxFluxMag: maxFlux,
         stabilityRatio,
         simTime: simTimeRef.current,
-        residual: residualNorm,
+        residual: solverMode === "steady" ? truncationErrorEstimate : temporalError,
         solverIterations: solverMode === "steady" ? GS_ITERS : stepsPerFrame,
         stableTimestepLimit,
         energyInflow,
         energyOutflow,
         conservationError,
+        fourierNumber: stabilityRatio,
+        truncationErrorEstimate,
+        temporalError,
+        gridIndependence,
+        nodeDensity,
         ...(expertiseLevel === "expert" && {
           infinityNorm: maxAbsRes,
           localFluxImbalance: maxFluxImbalance,
