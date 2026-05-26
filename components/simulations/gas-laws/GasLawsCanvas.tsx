@@ -113,15 +113,33 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
   const isDraggingPistonRef = useRef<boolean>(false);
   const hoverPistonRef = useRef<boolean>(false);
 
+  // Helper to fetch current container size and scale coordinates dynamically
+  const getLayoutDimensions = () => {
+    const container = containerRef.current;
+    const w = container ? container.clientWidth : 800;
+    const h = container ? container.clientHeight : 500;
+    const midX = w / 2;
+    const xMin = 40;
+    const maxX = midX - 60; // Leave padding before horizontal center split
+    const yMin = 50;
+    const yMax = h - 60; // Leave room at bottom of container
+    return { w, h, midX, xMin, maxX, yMin, yMax };
+  };
+
   // Reset particles
   const initParticles = () => {
     const p = paramsRef.current;
     const list: Particle[] = [];
-    const bounds = chamberBounds.current;
+    const { xMin, maxX, yMin, yMax } = getLayoutDimensions();
     
     // Set piston width based on volume input initially
-    const targetXMax = bounds.xMin + (450 - bounds.xMin) * p.volume;
-    chamberBounds.current.xMax = targetXMax;
+    const targetXMax = xMin + (maxX - xMin) * p.volume;
+    chamberBounds.current = {
+      xMin,
+      xMax: targetXMax,
+      yMin,
+      yMax
+    };
     targetWidthRef.current = targetXMax;
 
     // Mass & Radius selection based on Preset
@@ -148,8 +166,8 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       // Avoid overlap initially
       let x = 0, y = 0, overlap = true, safety = 0;
       while (overlap && safety < 100) {
-        x = bounds.xMin + radius + Math.random() * (targetXMax - bounds.xMin - 2 * radius);
-        y = bounds.yMin + radius + Math.random() * (bounds.yMax - bounds.yMin - 2 * radius);
+        x = xMin + radius + Math.random() * (targetXMax - xMin - 2 * radius);
+        y = yMin + radius + Math.random() * (yMax - yMin - 2 * radius);
         
         // check overlap
         overlap = false;
@@ -221,6 +239,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const { xMin, maxX } = getLayoutDimensions();
     const canDrag = p.regime === "free" || p.regime === "boyle";
     if (canDrag && Math.abs(x - bounds.xMax) < 15) {
       hoverPistonRef.current = true;
@@ -232,14 +251,13 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
     if (isDraggingPistonRef.current) {
       // Constraint piston to bounds
-      const minX = bounds.xMin + 80;
-      const maxX = 460;
+      const minX = xMin + 80;
       const newXMax = Math.max(minX, Math.min(maxX, x));
       bounds.xMax = newXMax;
       targetWidthRef.current = newXMax;
       
       // Calculate corresponding volume fraction and report back to parent
-      const volFraction = (newXMax - bounds.xMin) / (450 - bounds.xMin);
+      const volFraction = (newXMax - xMin) / (maxX - xMin);
       onVolumeChange(Math.max(0.1, Math.min(1.0, volFraction)));
     }
   };
@@ -281,27 +299,40 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
 
+      const { midX, xMin, maxX, yMin, yMax } = getLayoutDimensions();
       const bounds = chamberBounds.current;
       const kb = 1.5; // custom scaling
+
+      // Keep bounds updated relative to screen size dynamically
+      bounds.xMin = xMin;
+      bounds.yMin = yMin;
+      bounds.yMax = yMax;
+
+      // Handle window resize safety: clamp particles so they don't get trapped outside the chamber
+      const list = particlesRef.current;
+      for (const part of list) {
+        part.x = Math.max(bounds.xMin + part.radius, Math.min(bounds.xMax - part.radius, part.x));
+        part.y = Math.max(bounds.yMin + part.radius, Math.min(bounds.yMax - part.radius, part.y));
+      }
 
       // Handle piston automatic resizing based on regime locks
       if (p.regime === "charles") {
         // V is proportional to T: V = V_base * (T / T_base)
         // Let's assume at T=300K, volume is 0.5.
         // target width:
-        const baseWidth = 450 - bounds.xMin;
+        const baseWidth = maxX - xMin;
         const volumeFraction = 0.5 * (p.temperature / 300);
-        const targetXMax = bounds.xMin + baseWidth * Math.max(0.2, Math.min(1.0, volumeFraction));
+        const targetXMax = xMin + baseWidth * Math.max(0.2, Math.min(1.0, volumeFraction));
         targetWidthRef.current = targetXMax;
       } else if (p.regime === "avogadro") {
         // V is proportional to N: V = V_base * (N / N_base)
-        const baseWidth = 450 - bounds.xMin;
+        const baseWidth = maxX - xMin;
         const volumeFraction = 0.5 * (p.particleCount / 100);
-        const targetXMax = bounds.xMin + baseWidth * Math.max(0.2, Math.min(1.0, volumeFraction));
+        const targetXMax = xMin + baseWidth * Math.max(0.2, Math.min(1.0, volumeFraction));
         targetWidthRef.current = targetXMax;
       } else if (p.regime === "gay-lussac" || p.regime === "free") {
         // V is locked or determined by slider
-        const targetXMax = bounds.xMin + (450 - bounds.xMin) * p.volume;
+        const targetXMax = xMin + (maxX - xMin) * p.volume;
         targetWidthRef.current = targetXMax;
       }
 
@@ -313,7 +344,6 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       // ─── PHYSICS UPDATE ─────────────────────────────────────────
       if (p.isPlaying && particlesRef.current.length > 0) {
         const dt = dt_wall * p.slowMotion;
-        const list = particlesRef.current;
 
         // 1. Apply Intermolecular Attraction (Van der Waals attractive term 'a')
         if (p.gasPreset === "real" && p.attractiveForce > 0) {
@@ -451,16 +481,15 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       }
 
       // ─── TELEMETRY & DATA ANALYSIS ─────────────────────────────
-      // Width of chamber determines volume representation
+      // Normalized volume (ranges from 3.0 to 10.0 dm³ relative to current width)
       const currentWidth = bounds.xMax - bounds.xMin;
       const currentHeight = bounds.yMax - bounds.yMin;
-      const measuredVolume = currentWidth * currentHeight; // pixels^2 area
+      const measuredVolume = 3.0 + (currentWidth / (maxX - xMin)) * 7.0;
 
       // Live Temperature
       let currentKE = 0;
       let sumSpeed = 0;
       const speeds: number[] = [];
-      const list = particlesRef.current;
       for (const part of list) {
         const speed = Math.sqrt(part.vx*part.vx + part.vy*part.vy);
         currentKE += 0.5 * part.mass * speed * speed;
@@ -470,21 +499,23 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       const measuredTemp = list.length > 0 ? currentKE / (list.length * kb) : 0;
       const meanSpeed = list.length > 0 ? sumSpeed / list.length : 0;
 
-      // Live Measured Pressure from wall collisions
+      // Live Measured Pressure from wall collisions (scaled to fit typical kPa ranges)
       let measuredPressure = 0;
       if (momentumTimerRef.current > 0.08) {
-        // Pressure = force / area = (momentum transfer / dt) / perimeter
         const perimeter = 2 * (currentWidth + currentHeight);
         const pMeasuredRaw = (momentumAccumulatorRef.current / momentumTimerRef.current) / perimeter;
         
+        // Calibrate raw collision pressure to match standard kPa values (around 100-600 kPa)
+        const pMeasuredScaled = pMeasuredRaw * 55.0;
+
         // Reset timers
         momentumAccumulatorRef.current = 0;
         momentumTimerRef.current = 0;
 
         // Smooth pressure
         const smoothFactor = 0.15;
-        const lastPressure = pressureHistoryRef.current.length > 0 ? pressureHistoryRef.current[pressureHistoryRef.current.length - 1].p : pMeasuredRaw;
-        const pSmoothed = lastPressure + (pMeasuredRaw - lastPressure) * smoothFactor;
+        const lastPressure = pressureHistoryRef.current.length > 0 ? pressureHistoryRef.current[pressureHistoryRef.current.length - 1].p : pMeasuredScaled;
+        const pSmoothed = lastPressure + (pMeasuredScaled - lastPressure) * smoothFactor;
 
         pressureHistoryRef.current.push({ t: now, p: pSmoothed });
         if (pressureHistoryRef.current.length > 200) {
@@ -502,28 +533,28 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         measuredPressure = pressureHistoryRef.current[pressureHistoryRef.current.length - 1].p;
       } else {
         // Fallback to ideal pressure initially
-        measuredPressure = (list.length * kb * p.temperature) / measuredVolume;
+        measuredPressure = (list.length * 0.05 * p.temperature) / measuredVolume;
       }
 
       // Theoretical Ideal Pressure
-      const idealPressure = (list.length * kb * p.temperature) / measuredVolume;
+      const idealPressure = (list.length * 0.05 * p.temperature) / measuredVolume;
 
       // Van der Waals Theoretical Pressure
       // (P + a * n^2 / V^2) * (V - n * b) = n * R * T
       // -> P = nRT / (V - nb) - a * n^2 / V^2
-      // Let's approximate real parameters matching simulation sizes:
+      // Calibrated parameters to make real gas effects visually noticeable in the config stats:
       let a_coeff = 0;
       let b_coeff = 0;
       if (p.gasPreset === "real") {
-        a_coeff = p.attractiveForce * 1500;
-        b_coeff = 0.8; // scaling co-volume factor
+        a_coeff = p.attractiveForce * 1.5;
+        b_coeff = 0.015; // scaling co-volume factor per particle
       } else if (p.gasPreset === "xenon") {
         a_coeff = 0;
-        b_coeff = 1.2;
+        b_coeff = 0.022; // larger co-volume per particle
       }
       const vdwDenominator = measuredVolume - list.length * b_coeff;
       const vanDerWaalsPressure = vdwDenominator > 0
-        ? (list.length * kb * p.temperature) / vdwDenominator - (a_coeff * list.length * list.length) / (measuredVolume * measuredVolume)
+        ? (list.length * 0.05 * p.temperature) / vdwDenominator - (a_coeff * list.length * list.length) / (measuredVolume * measuredVolume)
         : idealPressure;
 
       // Speed Distribution Histogram calculation for Maxwell-Boltzmann comparison
@@ -570,8 +601,8 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       // Draw Layout Quadrant dividers
       ctx.strokeStyle = "#27272a";
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(w / 2, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(midX, 0); ctx.lineTo(midX, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(midX, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
 
       // Draw Left Side: Particle Chamber
       // Background gradient for chamber
@@ -667,13 +698,13 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       ctx.font = `9px ${FONT_MONO}`;
       ctx.textAlign = "left";
       ctx.fillText(`T = ${measuredTemp.toFixed(1)} K`, bounds.xMin + 10, bounds.yMin + 20);
-      ctx.fillText(`V = ${(measuredVolume / 1000).toFixed(1)} dm³`, bounds.xMin + 10, bounds.yMin + 35);
-      ctx.fillText(`P = ${(measuredPressure * 100).toFixed(1)} kPa`, bounds.xMin + 10, bounds.yMin + 50);
+      ctx.fillText(`V = ${measuredVolume.toFixed(2)} dm³`, bounds.xMin + 10, bounds.yMin + 35);
+      ctx.fillText(`P = ${measuredPressure.toFixed(1)} kPa`, bounds.xMin + 10, bounds.yMin + 50);
 
       // ─── Draw Top Right: P-V Indicator Graph ──────────────────────
-      const graphX = w / 2 + 45;
+      const graphX = midX + 45;
       const graphY = 35;
-      const graphW = w / 2 - 65;
+      const graphW = (w - midX) - 65;
       const graphH = h / 2 - 65;
 
       ctx.fillStyle = "#0c0c0e";
@@ -697,25 +728,28 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       ctx.fillStyle = "#ffffff";
       ctx.font = `bold 10px ${FONT_SANS}`;
       ctx.textAlign = "left";
-      ctx.fillText("INDICATOR DIAGRAM (P-V PATH)", w / 2 + 20, 18);
+      ctx.fillText("INDICATOR DIAGRAM (P-V PATH)", midX + 20, 18);
 
       // Draw Ideal Gas isothermal hyperbola reference curves
-      // P = nRT/V. Let's draw for different temperatures
+      // P = nRT/V.
       ctx.strokeStyle = "rgba(255,255,255,0.04)";
       ctx.lineWidth = 1.5;
       const tempsRef = [200, 400, 600];
+      const vMin = 3.0;
+      const vMax = 10.0;
+      const pMax = 800; // kPa Max height of graph
+
       for (const tRef of tempsRef) {
         ctx.beginPath();
-        for (let vx = 10; vx <= graphW; vx += 5) {
+        for (let vx = 0; vx <= graphW; vx += 5) {
           const volPct = vx / graphW; // 0 to 1 scale
-          // scale volume to match physical bounds
-          const physicalVol = 15000 + volPct * 90000;
-          const idealP = (list.length * kb * tRef) / physicalVol;
+          const volValue = vMin + volPct * (vMax - vMin);
+          const idealPVal = (list.length * 0.05 * tRef) / volValue;
           
           // scale pressure to fit graphH
-          const graphP = graphY + graphH - (idealP / 0.05) * graphH;
+          const graphP = graphY + graphH - (idealPVal / pMax) * graphH;
           if (graphP >= graphY && graphP <= graphY + graphH) {
-            if (vx === 10) ctx.moveTo(graphX + vx, graphP);
+            if (vx === 0) ctx.moveTo(graphX + vx, graphP);
             else ctx.lineTo(graphX + vx, graphP);
           }
         }
@@ -729,13 +763,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         ctx.beginPath();
         for (let i = 0; i < pvHistoryRef.current.length; i++) {
           const item = pvHistoryRef.current[i];
-          // Volume bounds: min is ~10000, max is ~120000
-          const vMin = 15000;
-          const vMax = 110000;
           const vPct = (item.v - vMin) / (vMax - vMin);
-          
-          // Pressure bounds: max ~ 0.04
-          const pMax = 0.035;
           const pPct = item.p / pMax;
 
           const px = graphX + Math.max(0, Math.min(graphW, vPct * graphW));
@@ -748,8 +776,8 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
         // Draw current state dot
         const last = pvHistoryRef.current[pvHistoryRef.current.length - 1];
-        const vPct = (last.v - 15000) / (110000 - 15000);
-        const pPct = last.p / 0.035;
+        const vPct = (last.v - vMin) / (vMax - vMin);
+        const pPct = last.p / pMax;
         const currentDotX = graphX + Math.max(0, Math.min(graphW, vPct * graphW));
         const currentDotY = graphY + graphH - Math.max(0, Math.min(graphH, pPct * graphH));
 
@@ -760,9 +788,9 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       }
 
       // ─── Draw Bottom Right: Maxwell-Boltzmann distribution ──────
-      const mbX = w / 2 + 45;
+      const mbX = midX + 45;
       const mbY = h / 2 + 35;
-      const mbW = w / 2 - 65;
+      const mbW = (w - midX) - 65;
       const mbH = h / 2 - 65;
 
       ctx.fillStyle = "#0c0c0e";
@@ -785,7 +813,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       ctx.fillStyle = "#ffffff";
       ctx.font = `bold 10px ${FONT_SANS}`;
       ctx.textAlign = "left";
-      ctx.fillText("VELOCITY DISTRIBUTION (MAXWELL-BOLTZMANN)", w / 2 + 20, h / 2 + 18);
+      ctx.fillText("VELOCITY DISTRIBUTION (MAXWELL-BOLTZMANN)", midX + 20, h / 2 + 18);
 
       // Draw Histogram bars
       ctx.fillStyle = "rgba(16, 185, 129, 0.4)";

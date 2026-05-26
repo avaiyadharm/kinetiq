@@ -28,7 +28,7 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
   return (
     <div className="flex h-screen w-full bg-[#09090b] overflow-hidden text-white font-sans antialiased selection:bg-primary/30">
       {/* Sidebar */}
-      <aside className="w-[320px] border-r border-border flex flex-col bg-[#18181b] z-30 shadow-xl">
+      <aside className="w-[320px] shrink-0 border-r border-border flex flex-col bg-[#18181b] z-30 shadow-xl">
         <div className="p-8 space-y-2">
           <Link href="/simulations" className="flex items-center gap-2 text-white/40 hover:text-primary transition-colors text-[10px] font-bold uppercase tracking-widest mb-10 group">
             <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" /> 

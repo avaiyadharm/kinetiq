@@ -99,19 +99,27 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
   expertiseLevel,
 }) => {
   // Compressibility factor Z = PV / (N * k_B * T)
-  const kb = 1.5; // matching canvas scale
+  const kb = 0.05; // matching scaled macroscopic Boltzmann constant
   const V_scaled = telemetry.measuredVolume;
   const T_measured = telemetry.measuredTemp || 1;
   const P_measured = telemetry.measuredPressure;
   const Z = (P_measured * V_scaled) / (particleCount * kb * T_measured);
 
-  // Volume occupied by hard spheres: N * pi * r^2
+  // Volume occupied by hard spheres: N * b_coeff
+  let b_coeff = 0.0;
   let particleRadius = 4.0;
-  if (gasPreset === "helium") particleRadius = 3.0;
-  else if (gasPreset === "xenon") particleRadius = 8.5;
-  else if (gasPreset === "real") particleRadius = 6.0;
+  if (gasPreset === "helium") {
+    particleRadius = 3.0;
+    b_coeff = 0.005;
+  } else if (gasPreset === "xenon") {
+    particleRadius = 8.5;
+    b_coeff = 0.022;
+  } else if (gasPreset === "real") {
+    particleRadius = 6.0;
+    b_coeff = 0.015;
+  }
 
-  const totalExcludedVolume = particleCount * Math.PI * particleRadius * particleRadius;
+  const totalExcludedVolume = particleCount * b_coeff;
   const excludedVolumePercentage = (totalExcludedVolume / V_scaled) * 100;
 
   // Gas characteristics values
@@ -164,11 +172,11 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
           
           {/* Spatial parameters */}
           <SectionCard title="Chamber Physical Dimensions" icon={Settings2} color="#0d9488">
-            <StatRow label="Chamber Area (Volume)" value={(telemetry.measuredVolume / 1000).toFixed(2)} unit="dm²" color="text-teal-400" sub="Measured cross-sectional area" />
+            <StatRow label="Chamber Volume (V)" value={telemetry.measuredVolume.toFixed(2)} unit="dm³" color="text-teal-400" sub="Measured virtual volume" />
             <StatRow label="Volume Fraction V" value={volume.toFixed(2)} unit="" color="text-teal-400" />
             <StatRow label="Piston Position X" value={Math.round(volume * 100).toString()} unit="%" color="text-cyan-400" />
             <StatRow label="Particle Radius (r)" value={particleRadius.toFixed(1)} unit="px" color="text-cyan-400" />
-            <StatRow label="Excluded Volume (b)" value={Math.round(totalExcludedVolume).toLocaleString()} unit="px²" color="text-purple-400" sub={`${excludedVolumePercentage.toFixed(1)}% of volume`} />
+            <StatRow label="Excluded Volume (b)" value={totalExcludedVolume.toFixed(3)} unit="dm³" color="text-purple-400" sub={`${excludedVolumePercentage.toFixed(1)}% of volume`} />
             <StatRow 
               label="Chamber Regime" 
               value={regime.toUpperCase()} 
@@ -184,7 +192,7 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
             <StatRow label="Total Particles N" value={particleCount.toString()} unit="atoms" color="text-amber-400" sub="Absolute particle count" />
             <StatRow label="Average Temp (T)" value={`${Math.round(telemetry.measuredTemp)}`} unit="K" color="text-amber-400" sub={`Target Temp: ${temperature} K`} />
             <StatRow label="Mean Speed (v_avg)" value={telemetry.meanSpeed.toFixed(1)} unit="m/s" color="text-cyan-400" sub="Mean arithmetic speed" />
-            <StatRow label="RMS Velocity (v_rms)" value={Math.sqrt((2 * kb * telemetry.measuredTemp) / (gasPreset === "helium" ? 0.5 : gasPreset === "xenon" ? 4.0 : gasPreset === "real" ? 2.0 : 1.0)).toFixed(1)} unit="m/s" color="text-cyan-400" sub="Root mean square speed" />
+            <StatRow label="RMS Velocity (v_rms)" value={Math.sqrt((2 * 1.5 * telemetry.measuredTemp) / (gasPreset === "helium" ? 0.5 : gasPreset === "xenon" ? 4.0 : gasPreset === "real" ? 2.0 : 1.0)).toFixed(1)} unit="m/s" color="text-cyan-400" sub="Root mean square speed" />
             <StatRow label="Maxwell-Boltzmann Binning" value="15 Bins" unit="" color="text-amber-400" sub="Live speed histogram distribution" />
             <StatRow
               label="Thermostat Method"
