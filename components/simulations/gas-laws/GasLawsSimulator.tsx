@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { SimulationPageLayout, TabType } from "@/components/simulations/SimulationPageLayout";
 import { GasLawsCanvas, GasLawsTelemetry } from "./GasLawsCanvas";
 import { GasLawsConfig } from "./GasLawsConfig";
@@ -249,18 +249,18 @@ export const GasLawsSimulator: React.FC = () => {
   const isTempLocked = regime === "boyle" || regime === "avogadro";
   const isVolumeLocked = regime === "charles" || regime === "gay-lussac" || regime === "avogadro";
 
-  const handleVolumeChangeFromCanvas = (newVol: number) => {
+  const handleVolumeChangeFromCanvas = useCallback((newVol: number) => {
     setVolume(newVol);
-  };
+  }, []);
 
-  const addHeatDirectly = (amount: number) => {
+  const addHeatDirectly = useCallback((amount: number) => {
     if (!isTempLocked) {
       setTemperature(prev => Math.max(100, Math.min(800, prev + amount)));
     }
-  };
+  }, [isTempLocked]);
 
   // State callback listener from canvas simulation loop
-  const handleStateUpdate = (tele: GasLawsTelemetry) => {
+  const handleStateUpdate = useCallback((tele: GasLawsTelemetry) => {
     setTelemetry(tele);
 
     // Throttle history accumulation to every 300ms
@@ -285,7 +285,7 @@ export const GasLawsSimulator: React.FC = () => {
       });
       lastHistoryUpdateTimeRef.current = now;
     }
-  };
+  }, []);
 
   // Load configuration run from archive saved runs
   const handleLoadSavedRun = (run: SavedRun) => {

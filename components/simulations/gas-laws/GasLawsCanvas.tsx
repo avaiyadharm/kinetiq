@@ -101,6 +101,15 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
   // Particle list reference
   const particlesRef = useRef<Particle[]>([]);
+
+  // Callback refs to decouple render loop from simulator re-renders
+  const onStateUpdateRef = useRef(onStateUpdate);
+  const onVolumeChangeRef = useRef(onVolumeChange);
+
+  useEffect(() => {
+    onStateUpdateRef.current = onStateUpdate;
+    onVolumeChangeRef.current = onVolumeChange;
+  }, [onStateUpdate, onVolumeChange]);
   
   // Simulation parameters reference for real-time physics loop
   const paramsRef = useRef({
@@ -464,7 +473,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       targetWidthRef.current = newXMax;
       
       const volFraction = (newXMax - xMin) / (maxX - xMin);
-      onVolumeChange(Math.max(0.1, Math.min(1.0, volFraction)));
+      onVolumeChangeRef.current(Math.max(0.1, Math.min(1.0, volFraction)));
     }
   };
 
@@ -484,18 +493,23 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const resizeCanvas = () => {
-      const container = containerRef.current;
-      if (container && canvas) {
-        canvas.width = container.clientWidth * window.devicePixelRatio;
-        canvas.height = container.clientHeight * window.devicePixelRatio;
-        canvas.style.width = `${container.clientWidth}px`;
-        canvas.style.height = `${container.clientHeight}px`;
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (canvas && ctx && width > 0 && height > 0) {
+        canvas.width = width * window.devicePixelRatio;
+        canvas.height = height * window.devicePixelRatio;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
         ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
       }
-    };
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
+    });
+
+    const container = containerRef.current;
+    if (container) {
+      resizeObserver.observe(container);
+    }
 
     // Render loop function
     const tick = (now: number) => {
@@ -506,6 +520,10 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
+      if (w === 0 || h === 0) {
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
 
       const { midX, xMin, maxX, yMin, yMax } = getLayoutDimensions();
       const bounds = chamberBounds.current;
@@ -968,7 +986,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
       // Dispatch state updates to parent
       if (now - lastStateUpdateRef.current > 60) {
-        onStateUpdate({
+        onStateUpdateRef.current({
           measuredPressure,
           idealPressure,
           measuredTemp,
@@ -1428,9 +1446,9 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
     return () => {
       cancelAnimationFrame(animationId);
-      window.removeEventListener("resize", resizeCanvas);
+      resizeObserver.disconnect();
     };
-  }, [onStateUpdate, onVolumeChange, isPlaying, slowMotion]);
+  }, [isPlaying, slowMotion]);
 
   return (
     <div ref={containerRef} className="w-full h-full min-h-[480px]">
