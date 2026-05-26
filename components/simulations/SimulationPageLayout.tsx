@@ -2,11 +2,11 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, LayoutGrid, Info, Settings, RotateCcw, Share2, HelpCircle, Activity } from "lucide-react";
+import { ArrowLeft, LayoutGrid, Info, Settings, RotateCcw, Share2, HelpCircle, Activity, Compass, BarChart2, Bookmark } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export type TabType = "canvas" | "config" | "theory" | "guide" | "validation";
+export type TabType = "canvas" | "config" | "theory" | "guide" | "validation" | "modes" | "analytics" | "saved";
 
 interface SimulationPageLayoutProps {
   title: string;
@@ -15,6 +15,9 @@ interface SimulationPageLayoutProps {
   onTabChange?: (tab: TabType) => void;
   onReset?: () => void;
   showValidationTab?: boolean;
+  showModesTab?: boolean;
+  showAnalyticsTab?: boolean;
+  showSavedTab?: boolean;
 }
 
 export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>> = ({ 
@@ -23,7 +26,10 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
   activeTab = "canvas",
   onTabChange,
   onReset,
-  showValidationTab = false
+  showValidationTab = false,
+  showModesTab = false,
+  showAnalyticsTab = false,
+  showSavedTab = false
 }) => {
   return (
     <div className="flex h-screen w-full bg-[#09090b] overflow-hidden text-white font-sans antialiased selection:bg-primary/30">
@@ -41,7 +47,7 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
           <p className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase">Laboratory Session v1.4</p>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2">
+        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto no-scrollbar">
           <div className="text-[10px] font-bold text-white/20 uppercase tracking-[0.3em] px-4 mb-6">Core Modules</div>
           <button 
             onClick={() => onTabChange?.("canvas")}
@@ -103,6 +109,48 @@ export const SimulationPageLayout: React.FC<Readonly<SimulationPageLayoutProps>>
             >
               <Activity className="w-4.5 h-4.5" /> 
               Solver Validation
+            </button>
+          )}
+          {showModesTab && (
+            <button 
+              onClick={() => onTabChange?.("modes")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+                activeTab === "modes" 
+                  ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                  : "text-white/60 hover:text-primary hover:bg-primary/10"
+              )}
+            >
+              <Compass className="w-4.5 h-4.5" /> 
+              Experiment Modes
+            </button>
+          )}
+          {showAnalyticsTab && (
+            <button 
+              onClick={() => onTabChange?.("analytics")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+                activeTab === "analytics" 
+                  ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                  : "text-white/60 hover:text-primary hover:bg-primary/10"
+              )}
+            >
+              <BarChart2 className="w-4.5 h-4.5" /> 
+              Data Analytics
+            </button>
+          )}
+          {showSavedTab && (
+            <button 
+              onClick={() => onTabChange?.("saved")}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-sm transition-all",
+                activeTab === "saved" 
+                  ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20" 
+                  : "text-white/60 hover:text-primary hover:bg-primary/10"
+              )}
+            >
+              <Bookmark className="w-4.5 h-4.5" /> 
+              Saved Runs
             </button>
           )}
         </nav>

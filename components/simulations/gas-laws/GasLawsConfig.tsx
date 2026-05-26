@@ -3,8 +3,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { 
-  Activity, Settings2, Shield, BarChart2, Zap, BookOpen, 
-  HelpCircle, GraduationCap, CheckCircle2, AlertTriangle, Info
+  Activity, Settings2, Shield, BarChart2, Zap, Info, Sliders, Volume2, Sparkles, HelpCircle
 } from "lucide-react";
 
 interface GasLawsConfigProps {
@@ -26,6 +25,24 @@ interface GasLawsConfigProps {
     temperatureTarget: number;
   };
   expertiseLevel: "beginner" | "intermediate" | "expert";
+
+  // Physics Calibrations
+  gravity: number;
+  setGravity: (v: number) => void;
+  friction: number;
+  setFriction: (v: number) => void;
+  elasticity: number;
+  setElasticity: (v: number) => void;
+
+  // Visualization Toggles
+  showTrails: boolean;
+  setShowTrails: (v: boolean) => void;
+  showHeatMap: boolean;
+  setShowHeatMap: (v: boolean) => void;
+  enableSound: boolean;
+  setEnableSound: (v: boolean) => void;
+  showCollisionRings: boolean;
+  setShowCollisionRings: (v: boolean) => void;
 }
 
 const StatRow = ({ label, value, unit, color = "text-white/80", mono = true, border = true, sub }: {
@@ -71,22 +88,6 @@ const EquationBlock = ({ equation, label, color = "#38bdf8" }: { equation: strin
   </div>
 );
 
-const StatusIndicator = ({ status, label }: { status: "stable" | "warning" | "critical"; label: string }) => {
-  const colors = {
-    stable: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", icon: CheckCircle2 },
-    warning: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", icon: AlertTriangle },
-    critical: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20", icon: AlertTriangle },
-  };
-  const c = colors[status];
-  const Icon = c.icon;
-  return (
-    <div className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider", c.bg, c.text, c.border)}>
-      <Icon className="w-3.5 h-3.5" />
-      {label}
-    </div>
-  );
-};
-
 export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
   temperature,
   volume,
@@ -97,15 +98,27 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
   attractiveForce,
   telemetry,
   expertiseLevel,
+  gravity,
+  setGravity,
+  friction,
+  setFriction,
+  elasticity,
+  setElasticity,
+  showTrails,
+  setShowTrails,
+  showHeatMap,
+  setShowHeatMap,
+  enableSound,
+  setEnableSound,
+  showCollisionRings,
+  setShowCollisionRings
 }) => {
-  // Compressibility factor Z = PV / (N * k_B * T)
-  const kb = 0.05; // matching scaled macroscopic Boltzmann constant
+  const kb = 0.05; 
   const V_scaled = telemetry.measuredVolume;
   const T_measured = telemetry.measuredTemp || 1;
   const P_measured = telemetry.measuredPressure;
   const Z = (P_measured * V_scaled) / (particleCount * kb * T_measured);
 
-  // Volume occupied by hard spheres: N * b_coeff
   let b_coeff = 0.0;
   let particleRadius = 4.0;
   if (gasPreset === "helium") {
@@ -122,7 +135,6 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
   const totalExcludedVolume = particleCount * b_coeff;
   const excludedVolumePercentage = (totalExcludedVolume / V_scaled) * 100;
 
-  // Gas characteristics values
   const GAS_DATA = [
     { name: "Ideal Gas", mass: 1.0, radius: 0.0, collisions: "No", attraction: "None" },
     { name: "Helium (He)", mass: 0.5, radius: 3.0, collisions: "Yes", attraction: "None" },
@@ -132,7 +144,7 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
 
   return (
     <div className="flex-1 bg-[#111113] overflow-y-auto">
-      <div className="max-w-[1400px] mx-auto px-6 md:px-8 lg:px-10 py-8 space-y-8">
+      <div className="max-w-[1400px] mx-auto px-6 md:px-8 lg:px-10 py-8 space-y-8 pb-24">
         
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 pb-6 border-b border-white/[0.06]">
@@ -149,26 +161,22 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
 
         {/* Live Status Indicators */}
         <div className="flex flex-wrap gap-3">
-          <StatusIndicator
-            status={Z > 0.8 && Z < 1.2 ? "stable" : "warning"}
-            label={`Compressibility Factor Z = ${Z.toFixed(3)} (Ideal Z = 1.0)`}
-          />
-          <StatusIndicator
-            status="stable"
-            label={`Active Regime: ${regime.toUpperCase()}`}
-          />
-          <StatusIndicator
-            status="stable"
-            label={`${particleCount} particles inside chamber`}
-          />
-          <StatusIndicator
-            status={excludedVolumePercentage < 15 ? "stable" : "warning"}
-            label={`Excluded Co-Volume: ${excludedVolumePercentage.toFixed(1)}% of chamber`}
-          />
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+            Compressibility Factor Z = {Z.toFixed(3)}
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border-indigo-500/20">
+            Regime: {regime.toUpperCase()}
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
+            N = {particleCount} atoms
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border-purple-500/20">
+            Co-Volume: {excludedVolumePercentage.toFixed(1)}%
+          </div>
         </div>
 
         {/* Configuration Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           
           {/* Spatial parameters */}
           <SectionCard title="Chamber Physical Dimensions" icon={Settings2} color="#0d9488">
@@ -226,7 +234,163 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
             <StatRow label="Collisions Enabled" value={enableCollisions || gasPreset !== "ideal" ? "Yes" : "No"} unit="" color="text-emerald-400" border={false} />
           </SectionCard>
         </div>
- 
+
+        {/* ─── NEW SECTION: Advanced Environment Calibrations ─────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* Calibrations sliders card */}
+          <SectionCard title="Advanced Physics Environment Constants" icon={Sliders} color="#3b82f6">
+            <div className="space-y-6 mt-2">
+              
+              {/* Gravity slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
+                  <span className="text-white/60">Gravity Vector (g_y)</span>
+                  <span className="text-blue-400 font-mono">{gravity.toFixed(2)} m/s²</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  value={gravity}
+                  onChange={(e) => setGravity(parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+                <span className="text-[8px] text-white/30 block">Applies a downward acceleration to particles, causing sedimentation.</span>
+              </div>
+
+              {/* Friction / Drag slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
+                  <span className="text-white/60">Air Friction / Drag Coefficient</span>
+                  <span className="text-blue-400 font-mono">{friction.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.15"
+                  step="0.005"
+                  value={friction}
+                  onChange={(e) => setFriction(parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+                <span className="text-[8px] text-white/30 block">Introduces drag forces that continuously dissipate kinetic energy.</span>
+              </div>
+
+              {/* Elasticity / Restitution slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
+                  <span className="text-white/60">Collision Elasticity (Restitution)</span>
+                  <span className="text-blue-400 font-mono">{elasticity.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="1.0"
+                  step="0.02"
+                  value={elasticity}
+                  onChange={(e) => setElasticity(parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+                <span className="text-[8px] text-white/30 block">Restitution coeff. Under 1.0, collisions are inelastic, losing thermal velocity.</span>
+              </div>
+
+            </div>
+          </SectionCard>
+
+          {/* Diagnostic Visualizations toggles card */}
+          <SectionCard title="Visual Telemetry Overlays & Audio" icon={Sparkles} color="#10b981">
+            <div className="space-y-4.5 mt-2">
+              
+              {/* Particle Trails */}
+              <div className="flex items-center justify-between py-2 border-b border-white/[0.04]">
+                <div>
+                  <span className="text-[11px] text-white/80 font-bold uppercase tracking-wider block">Motion Blur Trails</span>
+                  <span className="text-[8.5px] text-white/30 block">Draws historical position trails behind particles.</span>
+                </div>
+                <button
+                  onClick={() => setShowTrails(!showTrails)}
+                  className={cn(
+                    "relative w-9 h-5 rounded-full transition-colors",
+                    showTrails ? "bg-emerald-500" : "bg-white/10"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all",
+                    showTrails ? "left-4.5" : "left-0.5"
+                  )} />
+                </button>
+              </div>
+
+              {/* Density Heat-Map */}
+              <div className="flex items-center justify-between py-2 border-b border-white/[0.04]">
+                <div>
+                  <span className="text-[11px] text-white/80 font-bold uppercase tracking-wider block">Spatial Heat-Map Grid</span>
+                  <span className="text-[8.5px] text-white/30 block">Overlays a concentration grid colored by local density.</span>
+                </div>
+                <button
+                  onClick={() => setShowHeatMap(!showHeatMap)}
+                  className={cn(
+                    "relative w-9 h-5 rounded-full transition-colors",
+                    showHeatMap ? "bg-emerald-500" : "bg-white/10"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all",
+                    showHeatMap ? "left-4.5" : "left-0.5"
+                  )} />
+                </button>
+              </div>
+
+              {/* Collision Rings */}
+              <div className="flex items-center justify-between py-2 border-b border-white/[0.04]">
+                <div>
+                  <span className="text-[11px] text-white/80 font-bold uppercase tracking-wider block">Collision Wavelets</span>
+                  <span className="text-[8.5px] text-white/30 block">Spawns visual expanding shock rings on impact points.</span>
+                </div>
+                <button
+                  onClick={() => setShowCollisionRings(!showCollisionRings)}
+                  className={cn(
+                    "relative w-9 h-5 rounded-full transition-colors",
+                    showCollisionRings ? "bg-emerald-500" : "bg-white/10"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all",
+                    showCollisionRings ? "left-4.5" : "left-0.5"
+                  )} />
+                </button>
+              </div>
+
+              {/* Audio feedback */}
+              <div className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-3.5 h-3.5 text-white/40" />
+                  <div>
+                    <span className="text-[11px] text-white/80 font-bold uppercase tracking-wider block">Sonal Telemetry Audio</span>
+                    <span className="text-[8.5px] text-white/30 block">Plays synthesized bleep sounds during boundary collisions.</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEnableSound(!enableSound)}
+                  className={cn(
+                    "relative w-9 h-5 rounded-full transition-colors",
+                    enableSound ? "bg-emerald-500" : "bg-white/10"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all",
+                    enableSound ? "left-4.5" : "left-0.5"
+                  )} />
+                </button>
+              </div>
+
+            </div>
+          </SectionCard>
+
+        </div>
+
         {/* Governing Equations Cards */}
         <SectionCard title="Governing Physical Equations & Solver Theory" icon={Shield} color="#06b6d4" span={3}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -297,19 +461,6 @@ export const GasLawsConfig: React.FC<GasLawsConfigProps> = ({
             </div>
           </div>
         </SectionCard>
-
-        {/* Educational Info Box */}
-        <div className="bg-black/20 border border-white/[0.04] rounded-2xl p-6">
-          <div className="flex gap-3">
-            <Info className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Note on Pressure Fluctuations</h4>
-              <p className="text-[11px] text-white/40 leading-relaxed">
-                You might notice that the measured pressure is slightly noisy and fluctuates around the ideal gas curve. This is not a numerical error; it represents physical **shot noise** due to the discrete nature of particles colliding with the walls! In a macroscale container with 10²³ particles, this noise is averaged out, but in our microscopic simulation chamber with finite particles, it is directly visible.
-              </p>
-            </div>
-          </div>
-        </div>
 
       </div>
     </div>
