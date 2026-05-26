@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { SimulationPageLayout, TabType } from "@/components/simulations/SimulationPageLayout";
-import { GasLawsCanvas, GasLawsTelemetry } from "./GasLawsCanvas";
+import { GasLawsCanvas } from "./GasLawsCanvas";
 import { GasLawsConfig } from "./GasLawsConfig";
 import { GasLawsTheory } from "./GasLawsTheory";
 import { GasLawsGuide } from "./GasLawsGuide";
 import { GasLawsAnalytics } from "./GasLawsAnalytics";
+import { AnalyticsDashboard } from "./AnalyticsDashboard";
 import { GasLawsSaved } from "./GasLawsSaved";
+import { useGasLawsStore } from "@/store/gasLawsStore";
 import {
   Play, Pause, RotateCcw, Activity, Thermometer, Settings2,
   Sparkles, Sliders, Layers, Volume2, Compass, BarChart2, Bookmark,
@@ -174,23 +176,8 @@ export const GasLawsSimulator: React.FC = () => {
 
   const [resetTrigger, setResetTrigger] = useState(0);
 
-  // Live telemetry state from Canvas
-  const [telemetry, setTelemetry] = useState<GasLawsTelemetry>({
-    measuredPressure: 0.005,
-    idealPressure: 0.005,
-    measuredTemp: 300,
-    measuredVolume: 50000,
-    particlesEscaped: 0,
-    meanSpeed: 45,
-    vanDerWaalsPressure: 0.005,
-    speedHistogram: new Array(15).fill(0),
-    temperatureTarget: 300,
-    entropy: 0,
-    entropyMax: 3.58,
-    diffusionMixing: 0,
-    meanFreePath: 0,
-    collisionCount: 0
-  });
+  // Live telemetry state from Zustand
+  const telemetry = useGasLawsStore();
 
   // Data history state for charting
   const [history, setHistory] = useState<{
@@ -259,19 +246,16 @@ export const GasLawsSimulator: React.FC = () => {
     }
   }, [isTempLocked]);
 
-  // State callback listener from canvas simulation loop
-  const handleStateUpdate = useCallback((tele: GasLawsTelemetry) => {
-    setTelemetry(tele);
-
-    // Throttle history accumulation to every 300ms
+  // Track history for older analytics tab if needed
+  useEffect(() => {
     const now = Date.now();
     if (now - lastHistoryUpdateTimeRef.current > 300) {
       setHistory((prev) => {
-        const nextPv = [...prev.pv, { p: tele.measuredPressure, v: tele.measuredVolume }].slice(-100);
-        const nextPt = [...prev.pt, { p: tele.measuredPressure, t: tele.measuredTemp }].slice(-100);
-        const nextVt = [...prev.vt, { v: tele.measuredVolume, t: tele.measuredTemp }].slice(-100);
-        const nextEntropy = [...prev.entropy, tele.entropy].slice(-100);
-        const nextCollisions = [...prev.collisions, tele.collisionCount].slice(-100);
+        const nextPv = [...prev.pv, { p: telemetry.measuredPressure, v: telemetry.measuredVolume }].slice(-100);
+        const nextPt = [...prev.pt, { p: telemetry.measuredPressure, t: telemetry.measuredTemp }].slice(-100);
+        const nextVt = [...prev.vt, { v: telemetry.measuredVolume, t: telemetry.measuredTemp }].slice(-100);
+        const nextEntropy = [...prev.entropy, telemetry.entropy].slice(-100);
+        const nextCollisions = [...prev.collisions, telemetry.collisionCount].slice(-100);
         const nextTimes = [...prev.times, now].slice(-100);
 
         return {
@@ -285,7 +269,7 @@ export const GasLawsSimulator: React.FC = () => {
       });
       lastHistoryUpdateTimeRef.current = now;
     }
-  }, []);
+  }, [telemetry]);
 
   // Load configuration run from archive saved runs
   const handleLoadSavedRun = (run: SavedRun) => {
@@ -361,9 +345,12 @@ export const GasLawsSimulator: React.FC = () => {
           <div className="h-full flex flex-col xl:flex-row">
 
             {/* Main Canvas Area */}
-            <div className="flex-1 flex flex-col md:flex-row min-h-[450px] xl:h-full bg-black relative overflow-hidden">
-              <div className="flex-1 relative flex flex-col justify-center">
-                
+            <div className="flex-1 flex flex-col min-h-[450px] xl:h-full bg-black relative overflow-hidden">
+              {/* Analytics Dashboard replacing Solver HUD */}
+              <AnalyticsDashboard />
+
+              {/* Canvas Container */}
+              <div className="flex-1 relative flex flex-col justify-center min-h-0">
                 <GasLawsCanvas
                   temperature={temperature}
                   volume={volume}
@@ -375,9 +362,7 @@ export const GasLawsSimulator: React.FC = () => {
                   isPlaying={isPlaying}
                   slowMotion={slowMotion}
                   onVolumeChange={handleVolumeChangeFromCanvas}
-                  onStateUpdate={handleStateUpdate}
                   resetTrigger={resetTrigger}
-                  addHeatTrigger={addHeatDirectly}
                   
                   // calibrations
                   gravity={gravity}
@@ -393,24 +378,6 @@ export const GasLawsSimulator: React.FC = () => {
                   barrierOpen={barrierOpen}
                   entropyConstraint={entropyConstraint}
                 />
-
-                {/* Solver HUD */}
-                <div className="absolute top-5 left-5 p-3.5 bg-black/85 backdrop-blur-md rounded-2xl border border-white/5 space-y-1 select-none pointer-events-none z-10 max-w-[280px]">
-                  <div className="text-[8.5px] text-white/30 uppercase tracking-[0.2em] font-bold">Active Engine</div>
-                  <div className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
-                    {particleMode === "normal" && "Maxwell-Boltzmann Kinetic Particle Engine"}
-                    {particleMode === "diffusion" && "Fickian Particle Mixing Engine"}
-                    {particleMode === "brownian" && "Einsteinian Langevin Random-Walk Solver"}
-                    {particleMode === "mean-free-path" && "Kinetic Collision Cross-Section Tracer"}
-                    {particleMode === "entropy" && "Gibbs-Shannon Information Entropy Matrix"}
-                  </div>
-                  <div className="text-[8px] text-white/40 font-mono mt-0.5 leading-relaxed">
-                    N = {particleCount} atoms
-                    {" | "}Reg = {regime.toUpperCase()}
-                    <br />
-                    Z = {((telemetry.measuredPressure * telemetry.measuredVolume) / (particleCount * 1.5 * (telemetry.measuredTemp || 1))).toFixed(3)}
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -650,37 +617,7 @@ export const GasLawsSimulator: React.FC = () => {
                   </ControlCard>
                 )}
 
-                {/* 5. Live State Telemetry */}
-                <ControlCard title="State Telemetry" icon={Activity} color="#10b981">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
-                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Measured Pressure P</div>
-                      <div className="text-[12px] font-mono font-bold mt-1 text-rose-400">{(telemetry.measuredPressure * 100).toFixed(2)} kPa</div>
-                    </div>
-                    
-                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
-                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Ideal Pressure (NkbT/V)</div>
-                      <div className="text-[12px] font-mono font-bold mt-1 text-cyan-400">{(telemetry.idealPressure * 100).toFixed(2)} kPa</div>
-                    </div>
-
-                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
-                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Live Temp</div>
-                      <div className="text-[11px] font-mono font-bold mt-1 text-amber-400">{Math.round(telemetry.measuredTemp)} K</div>
-                    </div>
-
-                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
-                      <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Mean Speed</div>
-                      <div className="text-[11px] font-mono font-bold mt-1 text-indigo-400">{telemetry.meanSpeed.toFixed(1)} m/s</div>
-                    </div>
-
-                    {expertiseLevel === "expert" && (
-                      <div className="p-3 bg-black/40 border border-white/5 rounded-2xl col-span-2">
-                        <div className="text-[8.5px] text-white/35 uppercase font-bold tracking-wider">Van der Waals Theoretical P</div>
-                        <div className="text-[11px] font-mono font-bold mt-1 text-pink-400">{(telemetry.vanDerWaalsPressure * 100).toFixed(2)} kPa</div>
-                      </div>
-                    )}
-                  </div>
-                </ControlCard>
+                {/* Live State Telemetry has been moved to the AnalyticsDashboard */}
 
               </div>
             </aside>
