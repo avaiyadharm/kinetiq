@@ -154,7 +154,7 @@ export const GasLawsSimulator: React.FC = () => {
   // Physical parameters
   const [temperature, setTemperature] = useState(300); // Kelvin
   const [volume, setVolume] = useState(0.5);            // Piston width fraction (0.3 to 1.0)
-  const [particleCount, setParticleCount] = useState(100);
+  const [particleCount, setParticleCount] = useState(600);
   const [regime, setRegime] = useState<"free" | "boyle" | "charles" | "gay-lussac" | "avogadro">("free");
   const [gasPreset, setGasPreset] = useState<"ideal" | "helium" | "xenon" | "real">("ideal");
 
@@ -557,7 +557,7 @@ export const GasLawsSimulator: React.FC = () => {
                     <ClickableValue
                       label="Particle Count (N)"
                       value={particleCount} unit="atoms"
-                      min={20} max={250} step={10}
+                      min={50} max={1200} step={50}
                       onChange={setParticleCount}
                       colorClass="text-emerald-400"
                       format={(v) => Math.round(v).toString()}

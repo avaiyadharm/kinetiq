@@ -94,8 +94,8 @@ export const MaxwellBoltzmannGraph: React.FC<{ particleMass: number }> = ({ part
       const v_mostProbable = storeState.v_mostProbable;
       const particleMassVal = massRef.current;
 
-      const maxSpeedCap = 300;
-      const binCount = speedHistogram.length;
+      const binCount = speedHistogram.length || 60;
+      const maxSpeedCap = (storeState.binWidth || 5) * binCount;
       
       // Determine max density for Y-axis scaling (theoretical peak)
       const peakHeight = getTheoreticalMaxwellBoltzmann3D(v_mostProbable, particleMassVal, measuredTemp);

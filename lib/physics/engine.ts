@@ -1,20 +1,20 @@
 export interface Particle {
   id: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  vz: number; // Simulated 3D component for accurate Maxwell-Boltzmann
-  mass: number;
-  radius: number;
+  x: number;      // Position in meters (SI)
+  y: number;      // Position in meters (SI)
+  vx: number;     // Velocity in m/s (SI)
+  vy: number;     // Velocity in m/s (SI)
+  vz: number;     // Hidden 3D velocity component in m/s (SI)
+  mass: number;   // Mass in kg (SI)
+  radius: number; // Radius in meters (SI)
   color: string;
 }
 
 export interface Bounds {
-  xMin: number;
-  xMax: number;
-  yMin: number;
-  yMax: number;
+  xMin: number;   // In meters
+  xMax: number;   // In meters
+  yMin: number;   // In meters
+  yMax: number;   // In meters
 }
 
 export interface EngineConfig {
@@ -23,14 +23,15 @@ export interface EngineConfig {
   gravity: number;
   friction: number;
   attractiveForce: number;
-  dt: number;
+  dt: number;     // Physical timestep in seconds (SI)
   particleMode?: "normal" | "diffusion" | "brownian" | "mean-free-path" | "entropy";
-  barrierY?: number;
+  barrierY?: number;      // In meters
   entropyConstraint?: boolean;
+  pistonVel?: number;     // In m/s (SI)
 }
 
 /**
- * A Spatial Hash Grid for O(N) broad-phase collision detection.
+ * A Spatial Hash Grid for O(N) broad-phase collision detection in meters.
  */
 class SpatialGrid {
   private cellSize: number;
@@ -87,13 +88,16 @@ export class GasEngine {
   private grid: SpatialGrid;
   private mfpPoints: { x: number; y: number }[] = [];
   
-  // Real thermodynamics constant representation. 
-  // We use a pseudo-scale where k_b = 1.5 allows nice visual speeds at T=300K.
-  public static readonly K_B = 1.5; 
+  // Real thermodynamics constants (SI)
+  public static readonly K_B = 1.380649e-23; // J/K
+  public static readonly NA = 6.02214076e23;  // particles/mol
+  public static readonly R = 8.314462618;     // J/(mol K)
+  public static readonly DEPTH = 1.111111e-7;  // Depth in meters (SI)
+  public static readonly TIME_SCALE = 2.5e-10; // Physical time scale factor (seconds/step)
 
   constructor() {
-    // Cell size of 20px is generally good for particle radii ~ 3-10px
-    this.grid = new SpatialGrid(20);
+    // Cell size of 20nm (20e-9 meters) matches standard particle radii (1.5nm - 4.5nm)
+    this.grid = new SpatialGrid(20e-9);
   }
 
   public setParticles(particles: Particle[]) {
@@ -122,16 +126,12 @@ export class GasEngine {
 
   /**
    * Randomizes the fake Z-velocity component according to a 1D Maxwell-Boltzmann distribution
-   * for the given temperature to maintain correct 3D thermodynamics without visually moving in Z.
    */
   private thermalizeZVelocity(p: Particle, temp: number) {
-    // Generate normally distributed random variable using Box-Muller transform
     let u = 0, v = 0;
     while(u === 0) u = Math.random();
     while(v === 0) v = Math.random();
     const z0 = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-    
-    // std_dev = sqrt(k_B * T / m)
     const stdDev = Math.sqrt((GasEngine.K_B * temp) / p.mass);
     p.vz = z0 * stdDev;
   }
@@ -143,11 +143,11 @@ export class GasEngine {
   }
 
   /**
-   * Steps the physics simulation forward by dt.
-   * Returns the total momentum transferred to walls during this step.
+   * Steps the physics simulation forward by dt (SI units).
+   * Returns total momentum transferred to boundaries and collision count.
    */
   public step(config: EngineConfig, bounds: Bounds): { momentumTransferred: number, collisionCount: number } {
-    const { dt, gravity, friction, elasticity, temperature, attractiveForce, particleMode, barrierY, entropyConstraint } = config;
+    const { dt, gravity, friction, elasticity, temperature, attractiveForce, particleMode, barrierY, entropyConstraint, pistonVel } = config;
     let momentumTransferred = 0;
     let collisionCount = 0;
 
@@ -161,54 +161,86 @@ export class GasEngine {
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
 
-      // Gravity
+      // Gravity (scaled to SI values)
       if (gravity > 0) {
-        p.vy += gravity * 0.25 * dt * 60;
+        // gravity parameter is scaled to realistic acceleration in m/s^2
+        p.vy += gravity * 9.81 * dt;
       }
       
-      // Friction (Air Drag)
+      // Friction (Air Drag in SI)
       if (friction > 0) {
-        const drag = (1 - friction * 0.25 * dt * 60);
+        const drag = Math.max(0, 1 - friction * dt);
         p.vx *= drag;
         p.vy *= drag;
         p.vz *= drag;
       }
 
-      // Move particle
-      p.x += p.vx * dt * 60;
-      p.y += p.vy * dt * 60;
+      // Move particle in meters
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
 
       let collidedWithWall = false;
 
-      // Wall Collisions
+      // Left Wall Collision
       if (p.x < bounds.xMin + p.radius) {
         p.x = bounds.xMin + p.radius;
         p.vx = Math.abs(p.vx) * elasticity;
         momentumTransferred += 2 * p.mass * Math.abs(p.vx);
-        this.thermalizeZVelocity(p, temperature); // Thermalize hidden dimension on wall hit
         collisionCount++;
         collidedWithWall = true;
-      } else if (p.x > bounds.xMax - p.radius) {
+      } 
+      // Right Wall (Piston) Collision
+      else if (p.x > bounds.xMax - p.radius) {
+        const oldVx = p.vx;
         p.x = bounds.xMax - p.radius;
-        p.vx = -Math.abs(p.vx) * elasticity;
-        momentumTransferred += 2 * p.mass * Math.abs(p.vx);
-        this.thermalizeZVelocity(p, temperature);
+        
+        // Piston Collision Physics: vx' = -vx + 2 * pistonVel
+        const pVel = pistonVel || 0;
+        p.vx = -Math.abs(p.vx) + 2 * pVel;
+        
+        // If expansion velocity is too high, avoid particle moving outwards
+        if (p.vx > 0) {
+          p.vx = -p.vx * elasticity;
+        }
+
+        momentumTransferred += p.mass * (Math.abs(p.vx) + Math.abs(oldVx));
         collisionCount++;
         collidedWithWall = true;
       }
 
+      // Top Wall Collision
       if (p.y < bounds.yMin + p.radius) {
         p.y = bounds.yMin + p.radius;
         p.vy = Math.abs(p.vy) * elasticity;
         momentumTransferred += 2 * p.mass * Math.abs(p.vy);
-        this.thermalizeZVelocity(p, temperature);
         collisionCount++;
         collidedWithWall = true;
-      } else if (p.y > bounds.yMax - p.radius) {
+      } 
+      // Bottom Wall (Diffuse Thermal plate / heating coil)
+      else if (p.y > bounds.yMax - p.radius) {
+        const oldVy = p.vy;
         p.y = bounds.yMax - p.radius;
-        p.vy = -Math.abs(p.vy) * elasticity;
-        momentumTransferred += 2 * p.mass * Math.abs(p.vy);
-        this.thermalizeZVelocity(p, temperature);
+        
+        // Diffuse reflection: reflected velocities are sampled from a normal thermal distribution at T
+        const stdDev = Math.sqrt((GasEngine.K_B * temperature) / p.mass);
+        
+        // Normal component vy must point upwards (negative)
+        let u1 = 0, u2 = 0;
+        while(u1 === 0) u1 = Math.random();
+        while(u2 === 0) u2 = Math.random();
+        const normSample = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+        p.vy = -Math.abs(normSample) * stdDev;
+        
+        // Tangential components vx and vz are fully thermalized
+        let u3 = 0, u4 = 0, u5 = 0, u6 = 0;
+        while(u3 === 0) u3 = Math.random();
+        while(u4 === 0) u4 = Math.random();
+        while(u5 === 0) u5 = Math.random();
+        while(u6 === 0) u6 = Math.random();
+        p.vx = Math.sqrt(-2.0 * Math.log(u3)) * Math.cos(2.0 * Math.PI * u4) * stdDev;
+        p.vz = Math.sqrt(-2.0 * Math.log(u5)) * Math.cos(2.0 * Math.PI * u6) * stdDev;
+
+        momentumTransferred += p.mass * (Math.abs(p.vy) + Math.abs(oldVy));
         collisionCount++;
         collidedWithWall = true;
       }
@@ -217,7 +249,7 @@ export class GasEngine {
       if (particleMode === "diffusion" && barrierY !== undefined) {
         const center = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.5;
         if (p.y > barrierY) {
-          const boundaryBuffer = p.radius + 1.5;
+          const boundaryBuffer = p.radius + 0.5e-9; // 0.5 nm buffer
           if (Math.abs(p.x - center) < boundaryBuffer) {
             if (p.vx > 0 && p.x < center) {
               p.x = center - boundaryBuffer;
@@ -273,12 +305,14 @@ export class GasEngine {
         const distSq = dx * dx + dy * dy;
         const minDist = p1.radius + p2.radius;
 
-        // Attractive forces (Van der Waals 'a')
+        // Attractive forces (Van der Waals 'a' in SI units)
+        // a_coeff represents attractive strength per particle pair in Pa m^6
         if (attractiveForce > 0) {
-           const attractionCutoff = 40;
+           const attractionCutoff = 15e-9; // 15 nm cutoff in SI
            const dist = Math.sqrt(distSq);
            if (dist > minDist && dist < attractionCutoff) {
-              const force = (attractiveForce * 0.12) * (attractionCutoff - dist) / dist;
+              // Medium-range attractive pull scaled to Newtons: F = attractiveForce * 1e-15 N
+              const force = (attractiveForce * 1.5e-14) * (attractionCutoff - dist) / dist;
               const ax = force * dx;
               const ay = force * dy;
               p1.vx += (ax / p1.mass) * dt;
@@ -288,29 +322,34 @@ export class GasEngine {
            }
         }
 
-        // Hard sphere exclusion (collision)
+        // Hard sphere exclusion (3D elastic molecular dynamics collision resolution)
         if (distSq < minDist * minDist) {
-          const dist = Math.sqrt(distSq);
-          const nx = dx / dist;
-          const ny = dy / dist;
+          const dist = Math.sqrt(distSq) || 0.1e-9;
+          
+          // Assumes 3D spheres colliding in a thin slab: 2D overlap implies offset in Z
+          const dz = (Math.random() > 0.5 ? 1 : -1) * Math.sqrt(Math.max(0, minDist * minDist - distSq));
+          const nx3D = dx / minDist;
+          const ny3D = dy / minDist;
+          const nz3D = dz / minDist;
 
+          // Relative velocity in 3D
           const kx = p1.vx - p2.vx;
           const ky = p1.vy - p2.vy;
-          // Note: we don't resolve kz here because it's a 2D physical collision, 
-          // vz is purely for statistical 3D thermodynamics.
-          const vn = kx * nx + ky * ny;
+          const kz = p1.vz - p2.vz;
 
-          if (vn > 0) {
-            const impulse = (2 * vn) / (p1.mass + p2.mass);
+          // Projection along 3D collision normal
+          const vn3D = kx * nx3D + ky * ny3D + kz * nz3D;
+
+          if (vn3D > 0) {
+            const impulse = (2 * vn3D) / (p1.mass + p2.mass);
             
-            p1.vx = (p1.vx - impulse * p2.mass * nx) * elasticity;
-            p1.vy = (p1.vy - impulse * p2.mass * ny) * elasticity;
-            p2.vx = (p2.vx + impulse * p1.mass * nx) * elasticity;
-            p2.vy = (p2.vy + impulse * p1.mass * ny) * elasticity;
+            p1.vx = (p1.vx - impulse * p2.mass * nx3D) * elasticity;
+            p1.vy = (p1.vy - impulse * p2.mass * ny3D) * elasticity;
+            p1.vz = (p1.vz - impulse * p2.mass * nz3D) * elasticity;
             
-            // Randomize their internal Z velocity as well to mimic full 3D energy transfer
-            this.thermalizeZVelocity(p1, temperature);
-            this.thermalizeZVelocity(p2, temperature);
+            p2.vx = (p2.vx + impulse * p1.mass * nx3D) * elasticity;
+            p2.vy = (p2.vy + impulse * p1.mass * ny3D) * elasticity;
+            p2.vz = (p2.vz + impulse * p1.mass * nz3D) * elasticity;
 
             collisionCount++;
 
@@ -322,18 +361,19 @@ export class GasEngine {
             }
           }
 
-          // Positional correction to prevent sticking
+          // Positional correction to prevent sticking (push apart in 2D space)
           const overlap = minDist - dist;
-          p1.x -= nx * overlap * 0.5;
-          p1.y -= ny * overlap * 0.5;
-          p2.x += nx * overlap * 0.5;
-          p2.y += ny * overlap * 0.5;
+          const nx2D = dx / dist;
+          const ny2D = dy / dist;
+          p1.x -= nx2D * overlap * 0.5;
+          p1.y -= ny2D * overlap * 0.5;
+          p2.x += nx2D * overlap * 0.5;
+          p2.y += ny2D * overlap * 0.5;
         }
       }
     }
 
-    // 4. Thermostat (Berendsen) to maintain exact target temperature over time
-    // We scale vx, vy, and vz
+    // 4. Thermostat (Berendsen) to maintain target temperature over time
     let totalKE = 0;
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
@@ -345,7 +385,8 @@ export class GasEngine {
     const targetKE = 1.5 * this.particles.length * GasEngine.K_B * temperature;
     
     if (totalKE > 0) {
-      const thermostatCoeff = 0.08; 
+      // Small coupling constant (0.02) to let conduction from the thermal bottom wall drive natural profiles
+      const thermostatCoeff = 0.02; 
       const scale = Math.sqrt(1 + (targetKE / totalKE - 1) * thermostatCoeff);
       for (let i = 0; i < this.particles.length; i++) {
         const p = this.particles[i];

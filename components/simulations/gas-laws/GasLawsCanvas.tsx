@@ -77,6 +77,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
   const chamberBounds = useRef({ xMin: 40, xMax: 400, yMin: 50, yMax: 350 });
   const targetWidthRef = useRef<number>(400);
+  const prevXMaxRef = useRef<number>(400);
   const isDraggingPistonRef = useRef<boolean>(false);
   const hoverPistonRef = useRef<boolean>(false);
 
@@ -98,13 +99,37 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
     const targetXMax = xMin + (maxX - xMin) * p.volume;
     chamberBounds.current = { xMin, xMax: targetXMax, yMin, yMax };
     targetWidthRef.current = targetXMax;
+    prevXMaxRef.current = targetXMax;
     currentBarrierYRef.current = yMin; // fully closed barrier by default
 
-    let mass = 1.0;
-    let radius = 4.0;
-    if (p.gasPreset === "helium") { mass = 0.5; radius = 3.0; } 
-    else if (p.gasPreset === "xenon") { mass = 4.0; radius = 8.5; } 
-    else if (p.gasPreset === "real") { mass = 2.0; radius = 6.0; }
+    // Physical mass in kg (like Argon 6.63e-26 kg) and physical radius in meters
+    let mass = 6.63e-26; 
+    let radius = 4.0e-9; 
+    if (p.gasPreset === "helium") { 
+      mass = 6.64e-27; 
+      radius = 3.0e-9; 
+    } else if (p.gasPreset === "xenon") { 
+      mass = 2.18e-25; 
+      radius = 8.5e-9; 
+    } else if (p.gasPreset === "real") { 
+      mass = 6.63e-26; 
+      radius = 6.0e-9; 
+    }
+
+    const sampleThermalVelocity = (m: number, temp: number) => {
+      const stdDev = Math.sqrt((GasEngine.K_B * temp) / m);
+      const randomNormal = () => {
+        let u = 0, v = 0;
+        while(u === 0) u = Math.random();
+        while(v === 0) v = Math.random();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+      };
+      return {
+        vx: randomNormal() * stdDev,
+        vy: randomNormal() * stdDev,
+        vz: randomNormal() * stdDev
+      };
+    };
 
     const list: Particle[] = [];
 
@@ -113,74 +138,80 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       const macroY = yMin + (yMax - yMin) * 0.5;
       
       // Macro particle
+      const macroVel = sampleThermalVelocity(1.99e-24, p.temperature);
       list.push({
-        id: 0, x: macroX, y: macroY,
-        vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5, vz: 0,
-        mass: 30.0, radius: 24.0, color: "#eab308"
+        id: 0, x: macroX * 1e-9, y: macroY * 1e-9,
+        vx: macroVel.vx * 0.2, vy: macroVel.vy * 0.2, vz: macroVel.vz * 0.2,
+        mass: 1.99e-24, radius: 24.0e-9, color: "#eab308"
       });
 
       // Micro particles
       const microCount = Math.max(30, Math.min(180, p.particleCount));
-      const microSpeed = Math.sqrt((2 * GasEngine.K_B * p.temperature) / 0.4);
+      const microRadius = 2.5e-9;
+      const microMass = 2.65e-26;
       for (let i = 1; i <= microCount; i++) {
         let x = 0, y = 0, overlap = true, safety = 0;
         while (overlap && safety < 100) {
           x = xMin + 2.5 + Math.random() * (targetXMax - xMin - 5);
           y = yMin + 2.5 + Math.random() * (yMax - yMin - 5);
           overlap = false;
-          // Check overlap with macro
+          // Check overlap with macro in pixel coords
           const dx = x - macroX;
           const dy = y - macroY;
           if (dx*dx + dy*dy < (24.0 + 2.5 + 5)**2) { overlap = true; }
           // Check overlap with other micros
           if (!overlap) {
             for (const other of list) {
-              const odx = x - other.x; const ody = y - other.y;
-              if (odx*odx + ody*ody < (2.5 + other.radius + 1)**2) { overlap = true; break; }
+              const odx = x - (other.x / 1e-9); 
+              const ody = y - (other.y / 1e-9);
+              if (odx*odx + ody*ody < (2.5 + (other.radius / 1e-9) + 1)**2) { overlap = true; break; }
             }
           }
           safety++;
         }
-        const angle = Math.random() * 2 * Math.PI;
+        const microVel = sampleThermalVelocity(microMass, p.temperature);
         list.push({
-          id: i, x, y,
-          vx: Math.cos(angle) * microSpeed, vy: Math.sin(angle) * microSpeed, vz: 0,
-          mass: 0.4, radius: 2.5, color: "rgba(255, 255, 255, 0.45)"
+          id: i, x: x * 1e-9, y: y * 1e-9,
+          vx: microVel.vx, vy: microVel.vy, vz: microVel.vz,
+          mass: microMass, radius: microRadius, color: "rgba(255, 255, 255, 0.45)"
         });
       }
     } else if (p.particleMode === "diffusion") {
       const center = xMin + (targetXMax - xMin) * 0.5;
+      const radiusPx = radius / 1e-9;
       for (let i = 0; i < p.particleCount; i++) {
         const isBlue = i < p.particleCount / 2;
         let x = 0, y = 0, overlap = true, safety = 0;
         while (overlap && safety < 100) {
           if (isBlue) {
-            x = xMin + radius + Math.random() * (center - xMin - 2 * radius - 5);
+            x = xMin + radiusPx + Math.random() * (center - xMin - 2 * radiusPx - 5);
           } else {
-            x = center + 5 + radius + Math.random() * (targetXMax - center - 2 * radius - 5);
+            x = center + 5 + radiusPx + Math.random() * (targetXMax - center - 2 * radiusPx - 5);
           }
-          y = yMin + radius + Math.random() * (yMax - yMin - 2 * radius);
+          y = yMin + radiusPx + Math.random() * (yMax - yMin - 2 * radiusPx);
           overlap = false;
           for (const other of list) {
-            const dx = x - other.x; const dy = y - other.y;
-            if (dx*dx + dy*dy < (radius + other.radius + 1)**2) { overlap = true; break; }
+            const dx = x - (other.x / 1e-9); 
+            const dy = y - (other.y / 1e-9);
+            if (dx*dx + dy*dy < (radiusPx + (other.radius / 1e-9) + 1)**2) { overlap = true; break; }
           }
           safety++;
         }
-        const speed = Math.sqrt((2 * GasEngine.K_B * p.temperature) / mass);
-        const angle = Math.random() * 2 * Math.PI;
+        const vel = sampleThermalVelocity(mass, p.temperature);
         list.push({
-          id: i, x, y,
-          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0,
+          id: i, x: x * 1e-9, y: y * 1e-9,
+          vx: vel.vx, vy: vel.vy, vz: vel.vz,
           mass, radius, color: isBlue ? "rgb(59, 130, 246)" : "rgb(249, 115, 22)"
         });
       }
     } else {
       // Normal, mean-free-path, entropy
+      const radiusPx = radius / 1e-9;
       for (let i = 0; i < p.particleCount; i++) {
         const isMFPTracer = p.particleMode === "mean-free-path" && i === 0;
-        const pRadius = isMFPTracer ? 7.5 : radius;
-        const pMass = isMFPTracer ? 1.0 : mass;
+        const pRadius = isMFPTracer ? 7.5e-9 : radius;
+        const pRadiusPx = pRadius / 1e-9;
+        const pMass = isMFPTracer ? 6.63e-26 : mass;
         const pColor = isMFPTracer ? "rgb(236, 72, 153)" : "rgb(16, 185, 129)";
 
         // If entropy constraint is checked, restrict initial spawn to left 40%
@@ -190,27 +221,26 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
         let x = 0, y = 0, overlap = true, safety = 0;
         while (overlap && safety < 100) {
-          x = xMin + pRadius + Math.random() * (spawnMaxX - xMin - 2 * pRadius);
-          y = yMin + pRadius + Math.random() * (yMax - yMin - 2 * pRadius);
+          x = xMin + pRadiusPx + Math.random() * (spawnMaxX - xMin - 2 * pRadiusPx);
+          y = yMin + pRadiusPx + Math.random() * (yMax - yMin - 2 * pRadiusPx);
           overlap = false;
           for (const other of list) {
-            const dx = x - other.x; const dy = y - other.y;
-            if (dx*dx + dy*dy < (pRadius + other.radius + 1)**2) { overlap = true; break; }
+            const dx = x - (other.x / 1e-9); 
+            const dy = y - (other.y / 1e-9);
+            if (dx*dx + dy*dy < (pRadiusPx + (other.radius / 1e-9) + 1)**2) { overlap = true; break; }
           }
           safety++;
         }
-        const speed = Math.sqrt((2 * GasEngine.K_B * p.temperature) / pMass);
-        const angle = Math.random() * 2 * Math.PI;
+        const vel = sampleThermalVelocity(pMass, p.temperature);
         list.push({
-          id: i, x, y,
-          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0,
+          id: i, x: x * 1e-9, y: y * 1e-9,
+          vx: vel.vx, vy: vel.vy, vz: vel.vz,
           mass: pMass, radius: pRadius, color: pColor
         });
       }
     }
 
     engineRef.current.setParticles(list);
-    engineRef.current.thermalizeAllZ(p.temperature);
     thermoRef.current = new ThermodynamicsAnalyzer();
   };
 
@@ -308,20 +338,27 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
       // PHYSICS STEP
       if (p.isPlaying) {
+         const dt_phy = dt_wall * p.slowMotion * GasEngine.TIME_SCALE;
+         const pistonVel = dt_phy > 0 ? (bounds.xMax - prevXMaxRef.current) * 1e-9 / dt_phy : 0;
+
          const config = {
              temperature: p.temperature,
              elasticity: p.elasticity,
              gravity: p.gravity,
              friction: p.friction,
              attractiveForce: p.gasPreset === "real" ? p.attractiveForce : 0,
-             dt: dt_wall * p.slowMotion,
+             dt: dt_phy,
              particleMode: p.particleMode,
-             barrierY: currentBarrierYRef.current,
-             entropyConstraint: p.entropyConstraint
+             barrierY: currentBarrierYRef.current * 1e-9, // in meters (SI)
+             entropyConstraint: p.entropyConstraint,
+             pistonVel: pistonVel
          };
          
          const { momentumTransferred, collisionCount } = engineRef.current.step(config, {
-             xMin: bounds.xMin, xMax: bounds.xMax, yMin: bounds.yMin, yMax: bounds.yMax
+             xMin: bounds.xMin * 1e-9, 
+             xMax: bounds.xMax * 1e-9, 
+             yMin: bounds.yMin * 1e-9, 
+             yMax: bounds.yMax * 1e-9
          });
 
          thermoRef.current.registerFrameCollisions(momentumTransferred, collisionCount, config.dt);
@@ -333,10 +370,10 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       const telemetry = thermoRef.current.analyze(
           engineRef.current.getParticles(), 
           p.temperature, 
-          currentWidth, 
-          currentHeight, 
+          currentWidth * 1e-9, 
+          currentHeight * 1e-9, 
           now,
-          bounds.xMin,
+          bounds.xMin * 1e-9,
           p.particleMode,
           p.gasPreset,
           p.attractiveForce,
@@ -438,16 +475,16 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         ctx.fillText(p.barrierOpen ? "GATE OPEN" : "GATE CLOSED", center, bounds.yMin + 20);
       }
 
-      // Draw Mean Free Path links
+      // Draw Mean Free Path tracer links
       if (p.particleMode === "mean-free-path") {
         const mfpPts = engineRef.current.getMfpPoints();
         if (mfpPts.length > 0) {
           ctx.strokeStyle = "rgba(236, 72, 153, 0.55)";
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.moveTo(mfpPts[0].x, mfpPts[0].y);
+          ctx.moveTo(mfpPts[0].x / 1e-9, mfpPts[0].y / 1e-9);
           for (let i = 1; i < mfpPts.length; i++) {
-            ctx.lineTo(mfpPts[i].x, mfpPts[i].y);
+            ctx.lineTo(mfpPts[i].x / 1e-9, mfpPts[i].y / 1e-9);
           }
           ctx.stroke();
 
@@ -455,13 +492,13 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
           ctx.fillStyle = "rgba(236, 72, 153, 0.8)";
           for (let i = 0; i < mfpPts.length; i++) {
             ctx.beginPath();
-            ctx.arc(mfpPts[i].x, mfpPts[i].y, 3, 0, 2 * Math.PI);
+            ctx.arc(mfpPts[i].x / 1e-9, mfpPts[i].y / 1e-9, 3, 0, 2 * Math.PI);
             ctx.fill();
           }
         }
       }
 
-      // Render Particles
+      // Render Particles in pixel space
       const particles = engineRef.current.getParticles();
       for (let i = 0; i < particles.length; i++) {
         const part = particles[i];
@@ -481,7 +518,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         
         ctx.fillStyle = pColor;
         ctx.beginPath();
-        ctx.arc(part.x, part.y, part.radius, 0, 2 * Math.PI);
+        ctx.arc(part.x / 1e-9, part.y / 1e-9, part.radius / 1e-9, 0, 2 * Math.PI);
         ctx.fill();
         ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.lineWidth = 1;
@@ -501,7 +538,14 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       ctx.textAlign = "center";
       ctx.fillText("PISTON", bounds.xMax + 10, bounds.yMin - 10);
 
+      // Display educational disclaimer
+      ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+      ctx.font = `8px ${FONT_SANS}`;
+      ctx.textAlign = "left";
+      ctx.fillText("Rendered particles represent statistical samples, not actual molecule counts.", bounds.xMin, bounds.yMax + 20);
+
       animationId = requestAnimationFrame(tick);
+      prevXMaxRef.current = bounds.xMax;
     };
 
     animationId = requestAnimationFrame(tick);

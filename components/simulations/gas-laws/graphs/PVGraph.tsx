@@ -86,7 +86,8 @@ export const PVGraph: React.FC<{ particleCount: number }> = ({ particleCount }) 
 
       const vMin = 3.0;
       const vMax = 10.0;
-      const pMax = 800; // kPa
+      // Scale pMax dynamically based on particleCount to keep curves in physical scale
+      const pMax = Math.max(100, (particleCount * 1.15054e-2 * 800) / 3.0);
 
       // Draw Ideal Gas reference hyperbolas
       ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -99,7 +100,7 @@ export const PVGraph: React.FC<{ particleCount: number }> = ({ particleCount }) 
         for (let vx = 0; vx <= graphW; vx += 5) {
           const volPct = vx / graphW; 
           const volValue = vMin + volPct * (vMax - vMin);
-          const idealPVal = (pCount * 1.5 * tRef) / volValue; // Using K_B = 1.5
+          const idealPVal = (pCount * 1.15054e-2 * tRef) / volValue; 
           const graphP = mt + graphH - (idealPVal / pMax) * graphH;
           if (graphP >= mt && graphP <= mt + graphH) {
             if (vx === 0) ctx.moveTo(ml + vx, graphP);

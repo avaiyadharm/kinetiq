@@ -77,9 +77,9 @@ export const AnalyticsDashboard: React.FC = () => {
           <span className="text-zinc-400">Volume</span>
           <span className="text-white font-semibold">{measuredVolume.toFixed(2)} dm³</span>
         </div>
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center" title="Coarse-grained Shannon spatial entropy calculated over a 10x10 cell grid in units of k_B (S = -sum P_i ln P_i)">
           <span className="text-zinc-400">Entropy S</span>
-          <span className="text-indigo-400">{entropy.toFixed(3)}</span>
+          <span className="text-indigo-400">{entropy.toFixed(3)} k_B</span>
         </div>
         <div className="flex justify-between items-center mt-1 pt-1 border-t border-white/5">
           <span className="text-zinc-400">Sys Energy</span>
