@@ -538,7 +538,7 @@ export const GasLawsScientificGraphPanel: React.FC<GraphPanelProps> = ({
             ctx.fillStyle = "rgba(236, 72, 153, 0.6)";
             ctx.font = `8px ${FONT_SANS}`;
             ctx.textAlign = "left";
-            ctx.fillText("Adiabatic: PV^1.67 = C", ml + 10, mt + 45);
+            ctx.fillText("Adiabatic: PV¹·⁶⁷ = C", ml + 10, mt + 45);
           }
         }
 
@@ -772,7 +772,7 @@ export const GasLawsScientificGraphPanel: React.FC<GraphPanelProps> = ({
         ctx.fillStyle = "rgba(239, 68, 68, 0.7)";
         ctx.font = `7px ${FONT_MONO}`;
         ctx.textAlign = "right";
-        ctx.fillText(`S_max = ${maxS.toFixed(3)} k_B`, ml + graphW - 5, pyMaxS - 4);
+        ctx.fillText(`Sₘₐₓ = ${maxS.toFixed(3)} k_B`, ml + graphW - 5, pyMaxS - 4);
 
         // Entropy History plotting (rolling time series)
         const hS = historyEntropy.current;
@@ -1450,28 +1450,28 @@ export const GasLawsScientificGraphPanel: React.FC<GraphPanelProps> = ({
         title = "Shannon Entropy";
         xVal = `Time step t = ${Math.round(x)}`;
         yVal = `Entropy S = ${y.toFixed(4)} k_B`;
-        equation = "S = -k_B ∑ P_i ln P_i";
+        equation = "S = -k_B ∑ Pᵢ ln Pᵢ";
         annotation = "Unconstrained systems spread stochastically to fill all available microstates.";
         break;
       case "MaxwellBoltzmann":
         title = "MB Velocity Spec";
         xVal = `Speed v = ${Math.round(x)} m/s`;
         yVal = `Density f(v) = ${y.toFixed(5)}`;
-        equation = "f(v) ∝ v² e^(-mv²/2kT)";
+        equation = "f(v) ∝ v² exp(-mv² / 2kT)";
         annotation = "Distribution peak shifts rightward under high temperature or lower mass.";
         break;
       case "BoltzmannEnergy":
         title = "Energy Distribution";
         xVal = `Energy E = ${x.toFixed(1)} × 10⁻²⁰ J`;
         yVal = `Density P(E) = ${y.toFixed(4)}`;
-        equation = "P(E) ∝ √E e^(-E/kT)";
+        equation = "P(E) ∝ √E exp(-E / kT)";
         annotation = "Thermal equipartition maps direct energy states according to degrees of freedom.";
         break;
       case "CollisionAnalytics":
         title = "Collision Tracker";
         xVal = `Density N/V = ${x.toFixed(1)} L⁻¹`;
         yVal = `Frequency = ${Math.round(y)} Hz`;
-        equation = "f_c = 4√2 π r² (N/V) v_rms";
+        equation = "f꜀ = 4√2 π r² (N/V) v_rms";
         annotation = "Density reduction expands mean free path, lowering molecular collision rates.";
         break;
       case "Diffusion":

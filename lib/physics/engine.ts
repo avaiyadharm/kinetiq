@@ -135,10 +135,10 @@ export class GasEngine {
         : bounds.xMax;
         
       // Offset margins to keep the particle bodies strictly inside the visible boundary lines
-      const leftBound = bounds.xMin + p.radius + 3e-9;
-      const rightBound = limitXMax - p.radius - 4e-9;
-      const topBound = bounds.yMin + p.radius + 3e-9;
-      const bottomBound = bounds.yMax - p.radius - 2e-9;
+      const leftBound = bounds.xMin + p.radius + 5e-9;
+      const rightBound = limitXMax - p.radius - 7e-9;
+      const topBound = bounds.yMin + p.radius + 5e-9;
+      const bottomBound = bounds.yMax - p.radius - 5e-9;
 
       if (p.x < leftBound) {
         p.x = leftBound;
@@ -231,26 +231,26 @@ export class GasEngine {
           let normalVel = 0;
           
           // Left boundary
-          if (newX < bounds.xMin + p.radius + 3e-9) {
+          if (newX < bounds.xMin + p.radius + 5e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vx);
           }
           // Right boundary (Piston)
-          else if (newX > bounds.xMax - p.radius - 4e-9) {
+          else if (newX > bounds.xMax - p.radius - 7e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vx);
           }
           
           // Top boundary
-          if (newY < bounds.yMin + p.radius + 3e-9) {
+          if (newY < bounds.yMin + p.radius + 5e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vy);
           }
           // Bottom boundary
-          else if (newY > bounds.yMax - p.radius - 2e-9) {
+          else if (newY > bounds.yMax - p.radius - 5e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vy);
@@ -374,17 +374,17 @@ export class GasEngine {
       let collidedWithWall = false;
 
       // Left Wall Collision
-      if (p.x < bounds.xMin + p.radius + 3e-9) {
-        p.x = bounds.xMin + p.radius + 3e-9;
+      if (p.x < bounds.xMin + p.radius + 5e-9) {
+        p.x = bounds.xMin + p.radius + 5e-9;
         p.vx = Math.abs(p.vx) * elasticity;
         momentumTransferred += 2 * p.mass * Math.abs(p.vx);
         collisionCount++;
         collidedWithWall = true;
       } 
       // Right Wall (Piston) Collision
-      else if (p.x > bounds.xMax - p.radius - 4e-9) {
+      else if (p.x > bounds.xMax - p.radius - 7e-9) {
         const oldVx = p.vx;
-        p.x = bounds.xMax - p.radius - 4e-9;
+        p.x = bounds.xMax - p.radius - 7e-9;
         
         // Piston Collision Physics: vx' = -vx + 2 * pistonVel
         const pVel = pistonVel || 0;
@@ -401,17 +401,17 @@ export class GasEngine {
       }
 
       // Top Wall Collision
-      if (p.y < bounds.yMin + p.radius + 3e-9) {
-        p.y = bounds.yMin + p.radius + 3e-9;
+      if (p.y < bounds.yMin + p.radius + 5e-9) {
+        p.y = bounds.yMin + p.radius + 5e-9;
         p.vy = Math.abs(p.vy) * elasticity;
         momentumTransferred += 2 * p.mass * Math.abs(p.vy);
         collisionCount++;
         collidedWithWall = true;
       } 
       // Bottom Wall (Diffuse Thermal plate / heating coil)
-      else if (p.y > bounds.yMax - p.radius - 2e-9) {
+      else if (p.y > bounds.yMax - p.radius - 5e-9) {
         const oldVy = p.vy;
-        p.y = bounds.yMax - p.radius - 2e-9;
+        p.y = bounds.yMax - p.radius - 5e-9;
         
         // Diffuse reflection: reflected velocities are sampled from a normal thermal distribution at T
         const stdDev = Math.sqrt((GasEngine.K_B * temperature) / p.mass);

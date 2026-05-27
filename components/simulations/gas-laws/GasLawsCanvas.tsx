@@ -360,13 +360,14 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
          const dt_phy = dt_wall * p.slowMotion * GasEngine.TIME_SCALE;
          const pistonVel = dt_phy > 0 ? (bounds.xMax - prevXMaxRef.current) * 1e-9 / dt_phy : 0;
 
+         const NUM_SUBSTEPS = 4;
          const config = {
              temperature: p.temperature,
              elasticity: p.elasticity,
              gravity: p.gravity,
              friction: p.friction,
              attractiveForce: p.gasPreset === "real" ? p.attractiveForce : 0,
-             dt: dt_phy,
+             dt: dt_phy / NUM_SUBSTEPS,
              particleMode: p.particleMode,
              barrierY: currentBarrierYRef.current * 1e-9, // in meters (SI)
              entropyConstraint: p.entropyConstraint,
@@ -375,14 +376,20 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
              simulationMode: p.simulationMode
           };
          
-         const { momentumTransferred, collisionCount } = engineRef.current.step(config, {
-             xMin: bounds.xMin * 1e-9, 
-             xMax: bounds.xMax * 1e-9, 
-             yMin: bounds.yMin * 1e-9, 
-             yMax: bounds.yMax * 1e-9
-         });
+         let totalMom = 0;
+         let totalColl = 0;
+         for (let k = 0; k < NUM_SUBSTEPS; k++) {
+             const { momentumTransferred, collisionCount } = engineRef.current.step(config, {
+                 xMin: bounds.xMin * 1e-9, 
+                 xMax: bounds.xMax * 1e-9, 
+                 yMin: bounds.yMin * 1e-9, 
+                 yMax: bounds.yMax * 1e-9
+             });
+             totalMom += momentumTransferred;
+             totalColl += collisionCount;
+         }
 
-         thermoRef.current.registerFrameCollisions(momentumTransferred, collisionCount, config.dt);
+         thermoRef.current.registerFrameCollisions(totalMom, totalColl, dt_phy);
       } else {
          // When simulation is paused, ensure particles are still clamped to the piston/boundaries
          // if the piston is dragged or other parameters are adjusted
