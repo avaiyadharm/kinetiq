@@ -127,6 +127,37 @@ export class GasEngine {
     return sumDist / (this.mfpPoints.length - 1);
   }
 
+  public clampToBounds(bounds: Bounds, particleMode?: string, entropyConstraint?: boolean) {
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      const limitXMax = (particleMode === "entropy" && entropyConstraint)
+        ? Math.min(bounds.xMax, bounds.xMin + (bounds.xMax - bounds.xMin) * 0.4)
+        : bounds.xMax;
+        
+      // Offset margins to keep the particle bodies strictly inside the visible boundary lines
+      const leftBound = bounds.xMin + p.radius + 3e-9;
+      const rightBound = limitXMax - p.radius - 4e-9;
+      const topBound = bounds.yMin + p.radius + 3e-9;
+      const bottomBound = bounds.yMax - p.radius - 2e-9;
+
+      if (p.x < leftBound) {
+        p.x = leftBound;
+        p.vx = Math.abs(p.vx);
+      } else if (p.x > rightBound) {
+        p.x = rightBound;
+        p.vx = -Math.abs(p.vx);
+      }
+      
+      if (p.y < topBound) {
+        p.y = topBound;
+        p.vy = Math.abs(p.vy);
+      } else if (p.y > bottomBound) {
+        p.y = bottomBound;
+        p.vy = -Math.abs(p.vy);
+      }
+    }
+  }
+
   /**
    * Randomizes the fake Z-velocity component according to a 1D Maxwell-Boltzmann distribution
    */
@@ -173,6 +204,9 @@ export class GasEngine {
     let momentumTransferred = 0;
     let collisionCount = 0;
 
+    // Boundary Clamping at start: immediately push back any particles that are outside the chamber boundaries
+    this.clampToBounds(bounds, particleMode, entropyConstraint);
+
     if (config.simulationMode === "mc") {
       const stdDev = Math.sqrt((GasEngine.K_B * temperature) / (this.particles[0]?.mass || 6.63e-26));
       const stepSize = stdDev * dt; // characteristic displacement per step
@@ -197,26 +231,26 @@ export class GasEngine {
           let normalVel = 0;
           
           // Left boundary
-          if (newX < bounds.xMin + p.radius) {
+          if (newX < bounds.xMin + p.radius + 3e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vx);
           }
           // Right boundary (Piston)
-          else if (newX > bounds.xMax - p.radius) {
+          else if (newX > bounds.xMax - p.radius - 4e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vx);
           }
           
           // Top boundary
-          if (newY < bounds.yMin + p.radius) {
+          if (newY < bounds.yMin + p.radius + 3e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vy);
           }
           // Bottom boundary
-          else if (newY > bounds.yMax - p.radius) {
+          else if (newY > bounds.yMax - p.radius - 2e-9) {
             valid = false;
             collidedWithWall = true;
             normalVel = Math.abs(p.vy);
@@ -225,7 +259,7 @@ export class GasEngine {
           // Diffusion barrier
           if (particleMode === "diffusion" && barrierY !== undefined && newY > barrierY) {
             const center = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.5;
-            const boundaryBuffer = p.radius + 0.5e-9;
+            const boundaryBuffer = p.radius + 3e-9;
             if (Math.abs(newX - center) < boundaryBuffer) {
               valid = false;
               collidedWithWall = true;
@@ -236,7 +270,7 @@ export class GasEngine {
           // Entropy partition barrier
           if (particleMode === "entropy" && entropyConstraint) {
             const partitionX = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.4;
-            if (newX > partitionX - p.radius) {
+            if (newX > partitionX - p.radius - 3e-9) {
               valid = false;
               collidedWithWall = true;
               normalVel = Math.abs(p.vx);
@@ -340,17 +374,17 @@ export class GasEngine {
       let collidedWithWall = false;
 
       // Left Wall Collision
-      if (p.x < bounds.xMin + p.radius) {
-        p.x = bounds.xMin + p.radius;
+      if (p.x < bounds.xMin + p.radius + 3e-9) {
+        p.x = bounds.xMin + p.radius + 3e-9;
         p.vx = Math.abs(p.vx) * elasticity;
         momentumTransferred += 2 * p.mass * Math.abs(p.vx);
         collisionCount++;
         collidedWithWall = true;
       } 
       // Right Wall (Piston) Collision
-      else if (p.x > bounds.xMax - p.radius) {
+      else if (p.x > bounds.xMax - p.radius - 4e-9) {
         const oldVx = p.vx;
-        p.x = bounds.xMax - p.radius;
+        p.x = bounds.xMax - p.radius - 4e-9;
         
         // Piston Collision Physics: vx' = -vx + 2 * pistonVel
         const pVel = pistonVel || 0;
@@ -367,17 +401,17 @@ export class GasEngine {
       }
 
       // Top Wall Collision
-      if (p.y < bounds.yMin + p.radius) {
-        p.y = bounds.yMin + p.radius;
+      if (p.y < bounds.yMin + p.radius + 3e-9) {
+        p.y = bounds.yMin + p.radius + 3e-9;
         p.vy = Math.abs(p.vy) * elasticity;
         momentumTransferred += 2 * p.mass * Math.abs(p.vy);
         collisionCount++;
         collidedWithWall = true;
       } 
       // Bottom Wall (Diffuse Thermal plate / heating coil)
-      else if (p.y > bounds.yMax - p.radius) {
+      else if (p.y > bounds.yMax - p.radius - 2e-9) {
         const oldVy = p.vy;
-        p.y = bounds.yMax - p.radius;
+        p.y = bounds.yMax - p.radius - 2e-9;
         
         // Diffuse reflection: reflected velocities are sampled from a normal thermal distribution at T
         const stdDev = Math.sqrt((GasEngine.K_B * temperature) / p.mass);
@@ -407,7 +441,7 @@ export class GasEngine {
       if (particleMode === "diffusion" && barrierY !== undefined) {
         const center = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.5;
         if (p.y > barrierY) {
-          const boundaryBuffer = p.radius + 0.5e-9; // 0.5 nm buffer
+          const boundaryBuffer = p.radius + 3e-9; // 3.0 nm buffer matching visual gap
           if (Math.abs(p.x - center) < boundaryBuffer) {
             if (p.vx > 0 && p.x < center) {
               p.x = center - boundaryBuffer;
@@ -427,8 +461,8 @@ export class GasEngine {
       // Entropy Low-Entropy Chamber Constraint (left 40% barrier)
       if (particleMode === "entropy" && entropyConstraint) {
         const partitionX = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.4;
-        if (p.x > partitionX - p.radius) {
-          p.x = partitionX - p.radius;
+        if (p.x > partitionX - p.radius - 3e-9) {
+          p.x = partitionX - p.radius - 3e-9;
           p.vx = -Math.abs(p.vx) * elasticity;
           collisionCount++;
           collidedWithWall = true;
@@ -546,6 +580,9 @@ export class GasEngine {
         p.vz *= scale;
       }
     }
+
+    // Safety Boundary Clamping at end (ensures particle-particle collisions don't push particles out)
+    this.clampToBounds(bounds, particleMode, entropyConstraint);
 
     return { momentumTransferred, collisionCount };
   }

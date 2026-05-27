@@ -325,12 +325,17 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       const { midX, xMin, maxX, yMin, yMax } = getLayoutDimensions();
       const bounds = chamberBounds.current;
       
+      // Update boundaries in case of layout changes or window resizes
+      bounds.xMin = xMin;
+      bounds.yMin = yMin;
+      bounds.yMax = yMax;
+      
       // Update boundaries based on regime
       if (p.regime === "charles") {
         targetWidthRef.current = xMin + (maxX - xMin) * Math.max(0.2, Math.min(1.0, 0.5 * (p.temperature / 300)));
       } else if (p.regime === "avogadro") {
         targetWidthRef.current = xMin + (maxX - xMin) * Math.max(0.2, Math.min(1.0, 0.5 * (p.particleCount / 100)));
-      } else if (p.regime === "gay-lussac" || p.regime === "free" || p.regime === "adiabatic") {
+      } else if (p.regime === "gay-lussac" || p.regime === "free" || p.regime === "adiabatic" || p.regime === "boyle") {
         targetWidthRef.current = xMin + (maxX - xMin) * p.volume;
       }
       
@@ -369,7 +374,7 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
              pistonVel: pistonVel,
              enableCollisions: p.gasPreset !== "ideal",
              simulationMode: p.simulationMode
-         };
+          };
          
          const { momentumTransferred, collisionCount } = engineRef.current.step(config, {
              xMin: bounds.xMin * 1e-9, 
@@ -379,6 +384,15 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
          });
 
          thermoRef.current.registerFrameCollisions(momentumTransferred, collisionCount, config.dt);
+      } else {
+         // When simulation is paused, ensure particles are still clamped to the piston/boundaries
+         // if the piston is dragged or other parameters are adjusted
+         engineRef.current.clampToBounds({
+             xMin: bounds.xMin * 1e-9, 
+             xMax: bounds.xMax * 1e-9, 
+             yMin: bounds.yMin * 1e-9, 
+             yMax: bounds.yMax * 1e-9
+         }, p.particleMode, p.entropyConstraint);
       }
 
       // TELEMETRY ANALYSIS
