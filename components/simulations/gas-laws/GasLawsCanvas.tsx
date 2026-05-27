@@ -4,8 +4,7 @@ import React, { useRef, useEffect } from "react";
 import { GasEngine, Particle } from "@/lib/physics/engine";
 import { ThermodynamicsAnalyzer } from "@/lib/physics/thermodynamics";
 import { useGasLawsStore } from "@/store/gasLawsStore";
-import { PVGraph } from "./graphs/PVGraph";
-import { MaxwellBoltzmannGraph } from "./graphs/MaxwellBoltzmannGraph";
+import { GasLawsScientificGraphPanel } from "./graphs/GasLawsScientificGraphPanel";
 
 const FONT_SANS = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const FONT_MONO = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
@@ -617,14 +616,17 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         onMouseLeave={handleMouseUp}
         className="block bg-[#09090b] absolute inset-0 z-0"
       />
-      {/* Decoupled Graphs overlaying the canvas directly on the right side */}
-      <div className="absolute top-0 right-0 h-full w-[38%] p-8 flex flex-col gap-8 pointer-events-none z-10">
-          <div className="flex-1 relative bg-black/40 backdrop-blur-md rounded-xl border border-white/5 overflow-hidden">
-             <PVGraph particleCount={paramsRef.current.particleCount} />
-          </div>
-          <div className="flex-1 relative bg-black/40 backdrop-blur-md rounded-xl border border-white/5 overflow-hidden">
-             <MaxwellBoltzmannGraph particleMass={massVal} />
-          </div>
+      {/* Dynamic Indicator Diagram / Scientific Graph Engine Panel */}
+      <div className="absolute top-0 right-0 h-full w-[38%] p-8 flex flex-col pointer-events-none z-10">
+          <GasLawsScientificGraphPanel
+            regime={regime}
+            gasPreset={gasPreset}
+            particleMode={particleMode}
+            simulationMode={simulationMode}
+            attractiveForce={attractiveForce}
+            particleMass={massVal}
+            particleCount={paramsRef.current.particleCount}
+          />
       </div>
     </div>
   );
