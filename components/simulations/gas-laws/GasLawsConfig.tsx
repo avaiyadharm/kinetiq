@@ -10,7 +10,7 @@ interface GasLawsConfigProps {
   temperature: number;
   volume: number;
   particleCount: number;
-  regime: "free" | "boyle" | "charles" | "gay-lussac" | "avogadro";
+  regime: "free" | "boyle" | "charles" | "gay-lussac" | "avogadro" | "adiabatic";
   gasPreset: "ideal" | "helium" | "xenon" | "real";
   enableCollisions: boolean;
   attractiveForce: number;

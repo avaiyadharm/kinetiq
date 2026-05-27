@@ -155,8 +155,12 @@ export const GasLawsSimulator: React.FC = () => {
   const [temperature, setTemperature] = useState(300); // Kelvin
   const [volume, setVolume] = useState(0.5);            // Piston width fraction (0.3 to 1.0)
   const [particleCount, setParticleCount] = useState(600);
-  const [regime, setRegime] = useState<"free" | "boyle" | "charles" | "gay-lussac" | "avogadro">("free");
+  const [regime, setRegime] = useState<"free" | "boyle" | "charles" | "gay-lussac" | "avogadro" | "adiabatic">("free");
   const [gasPreset, setGasPreset] = useState<"ideal" | "helium" | "xenon" | "real">("ideal");
+  
+  // New simulation engine mode and pressure operating regime states
+  const [simulationMode, setSimulationMode] = useState<"md" | "mc">("md");
+  const [pressureRegime, setPressureRegime] = useState<"educational" | "compression" | "extreme">("educational");
 
   // New calibrations state
   const [gravity, setGravity] = useState(0);
@@ -195,7 +199,7 @@ export const GasLawsSimulator: React.FC = () => {
     setIsPlaying(true);
     setTemperature(300);
     setVolume(0.5);
-    setParticleCount(100);
+    setParticleCount(250); // set to educational default
     setRegime("free");
     setGasPreset("ideal");
     setGravity(0);
@@ -208,6 +212,8 @@ export const GasLawsSimulator: React.FC = () => {
     setShowCollisionRings(true);
     setBarrierOpen(false);
     setEntropyConstraint(false);
+    setSimulationMode("md");
+    setPressureRegime("educational");
     setHistory({ pv: [], pt: [], vt: [], entropy: [], collisions: [], times: [] });
     setResetTrigger(prev => prev + 1);
     setActivePreset("Ideal Gas");
@@ -230,15 +236,60 @@ export const GasLawsSimulator: React.FC = () => {
     }
   };
 
+  const handlePressureRegimeChange = (mode: "educational" | "compression" | "extreme") => {
+    setPressureRegime(mode);
+    if (mode === "educational") {
+      setParticleCount(250);
+      setVolume(0.7);
+      setTemperature(300);
+      setGasPreset("ideal");
+      setAttractiveForce(0);
+      setActivePreset("Ideal Gas");
+    } else if (mode === "compression") {
+      setParticleCount(600);
+      setVolume(0.45);
+      setTemperature(300);
+      setGasPreset("real");
+      setAttractiveForce(3.0);
+      setActivePreset("Real Gas (vdw)");
+    } else if (mode === "extreme") {
+      setParticleCount(1100);
+      setVolume(0.3);
+      setTemperature(500);
+      setGasPreset("real");
+      setAttractiveForce(8.0);
+      setActivePreset("Real Gas (vdw)");
+    }
+    setResetTrigger(prev => prev + 1);
+  };
+
   const [attractiveForce, setAttractiveForce] = useState(0.0);
   const [slowMotion, setSlowMotion] = useState(0.5);
 
-  const isTempLocked = regime === "boyle" || regime === "avogadro";
+  const isTempLocked = regime === "boyle" || regime === "avogadro" || regime === "adiabatic";
   const isVolumeLocked = regime === "charles" || regime === "gay-lussac" || regime === "avogadro";
 
   const handleVolumeChangeFromCanvas = useCallback((newVol: number) => {
+    setVolume((prevVol) => {
+      if (regime === "adiabatic" && prevVol > 0 && newVol > 0) {
+        setTemperature((prevTemp) => {
+          const nextTemp = prevTemp * Math.pow(prevVol / newVol, 2.0 / 3.0);
+          return Math.max(100, Math.min(800, nextTemp));
+        });
+      }
+      return newVol;
+    });
+  }, [regime]);
+
+  const handleVolumeSliderChange = (newVol: number) => {
+    if (regime === "adiabatic" && volume > 0 && newVol > 0) {
+      setTemperature((prevTemp) => {
+        const nextTemp = prevTemp * Math.pow(volume / newVol, 2.0 / 3.0);
+        return Math.max(100, Math.min(800, nextTemp));
+      });
+    }
     setVolume(newVol);
-  }, []);
+  };
 
   const addHeatDirectly = useCallback((amount: number) => {
     if (!isTempLocked) {
@@ -377,6 +428,7 @@ export const GasLawsSimulator: React.FC = () => {
                   showCollisionRings={showCollisionRings}
                   barrierOpen={barrierOpen}
                   entropyConstraint={entropyConstraint}
+                  simulationMode={simulationMode}
                 />
               </div>
             </div>
@@ -505,6 +557,48 @@ export const GasLawsSimulator: React.FC = () => {
                   </ControlCard>
                 )}
 
+                {/* Simulation Engine Mode */}
+                <ControlCard title="Simulation Engine" icon={Workflow} color="#10b981">
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Update Algorithm</label>
+                    <div className="flex bg-black/40 border border-white/5 rounded-xl p-1">
+                      {(["md", "mc"] as const).map(mode => (
+                        <button
+                          key={mode}
+                          onClick={() => setSimulationMode(mode)}
+                          className={cn(
+                            "flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all",
+                            simulationMode === mode ? "bg-emerald-500 text-white shadow-md" : "text-white/40 hover:text-white"
+                          )}
+                        >
+                          {mode === "md" ? "Molecular Dynamics" : "Monte Carlo"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </ControlCard>
+
+                {/* Pressure Operating Regime */}
+                <ControlCard title="Pressure Operating Regime" icon={Layers} color="#f59e0b">
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block">Select Regime</label>
+                    <div className="grid grid-cols-3 gap-1 bg-black/40 border border-white/5 rounded-xl p-1">
+                      {(["educational", "compression", "extreme"] as const).map(reg => (
+                        <button
+                          key={reg}
+                          onClick={() => handlePressureRegimeChange(reg)}
+                          className={cn(
+                            "py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-wider transition-all text-center",
+                            pressureRegime === reg ? "bg-amber-500 text-white shadow-md" : "text-white/40 hover:text-white"
+                          )}
+                        >
+                          {reg === "educational" ? "Ideal Gas" : reg === "compression" ? "Compression" : "Non-Ideal"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </ControlCard>
+
                 {/* 1. Gas Law Regime */}
                 <ControlCard title="Thermodynamic Regime" icon={Sliders} color="#3b82f6">
                   <div className="space-y-4">
@@ -519,12 +613,13 @@ export const GasLawsSimulator: React.FC = () => {
                             setTemperature(300); 
                           }
                         }}
-                        className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold uppercase tracking-wide"
+                        className="w-full bg-black/40 border border-white/8 rounded-xl p-2.5 text-[11px] text-white outline-none focus:border-primary font-bold uppercase tracking-wide font-sans"
                       >
                         <option value="free">Free Ideal Gas (Lock None)</option>
-                        <option value="boyle">Boyle&apos;s Law (Lock Temp T)</option>
-                        <option value="charles">Charles&apos;s Law (Lock Pressure P)</option>
-                        <option value="gay-lussac">Gay-Lussac&apos;s Law (Lock Volume V)</option>
+                        <option value="boyle">Isothermal Process (Lock Temp T)</option>
+                        <option value="charles">Isobaric Process (Lock Pressure P)</option>
+                        <option value="gay-lussac">Isochoric Process (Lock Volume V)</option>
+                        <option value="adiabatic">Adiabatic Process (Lock Q=0)</option>
                         <option value="avogadro">Avogadro&apos;s Law (Lock P & T)</option>
                       </select>
                     </div>
@@ -548,7 +643,7 @@ export const GasLawsSimulator: React.FC = () => {
                       label="Target Volume Scale (V)"
                       value={volume} unit=""
                       min={0.3} max={1.0} step={0.05}
-                      onChange={setVolume}
+                      onChange={handleVolumeSliderChange}
                       colorClass="text-cyan-400"
                       format={(v) => v.toFixed(2)}
                       disabled={isVolumeLocked}

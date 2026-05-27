@@ -28,7 +28,10 @@ export interface EngineConfig {
   barrierY?: number;      // In meters
   entropyConstraint?: boolean;
   pistonVel?: number;     // In m/s (SI)
+  enableCollisions?: boolean;
+  simulationMode?: "md" | "mc";
 }
+
 
 /**
  * A Spatial Hash Grid for O(N) broad-phase collision detection in meters.
@@ -142,6 +145,25 @@ export class GasEngine {
     }
   }
 
+  private getPotentialEnergy(p: Particle, x: number, y: number, particles: Particle[], attractiveForce: number): number {
+    if (attractiveForce <= 0) return 0;
+    let energy = 0;
+    const cutoff = 15e-9; // 15 nm cutoff
+    const rMin = p.radius * 2;
+    for (let i = 0; i < particles.length; i++) {
+      const other = particles[i];
+      if (other.id === p.id) continue;
+      const dx = other.x - x;
+      const dy = other.y - y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > rMin && dist < cutoff) {
+        // Simple linear attractive potential matching the attraction force
+        energy -= attractiveForce * 1.5e-14 * (cutoff - dist);
+      }
+    }
+    return energy;
+  }
+
   /**
    * Steps the physics simulation forward by dt (SI units).
    * Returns total momentum transferred to boundaries and collision count.
@@ -150,6 +172,142 @@ export class GasEngine {
     const { dt, gravity, friction, elasticity, temperature, attractiveForce, particleMode, barrierY, entropyConstraint, pistonVel } = config;
     let momentumTransferred = 0;
     let collisionCount = 0;
+
+    if (config.simulationMode === "mc") {
+      const stdDev = Math.sqrt((GasEngine.K_B * temperature) / (this.particles[0]?.mass || 6.63e-26));
+      const stepSize = stdDev * dt; // characteristic displacement per step
+      
+      const numSweeps = 2; // Run 2 MC sweeps per step for smooth animation
+      for (let sweep = 0; sweep < numSweeps; sweep++) {
+        for (let i = 0; i < this.particles.length; i++) {
+          const p = this.particles[i];
+          
+          // Generate trial moves
+          let u1 = Math.random() - 0.5;
+          let u2 = Math.random() - 0.5;
+          const dx = u1 * stepSize * 2.5;
+          const dy = u2 * stepSize * 2.5;
+          
+          const newX = p.x + dx;
+          const newY = p.y + dy;
+          
+          // Check boundary collisions and constraints
+          let valid = true;
+          let collidedWithWall = false;
+          let normalVel = 0;
+          
+          // Left boundary
+          if (newX < bounds.xMin + p.radius) {
+            valid = false;
+            collidedWithWall = true;
+            normalVel = Math.abs(p.vx);
+          }
+          // Right boundary (Piston)
+          else if (newX > bounds.xMax - p.radius) {
+            valid = false;
+            collidedWithWall = true;
+            normalVel = Math.abs(p.vx);
+          }
+          
+          // Top boundary
+          if (newY < bounds.yMin + p.radius) {
+            valid = false;
+            collidedWithWall = true;
+            normalVel = Math.abs(p.vy);
+          }
+          // Bottom boundary
+          else if (newY > bounds.yMax - p.radius) {
+            valid = false;
+            collidedWithWall = true;
+            normalVel = Math.abs(p.vy);
+          }
+          
+          // Diffusion barrier
+          if (particleMode === "diffusion" && barrierY !== undefined && newY > barrierY) {
+            const center = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.5;
+            const boundaryBuffer = p.radius + 0.5e-9;
+            if (Math.abs(newX - center) < boundaryBuffer) {
+              valid = false;
+              collidedWithWall = true;
+              normalVel = Math.abs(p.vx);
+            }
+          }
+          
+          // Entropy partition barrier
+          if (particleMode === "entropy" && entropyConstraint) {
+            const partitionX = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.4;
+            if (newX > partitionX - p.radius) {
+              valid = false;
+              collidedWithWall = true;
+              normalVel = Math.abs(p.vx);
+            }
+          }
+          
+          // If hit a wall, accumulate virtual impulse and skip move
+          if (collidedWithWall) {
+            momentumTransferred += 2 * p.mass * (normalVel || stdDev);
+            collisionCount++;
+            if (particleMode === "mean-free-path" && p.id === 0) {
+              this.mfpPoints.push({ x: p.x, y: p.y });
+              if (this.mfpPoints.length > 15) this.mfpPoints.shift();
+            }
+            continue;
+          }
+          
+          // Check particle-particle collisions if enabled
+          if (config.enableCollisions !== false) {
+            for (let j = 0; j < this.particles.length; j++) {
+              const other = this.particles[j];
+              if (other.id === p.id) continue;
+              
+              const odx = other.x - newX;
+              const ody = other.y - newY;
+              const minDist = p.radius + other.radius;
+              if (odx*odx + ody*ody < minDist * minDist) {
+                valid = false;
+                collisionCount++;
+                if (particleMode === "mean-free-path" && (p.id === 0 || other.id === 0)) {
+                  const tracer = p.id === 0 ? p : other;
+                  this.mfpPoints.push({ x: tracer.x, y: tracer.y });
+                  if (this.mfpPoints.length > 15) this.mfpPoints.shift();
+                }
+                break;
+              }
+            }
+          }
+          
+          if (!valid) continue;
+          
+          // Calculate energy difference for Metropolis criterion (attractive force)
+          if (attractiveForce > 0) {
+            const eOld = this.getPotentialEnergy(p, p.x, p.y, this.particles, attractiveForce);
+            const eNew = this.getPotentialEnergy(p, newX, newY, this.particles, attractiveForce);
+            const dE = eNew - eOld;
+            if (dE > 0) {
+              const prob = Math.exp(-dE / (GasEngine.K_B * temperature));
+              if (Math.random() > prob) {
+                // Reject move
+                continue;
+              }
+            }
+          }
+          
+          // Move is accepted
+          p.x = newX;
+          p.y = newY;
+          
+          // Keep velocity direction aligned with last successful move (for rendering trails, etc.)
+          const scale = Math.sqrt(dx*dx + dy*dy) || 1e-9;
+          p.vx = (dx / scale) * stdDev;
+          p.vy = (dy / scale) * stdDev;
+        }
+      }
+      
+      // Thermalize Z velocities to keep kinetic stats correct
+      this.thermalizeAllZ(temperature);
+      
+      return { momentumTransferred, collisionCount };
+    }
 
     // 1. Clear and populate spatial grid
     this.grid.clear();
@@ -287,79 +445,81 @@ export class GasEngine {
     // 3. Resolve Particle-Particle Collisions using Spatial Grid
     const checked = new Set<string>();
 
-    for (let i = 0; i < this.particles.length; i++) {
-      const p1 = this.particles[i];
-      const neighbors = this.grid.getNearby(p1);
+    if (config.enableCollisions !== false) {
+      for (let i = 0; i < this.particles.length; i++) {
+        const p1 = this.particles[i];
+        const neighbors = this.grid.getNearby(p1);
 
-      for (let j = 0; j < neighbors.length; j++) {
-        const p2 = neighbors[j];
-        if (p1.id === p2.id) continue;
+        for (let j = 0; j < neighbors.length; j++) {
+          const p2 = neighbors[j];
+          if (p1.id === p2.id) continue;
 
-        // Ensure we only check each pair once
-        const pairId = p1.id < p2.id ? `${p1.id}-${p2.id}` : `${p2.id}-${p1.id}`;
-        if (checked.has(pairId)) continue;
-        checked.add(pairId);
+          // Ensure we only check each pair once
+          const pairId = p1.id < p2.id ? `${p1.id}-${p2.id}` : `${p2.id}-${p1.id}`;
+          if (checked.has(pairId)) continue;
+          checked.add(pairId);
 
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const distSq = dx * dx + dy * dy;
-        const minDist = p1.radius + p2.radius;
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const distSq = dx * dx + dy * dy;
+          const minDist = p1.radius + p2.radius;
 
-        // Attractive forces (Van der Waals 'a' in SI units)
-        // a_coeff represents attractive strength per particle pair in Pa m^6
-        if (attractiveForce > 0) {
-           const attractionCutoff = 15e-9; // 15 nm cutoff in SI
-           const dist = Math.sqrt(distSq);
-           if (dist > minDist && dist < attractionCutoff) {
-              // Medium-range attractive pull scaled to Newtons: F = attractiveForce * 1e-15 N
-              const force = (attractiveForce * 1.5e-14) * (attractionCutoff - dist) / dist;
-              const ax = force * dx;
-              const ay = force * dy;
-              p1.vx += (ax / p1.mass) * dt;
-              p1.vy += (ay / p1.mass) * dt;
-              p2.vx -= (ax / p2.mass) * dt;
-              p2.vy -= (ay / p2.mass) * dt;
-           }
-        }
-
-        // Hard sphere exclusion (2D elastic molecular dynamics collision resolution)
-        if (distSq < minDist * minDist) {
-          const dist = Math.sqrt(distSq) || 0.1e-9;
-          const nx = dx / dist;
-          const ny = dy / dist;
-
-          // Relative velocity in 2D
-          const kx = p1.vx - p2.vx;
-          const ky = p1.vy - p2.vy;
-
-          // Projection along 2D collision normal
-          const vn = kx * nx + ky * ny;
-
-          if (vn > 0) {
-            const impulse = (2 * vn) / (p1.mass + p2.mass);
-            
-            p1.vx = (p1.vx - impulse * p2.mass * nx) * elasticity;
-            p1.vy = (p1.vy - impulse * p2.mass * ny) * elasticity;
-            
-            p2.vx = (p2.vx + impulse * p1.mass * nx) * elasticity;
-            p2.vy = (p2.vy + impulse * p1.mass * ny) * elasticity;
-
-            collisionCount++;
-
-            // Mean free path collision tracking for tracer particle
-            if (particleMode === "mean-free-path" && (p1.id === 0 || p2.id === 0)) {
-              const tracer = p1.id === 0 ? p1 : p2;
-              this.mfpPoints.push({ x: tracer.x, y: tracer.y });
-              if (this.mfpPoints.length > 15) this.mfpPoints.shift();
-            }
+          // Attractive forces (Van der Waals 'a' in SI units)
+          // a_coeff represents attractive strength per particle pair in Pa m^6
+          if (attractiveForce > 0) {
+             const attractionCutoff = 15e-9; // 15 nm cutoff in SI
+             const dist = Math.sqrt(distSq);
+             if (dist > minDist && dist < attractionCutoff) {
+                // Medium-range attractive pull scaled to Newtons: F = attractiveForce * 1e-15 N
+                const force = (attractiveForce * 1.5e-14) * (attractionCutoff - dist) / dist;
+                const ax = force * dx;
+                const ay = force * dy;
+                p1.vx += (ax / p1.mass) * dt;
+                p1.vy += (ay / p1.mass) * dt;
+                p2.vx -= (ax / p2.mass) * dt;
+                p2.vy -= (ay / p2.mass) * dt;
+             }
           }
 
-          // Positional correction to prevent sticking (push apart in 2D space)
-          const overlap = minDist - dist;
-          p1.x -= nx * overlap * 0.5;
-          p1.y -= ny * overlap * 0.5;
-          p2.x += nx * overlap * 0.5;
-          p2.y += ny * overlap * 0.5;
+          // Hard sphere exclusion (2D elastic molecular dynamics collision resolution)
+          if (distSq < minDist * minDist) {
+            const dist = Math.sqrt(distSq) || 0.1e-9;
+            const nx = dx / dist;
+            const ny = dy / dist;
+
+            // Relative velocity in 2D
+            const kx = p1.vx - p2.vx;
+            const ky = p1.vy - p2.vy;
+
+            // Projection along 2D collision normal
+            const vn = kx * nx + ky * ny;
+
+            if (vn > 0) {
+              const impulse = (2 * vn) / (p1.mass + p2.mass);
+              
+              p1.vx = (p1.vx - impulse * p2.mass * nx) * elasticity;
+              p1.vy = (p1.vy - impulse * p2.mass * ny) * elasticity;
+              
+              p2.vx = (p2.vx + impulse * p1.mass * nx) * elasticity;
+              p2.vy = (p2.vy + impulse * p1.mass * ny) * elasticity;
+
+              collisionCount++;
+
+              // Mean free path collision tracking for tracer particle
+              if (particleMode === "mean-free-path" && (p1.id === 0 || p2.id === 0)) {
+                const tracer = p1.id === 0 ? p1 : p2;
+                this.mfpPoints.push({ x: tracer.x, y: tracer.y });
+                if (this.mfpPoints.length > 15) this.mfpPoints.shift();
+              }
+            }
+
+            // Positional correction to prevent sticking (push apart in 2D space)
+            const overlap = minDist - dist;
+            p1.x -= nx * overlap * 0.5;
+            p1.y -= ny * overlap * 0.5;
+            p2.x += nx * overlap * 0.5;
+            p2.y += ny * overlap * 0.5;
+          }
         }
       }
     }

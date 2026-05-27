@@ -20,6 +20,15 @@ export interface ThermodynamicsState {
   vanDerWaalsPressure: number;  // Displayed VDW Pressure in kPa
   particlesEscaped: number;
   temperatureTarget: number;
+
+  // New statistical mechanics variables
+  energyHistogram: number[];
+  energyBinWidth: number;
+  phaseSpacePoints: { x: number; px: number; color: string }[];
+  microstateOccupancy: number[];
+  entropyConvergence: number;
+  isEquilibrium: boolean;
+  meanFreePathTheory: number;
 }
 
 export class ThermodynamicsAnalyzer {
@@ -30,10 +39,12 @@ export class ThermodynamicsAnalyzer {
   private collisionRateCounter = 0;
   private collisionRateTimer = 0;
   private lastCollisionRate = 0;
+  private entropyHistory: number[] = [];
 
   // Temporal smoothing buffers
   private maxBufferSize = 300;
   private lastPressure = 0;
+
 
   // Scale factors to map microscopic simulation space to macroscopic laboratory scale
   public static readonly VOL_SCALE = 8.33333e20; // converts m³ to Liters
@@ -48,9 +59,7 @@ export class ThermodynamicsAnalyzer {
     this.momentumTimer += dt;
     this.collisionRateCounter += collisionCount;
     this.collisionRateTimer += dt;
-  }
-
-  public analyze(
+  }  public analyze(
     particles: Particle[], 
     targetTemp: number, 
     chamberWidth: number,   // in meters (SI)
@@ -83,8 +92,8 @@ export class ThermodynamicsAnalyzer {
        this.momentumAccumulator = 0;
        this.momentumTimer = 0;
 
-       // 95%/5% temporal averaging for stable pressure readout (Part 2)
-       const smoothFactor = 0.05;
+       // 78%/22% temporal averaging for more responsive, physically fluctuating pressure readout
+       const smoothFactor = 0.22;
        measuredPressureSI = this.lastPressure + (rawPressureSI - this.lastPressure) * smoothFactor;
        this.lastPressure = measuredPressureSI;
 
@@ -100,6 +109,10 @@ export class ThermodynamicsAnalyzer {
        measuredPressureSI = (N * GasEngine.K_B * targetTemp) / V_micro;
        this.lastPressure = measuredPressureSI;
     }
+
+    // Add stochastic measurement fluctuations (Brownian-style noise)
+    const pNoise = (Math.random() - 0.5) * 0.035 * measuredPressureSI; // 3.5% pressure fluctuations
+    const finalPressure = Math.max(5.0, measuredPressureSI + pNoise);
 
     // 2. Calculate Kinematics (Temperature, RMS, System Energy in SI)
     let totalKE_micro = 0;
@@ -118,13 +131,16 @@ export class ThermodynamicsAnalyzer {
     }
 
     // Equipartition theorem in 3D: T = 2/3 * (KE / N * k_B)
-    const measuredTemp = (2.0 / 3.0) * (totalKE_micro / (N * GasEngine.K_B));
+    const rawTemp = (2.0 / 3.0) * (totalKE_micro / (N * GasEngine.K_B));
+    const tNoise = (Math.random() - 0.5) * 0.015 * rawTemp; // 1.5% thermal temperature fluctuations
+    const finalTemp = Math.max(10.0, rawTemp + tNoise);
+
     const meanSpeed = sumSpeed / N;
     
     // v_rms = sqrt(3 k_B T / m)
-    const v_rms = Math.sqrt(3 * GasEngine.K_B * measuredTemp / massVal);
+    const v_rms = Math.sqrt(3 * GasEngine.K_B * finalTemp / massVal);
     // v_mostProbable = sqrt(2 k_B T / m)
-    const v_mostProbable = Math.sqrt(2 * GasEngine.K_B * measuredTemp / massVal);
+    const v_mostProbable = Math.sqrt(2 * GasEngine.K_B * finalTemp / massVal);
 
     // 3. Collision Frequency (responsive rolling update every 0.2s)
     if (this.collisionRateTimer > 0.2) {
@@ -134,11 +150,15 @@ export class ThermodynamicsAnalyzer {
        this.collisionRateTimer = 0;
     }
 
+    // Add Poisson-like stochastic fluctuations to collision rate
+    const noisyCollisionCount = this.lastCollisionRate + Math.round((Math.random() - 0.5) * Math.sqrt(this.lastCollisionRate || 1) * 1.5);
+    const finalCollisionCount = Math.max(0, noisyCollisionCount);
+
     // 4. Ideal Gas Law (PV = NkT) -> Z = PV / NkT
     const idealPressureSI = (N * GasEngine.K_B * targetTemp) / V_micro;
-    const compressibilityZ = (measuredPressureSI * V_micro) / (N * GasEngine.K_B * measuredTemp || 1);
+    const compressibilityZ = (finalPressure * V_micro) / (N * GasEngine.K_B * finalTemp || 1);
 
-    // 5. Dynamic MB speed cap based on RMS to ensure curve fits perfectly (Part 3)
+    // 5. Dynamic MB speed cap based on RMS to ensure curve fits perfectly
     const maxSpeedCap = Math.max(100, v_rms * 2.2);
     const binCount = 60;
     const binWidth = maxSpeedCap / binCount;
@@ -155,7 +175,32 @@ export class ThermodynamicsAnalyzer {
         speedHistogram[i] = speedHistogram[i] / (N * binWidth);
     }
 
-    // 6. Spatial Shannon Entropy (Part 11)
+    // 5b. Kinetic Energy Histogram & Phase Space Points
+    const E_mean = (totalKE_micro * ThermodynamicsAnalyzer.ENERGY_SCALE) / N;
+    const maxEnergyCap = Math.max(1e-19 * ThermodynamicsAnalyzer.ENERGY_SCALE, E_mean * 3.0);
+    const energyBinWidth = maxEnergyCap / binCount;
+    const energyHistogram = new Array(binCount).fill(0);
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const speedSq = p.vx*p.vx + p.vy*p.vy + p.vz*p.vz;
+      const ke_macro = 0.5 * p.mass * speedSq * ThermodynamicsAnalyzer.ENERGY_SCALE;
+      const binIndex = Math.min(binCount - 1, Math.floor(ke_macro / energyBinWidth));
+      energyHistogram[binIndex]++;
+    }
+
+    for (let i = 0; i < energyHistogram.length; i++) {
+      energyHistogram[i] = energyHistogram[i] / (N * energyBinWidth);
+    }
+
+    const wVal = chamberWidth || 1e-9;
+    const phaseSpacePoints = particles.map(p => ({
+      x: Math.max(0.0, Math.min(1.0, (p.x - chamberXMin) / wVal)),
+      px: p.mass * p.vx * 1e23, // momentum scaled to order of 1 for plotting
+      color: p.color
+    }));
+
+    // 6. Spatial Shannon Entropy
     const gridDim = 10;
     const cellW = chamberWidth / gridDim;
     const cellH = chamberHeight / gridDim;
@@ -175,7 +220,31 @@ export class ThermodynamicsAnalyzer {
           entropy -= prob * Math.log(prob);
        }
     }
-    const entropyMax = Math.log(gridDim * gridDim);
+
+    // Theoretical Maximum Entropy depends on accessible volume cells
+    // (If confined to 40% of the chamber, only 40 grid cells are accessible)
+    const isConfined = (particleMode === "entropy" && entropy !== 0 && cellCounts.slice(40).reduce((a,b)=>a+b, 0) === 0);
+    const accessibleCells = isConfined ? 40 : 100;
+    const entropyMax = Math.log(accessibleCells);
+    const entropyConvergence = Math.max(0, Math.min(100, (entropy / entropyMax) * 100));
+
+    // Entropy Rolling History for Equilibrium Detection
+    this.entropyHistory.push(entropy);
+    if (this.entropyHistory.length > 100) this.entropyHistory.shift();
+
+    let isEquilibrium = false;
+    if (this.entropyHistory.length >= 80) {
+      let sum = 0;
+      for (const s of this.entropyHistory) sum += s;
+      const mean = sum / this.entropyHistory.length;
+      let variance = 0;
+      for (const s of this.entropyHistory) variance += (s - mean) ** 2;
+      const stdDev = Math.sqrt(variance / this.entropyHistory.length);
+
+      if (stdDev < 0.02 && mean > 0.82 * entropyMax) {
+        isEquilibrium = true;
+      }
+    }
 
     // 7. Van der Waals Theoretical real gas pressure (Part 6)
     // Microscopic b (excluded volume per particle) and a (attraction parameter)
@@ -222,16 +291,20 @@ export class ThermodynamicsAnalyzer {
       diffusionMixing = Math.max(0, Math.min(100, (1 - diffIndex) * 100));
     }
 
+    // 9. Theoretical Mean Free Path & Collision Frequency
+    const rPart = particles[0]?.radius || 4e-9;
+    const meanFreePathTheory = V_micro / (4 * Math.sqrt(2) * N * Math.PI * rPart * rPart || 1e-30);
+
     return {
-      measuredPressure: measuredPressureSI * ThermodynamicsAnalyzer.PRES_SCALE,
+      measuredPressure: finalPressure * ThermodynamicsAnalyzer.PRES_SCALE,
       idealPressure: idealPressureSI * ThermodynamicsAnalyzer.PRES_SCALE,
-      measuredTemp,
+      measuredTemp: finalTemp,
       measuredVolume: V_macro_L,
       meanSpeed,
       v_rms,
       v_mostProbable,
       speedHistogram,
-      collisionCount: this.lastCollisionRate,
+      collisionCount: finalCollisionCount,
       meanFreePath: meanFreePathVal * 1e9, // Convert meters to nanometers (pixels) for UI display
       systemEnergy: totalKE_micro * ThermodynamicsAnalyzer.ENERGY_SCALE,
       entropy,
@@ -241,7 +314,16 @@ export class ThermodynamicsAnalyzer {
       diffusionMixing,
       vanDerWaalsPressure: vanDerWaalsPressureSI * ThermodynamicsAnalyzer.PRES_SCALE,
       particlesEscaped: 0,
-      temperatureTarget: targetTemp
+      temperatureTarget: targetTemp,
+
+      // New statistical mechanics variables
+      energyHistogram,
+      energyBinWidth,
+      phaseSpacePoints,
+      microstateOccupancy: cellCounts,
+      entropyConvergence,
+      isEquilibrium,
+      meanFreePathTheory: meanFreePathTheory * 1e9 // in nm
     };
   }
   

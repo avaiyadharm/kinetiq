@@ -29,6 +29,15 @@ export const useGasLawsStore = create<GasLawsStore>((set) => ({
   temperatureTarget: 300,
   pvHistory: [],
   
+  // New statistical mechanics defaults
+  energyHistogram: [],
+  energyBinWidth: 0,
+  phaseSpacePoints: [],
+  microstateOccupancy: [],
+  entropyConvergence: 0,
+  isEquilibrium: false,
+  meanFreePathTheory: 0,
+  
   setTelemetry: (newState) => set(newState),
   setPvHistory: (history) => set({ pvHistory: history })
 }));

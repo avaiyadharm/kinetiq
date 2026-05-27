@@ -14,7 +14,7 @@ interface GasLawsCanvasProps {
   temperature: number;      
   volume: number;           
   particleCount: number;    
-  regime: "free" | "boyle" | "charles" | "gay-lussac" | "avogadro";
+  regime: "free" | "boyle" | "charles" | "gay-lussac" | "avogadro" | "adiabatic";
   gasPreset: "ideal" | "helium" | "xenon" | "real";
   enableCollisions: boolean;
   attractiveForce: number;  
@@ -34,6 +34,7 @@ interface GasLawsCanvasProps {
   showCollisionRings: boolean;
   barrierOpen: boolean;
   entropyConstraint: boolean;
+  simulationMode: "md" | "mc";
 }
 
 export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
@@ -41,7 +42,8 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
   attractiveForce, isPlaying, slowMotion, onVolumeChange, 
   resetTrigger, gravity, friction, elasticity,
   particleMode, showTrails, showHeatMap,
-  enableSound, showCollisionRings, barrierOpen, entropyConstraint
+  enableSound, showCollisionRings, barrierOpen, entropyConstraint,
+  simulationMode
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,7 +60,8 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
     temperature, volume, particleCount, regime, gasPreset, 
     attractiveForce, isPlaying, slowMotion, gravity, friction, 
     elasticity, particleMode, showTrails, showHeatMap,
-    enableSound, showCollisionRings, barrierOpen, entropyConstraint
+    enableSound, showCollisionRings, barrierOpen, entropyConstraint,
+    simulationMode
   });
 
   useEffect(() => {
@@ -66,18 +69,20 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
       temperature, volume, particleCount, regime, gasPreset, 
       attractiveForce, isPlaying, slowMotion, gravity, friction, 
       elasticity, particleMode, showTrails, showHeatMap,
-      enableSound, showCollisionRings, barrierOpen, entropyConstraint
+      enableSound, showCollisionRings, barrierOpen, entropyConstraint,
+      simulationMode
     };
   }, [
     temperature, volume, particleCount, regime, gasPreset, attractiveForce, 
     isPlaying, slowMotion, gravity, friction, elasticity, particleMode, 
     showTrails, showHeatMap, enableSound, showCollisionRings, barrierOpen, 
-    entropyConstraint
+    entropyConstraint, simulationMode
   ]);
 
   const chamberBounds = useRef({ xMin: 40, xMax: 400, yMin: 50, yMax: 350 });
   const targetWidthRef = useRef<number>(400);
   const prevXMaxRef = useRef<number>(400);
+  const pistonVelRef = useRef<number>(0);
   const isDraggingPistonRef = useRef<boolean>(false);
   const hoverPistonRef = useRef<boolean>(false);
 
@@ -325,11 +330,21 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         targetWidthRef.current = xMin + (maxX - xMin) * Math.max(0.2, Math.min(1.0, 0.5 * (p.temperature / 300)));
       } else if (p.regime === "avogadro") {
         targetWidthRef.current = xMin + (maxX - xMin) * Math.max(0.2, Math.min(1.0, 0.5 * (p.particleCount / 100)));
-      } else if (p.regime === "gay-lussac" || p.regime === "free") {
+      } else if (p.regime === "gay-lussac" || p.regime === "free" || p.regime === "adiabatic") {
         targetWidthRef.current = xMin + (maxX - xMin) * p.volume;
       }
+      
       if (!isDraggingPistonRef.current) {
-        bounds.xMax += (targetWidthRef.current - bounds.xMax) * 0.08;
+        // Second-order damped harmonic oscillator for realistic springy piston motion
+        const stiffness = 55.0; // Spring back stiffness
+        const damping = 9.0;    // Damping coefficient
+        const dx = bounds.xMax - targetWidthRef.current;
+        const force = -stiffness * dx;
+        pistonVelRef.current += force * dt_wall;
+        pistonVelRef.current *= Math.exp(-damping * dt_wall);
+        bounds.xMax += pistonVelRef.current * dt_wall;
+      } else {
+        pistonVelRef.current = 0;
       }
 
       // Animate slider gate in diffusion mode
@@ -351,7 +366,9 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
              particleMode: p.particleMode,
              barrierY: currentBarrierYRef.current * 1e-9, // in meters (SI)
              entropyConstraint: p.entropyConstraint,
-             pistonVel: pistonVel
+             pistonVel: pistonVel,
+             enableCollisions: p.gasPreset !== "ideal",
+             simulationMode: p.simulationMode
          };
          
          const { momentumTransferred, collisionCount } = engineRef.current.step(config, {
@@ -406,8 +423,29 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
 
       // Heat Map overlay
       if (p.showHeatMap) {
-        ctx.fillStyle = "rgba(6, 182, 212, 0.05)";
-        ctx.fillRect(bounds.xMin, bounds.yMin, currentWidth, currentHeight);
+        const gridDim = 10;
+        const cellW = currentWidth / gridDim;
+        const cellH = currentHeight / gridDim;
+        
+        // Retrieve cell occupancy counts from store
+        const microstateOccupancy = useGasLawsStore.getState().microstateOccupancy || [];
+        const particlesList = engineRef.current.getParticles();
+        const N = particlesList.length || 1;
+        const avgCount = N / (gridDim * gridDim);
+        
+        for (let cy = 0; cy < gridDim; cy++) {
+          for (let cx = 0; cx < gridDim; cx++) {
+            const count = microstateOccupancy[cy * gridDim + cx] || 0;
+            const densityRatio = count / (avgCount || 1);
+            
+            // Dynamic transparency: denser cell = brighter overlay color
+            const alpha = Math.min(0.4, densityRatio * 0.08);
+            if (alpha > 0) {
+              ctx.fillStyle = `rgba(6, 182, 212, ${alpha})`;
+              ctx.fillRect(bounds.xMin + cx * cellW, bounds.yMin + cy * cellH, cellW - 0.5, cellH - 0.5);
+            }
+          }
+        }
       }
 
       // Heating Coil Plate glow
