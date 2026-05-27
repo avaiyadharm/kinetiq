@@ -2,6 +2,34 @@
 
 import React from "react";
 
+// Scientific Typography Components
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.3em] font-serif">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.3em] font-serif">{children}</sup>;
+const Var = ({ children, className }: { children: React.ReactNode, className?: string }) => <span className={`font-serif italic mx-0.5 text-slate-200 tracking-wide ${className || ""}`}>{children}</span>;
+
+const MathEq = ({ children, block = false, label }: { children: React.ReactNode, block?: boolean, label?: string }) => {
+  if (!block) {
+    return <span className="font-serif italic mx-0.5 text-slate-200 tracking-wide">{children}</span>;
+  }
+  return (
+    <div className="my-6 relative group w-full">
+      {label && <div className="absolute -top-3 left-6 bg-[#18181b] px-3 text-[9px] uppercase tracking-[0.2em] text-violet-400 font-black z-10 shadow-sm">{label}</div>}
+      <div className="bg-black/40 border border-white/10 rounded-2xl py-6 px-6 flex items-center justify-center overflow-x-auto shadow-inner relative">
+        <div className="font-serif text-lg tracking-wider text-white whitespace-nowrap flex items-center gap-1">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MathFrac = ({ num, den }: { num: React.ReactNode, den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-2 font-serif text-[0.9em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[3px] mb-[3px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 export const SHMTheory: React.FC = () => {
   return (
     <div className="space-y-8">
@@ -13,15 +41,12 @@ export const SHMTheory: React.FC = () => {
           <span className="text-white font-bold">directly proportional</span> to the displacement from
           equilibrium and directed opposite to it:
         </p>
-        <div className="font-mono text-center text-xl font-bold text-white bg-black/30 rounded-xl py-4 border border-white/5">
-          <span className="text-pink-400">F</span>
-          <span className="text-white/60"> = </span>
-          <span className="text-rose-400">−k</span>
-          <span className="text-violet-400">x</span>
-        </div>
+        <MathEq block label="Hooke's Law">
+          <span className="text-pink-400">F</span> = <span className="text-rose-400">−k</span><span className="text-violet-400">x</span>
+        </MathEq>
         <p className="text-white/40 text-xs">
-          where <span className="text-rose-400 font-bold font-mono">k</span> is the spring constant (N/m) and{" "}
-          <span className="text-violet-400 font-bold font-mono">x</span> is displacement (m).
+          where <Var className="text-rose-400 font-bold">k</Var> is the spring constant (N/m) and{" "}
+          <Var className="text-violet-400 font-bold">x</Var> is displacement (m).
         </p>
       </div>
 
@@ -31,20 +56,20 @@ export const SHMTheory: React.FC = () => {
         <p className="text-white/60 text-sm leading-relaxed">
           Newton&apos;s Second Law gives the differential equation of SHM:
         </p>
-        <div className="font-mono text-center text-base font-bold text-white bg-black/30 rounded-xl py-3 border border-white/5">
-          mẍ + kx = 0 &nbsp;→&nbsp; ẍ + ω²x = 0
-        </div>
+        <MathEq block label="Differential Equation">
+          <Var>m</Var> <MathFrac num={<>d<Sup>2</Sup>x</>} den={<>dt<Sup>2</Sup></>} /> + <Var>k x</Var> = 0 &nbsp;→&nbsp; <MathFrac num={<>d<Sup>2</Sup>x</>} den={<>dt<Sup>2</Sup></>} /> + ω<Sup>2</Sup><Var>x</Var> = 0
+        </MathEq>
         <p className="text-white/60 text-sm leading-relaxed">
           The general solution (with initial conditions) is:
         </p>
         <div className="space-y-2">
           {[
-            { label: "x(t) = A·cos(ωt + φ)", color: "#8b5cf6", desc: "Displacement" },
-            { label: "v(t) = −Aω·sin(ωt + φ)", color: "#06b6d4", desc: "Velocity" },
-            { label: "a(t) = −Aω²·cos(ωt + φ)", color: "#f59e0b", desc: "Acceleration" },
-          ].map(eq => (
-            <div key={eq.label} className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5">
-              <code className="font-mono text-sm font-bold" style={{ color: eq.color }}>{eq.label}</code>
+            { label: <><Var>x</Var>(<Var>t</Var>) = <Var>A</Var> cos(<Var>ωt</Var> + <Var>φ</Var>)</>, color: "text-violet-400", desc: "Displacement" },
+            { label: <><Var>v</Var>(<Var>t</Var>) = −<Var>A ω</Var> sin(<Var>ωt</Var> + <Var>φ</Var>)</>, color: "text-cyan-400", desc: "Velocity" },
+            { label: <><Var>a</Var>(<Var>t</Var>) = −<Var>A ω</Var><Sup>2</Sup> cos(<Var>ωt</Var> + <Var>φ</Var>)</>, color: "text-amber-400", desc: "Acceleration" },
+          ].map((eq, i) => (
+            <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5">
+              <span className={`font-serif text-sm font-bold ${eq.color}`}>{eq.label}</span>
               <span className="text-[10px] text-white/30 uppercase tracking-widest">{eq.desc}</span>
             </div>
           ))}
@@ -54,15 +79,15 @@ export const SHMTheory: React.FC = () => {
       {/* Section 3 */}
       <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
         <h3 className="text-lg font-black uppercase tracking-tight text-amber-400">Angular Frequency & Period</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[
-            { formula: "ω = √(k/m)", label: "Spring", color: "#f59e0b" },
-            { formula: "ω = √(g/L)", label: "Pendulum", color: "#f97316" },
-            { formula: "T = 2π/ω", label: "Period", color: "#8b5cf6" },
-            { formula: "f = 1/T = ω/2π", label: "Frequency", color: "#06b6d4" },
-          ].map(item => (
-            <div key={item.formula} className="p-4 rounded-xl bg-black/30 border border-white/5 space-y-1">
-              <code className="font-mono text-base font-black" style={{ color: item.color }}>{item.formula}</code>
+            { formula: <><Var>ω</Var> = &radic;(<MathFrac num={<Var>k</Var>} den={<Var>m</Var>} />)</>, label: "Spring", color: "text-amber-400" },
+            { formula: <><Var>ω</Var> = &radic;(<MathFrac num={<Var>g</Var>} den={<Var>L</Var>} />)</>, label: "Pendulum", color: "text-orange-400" },
+            { formula: <><Var>T</Var> = <MathFrac num="2π" den={<Var>ω</Var>} /></>, label: "Period", color: "text-violet-400" },
+            { formula: <><Var>f</Var> = <MathFrac num="1" den={<Var>T</Var>} /> = <MathFrac num={<Var>ω</Var>} den="2π" /></>, label: "Frequency", color: "text-cyan-400" },
+          ].map((item, i) => (
+            <div key={i} className="p-4 rounded-xl bg-black/30 border border-white/5 flex flex-col justify-center items-center text-center space-y-1">
+              <span className={`font-serif text-base font-black ${item.color}`}>{item.formula}</span>
               <p className="text-[10px] text-white/30 uppercase tracking-widest">{item.label}</p>
             </div>
           ))}
@@ -78,13 +103,13 @@ export const SHMTheory: React.FC = () => {
         </p>
         <div className="space-y-2">
           {[
-            { eq: "KE = ½mv² = ½mA²ω²sin²(ωt + φ)", color: "#10b981", label: "Kinetic" },
-            { eq: "PE = ½kx² = ½mA²ω²cos²(ωt + φ)", color: "#f97316", label: "Potential" },
-            { eq: "E_total = ½mA²ω² = ½kA² (constant)", color: "#a78bfa", label: "Total" },
-          ].map(e => (
-            <div key={e.label} className="p-3 rounded-xl bg-black/20 border border-white/5 flex justify-between items-center">
-              <code className="font-mono text-xs font-bold" style={{ color: e.color }}>{e.eq}</code>
-              <span className="text-[10px] text-white/20 uppercase tracking-widest shrink-0 ml-3">{e.label}</span>
+            { eq: <><Var>KE</Var> = <MathFrac num="1" den="2" /><Var>m v</Var><Sup>2</Sup> = <MathFrac num="1" den="2" /><Var>m A</Var><Sup>2</Sup><Var>ω</Var><Sup>2</Sup> sin<Sup>2</Sup>(<Var>ω t</Var> + <Var>φ</Var>)</>, color: "text-emerald-400", label: "Kinetic" },
+            { eq: <><Var>PE</Var> = <MathFrac num="1" den="2" /><Var>k x</Var><Sup>2</Sup> = <MathFrac num="1" den="2" /><Var>m A</Var><Sup>2</Sup><Var>ω</Var><Sup>2</Sup> cos<Sup>2</Sup>(<Var>ω t</Var> + <Var>φ</Var>)</>, color: "text-orange-400", label: "Potential" },
+            { eq: <><Var>E</Var><Sub>total</Sub> = <MathFrac num="1" den="2" /><Var>m A</Var><Sup>2</Sup><Var>ω</Var><Sup>2</Sup> = <MathFrac num="1" den="2" /><Var>k A</Var><Sup>2</Sup> (constant)</>, color: "text-violet-400", label: "Total" },
+          ].map((e, i) => (
+            <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/5 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+              <span className={`font-serif text-sm font-bold ${e.color}`}>{e.eq}</span>
+              <span className="text-[10px] text-white/20 uppercase tracking-widest shrink-0">{e.label}</span>
             </div>
           ))}
         </div>
@@ -95,14 +120,14 @@ export const SHMTheory: React.FC = () => {
         <h3 className="text-lg font-black uppercase tracking-tight text-pink-400">Phase Relationships</h3>
         <div className="grid grid-cols-1 gap-2">
           {[
-            { qty: "Velocity", phase: "Leads x by π/2 (90°)", color: "text-cyan-400" },
-            { qty: "Acceleration", phase: "Leads v by π/2 (180° from x)", color: "text-amber-400" },
+            { qty: "Velocity", phase: <>Leads <Var>x</Var> by <MathFrac num="π" den="2" /> (90°)</>, color: "text-cyan-400" },
+            { qty: "Acceleration", phase: <>Leads <Var>v</Var> by <MathFrac num="π" den="2" /> (180° from <Var>x</Var>)</>, color: "text-amber-400" },
             { qty: "Force", phase: "In phase with acceleration", color: "text-pink-400" },
             { qty: "PE → KE", phase: "Transfer at max at equilibrium", color: "text-emerald-400" },
-          ].map(item => (
-            <div key={item.qty} className="flex justify-between items-center p-3 rounded-lg bg-black/20 border border-white/5">
+          ].map((item, i) => (
+            <div key={i} className="flex justify-between items-center p-3 rounded-lg bg-black/20 border border-white/5">
               <span className={`text-[10px] font-bold uppercase tracking-wider ${item.color}`}>{item.qty}</span>
-              <span className="text-[10px] font-medium text-white/40 italic">{item.phase}</span>
+              <span className="text-[10px] font-medium text-white/40 italic flex items-center">{item.phase}</span>
             </div>
           ))}
         </div>
@@ -110,3 +135,4 @@ export const SHMTheory: React.FC = () => {
     </div>
   );
 };
+

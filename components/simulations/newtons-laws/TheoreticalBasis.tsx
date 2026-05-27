@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Scientific Typography Components
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.3em] font-serif">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.3em] font-serif">{children}</sup>;
+const Var = ({ children, className }: { children: React.ReactNode, className?: string }) => <span className={`font-serif italic mx-0.5 text-slate-200 tracking-wide ${className || ""}`}>{children}</span>;
+
 const TheoryCard = ({ title, law, explanation, equation, icon: Icon, color, isOpen, onToggle }: any) => (
   <div className="bg-[#18181b] border border-white/5 rounded-[32px] overflow-hidden transition-all duration-500 shadow-xl group">
     <button 
@@ -54,7 +59,7 @@ const TheoryCard = ({ title, law, explanation, equation, icon: Icon, color, isOp
               </div>
               <div className="bg-black/40 rounded-3xl p-6 border border-white/5 flex flex-col justify-center items-center text-center space-y-2">
                 <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Mathematical Formulation</span>
-                <p className="text-3xl font-mono font-black text-white tracking-tighter">{equation}</p>
+                <div className="text-3xl font-serif text-white tracking-wide py-2 flex items-center justify-center whitespace-nowrap">{equation}</div>
               </div>
             </div>
 
@@ -96,7 +101,7 @@ export function TheoreticalBasis() {
       law: "Newton's First Law",
       title: "Law of Inertia",
       explanation: "An object at rest remains at rest, and an object in motion remains in motion unless acted upon by an external force.",
-      equation: "ΣF = 0",
+      equation: <>&Sigma;<Var>F</Var> = 0</>,
       icon: Box,
       color: "#ff85a2"
     },
@@ -104,7 +109,7 @@ export function TheoreticalBasis() {
       law: "Newton's Second Law",
       title: "Force & Acceleration",
       explanation: "The acceleration of an object depends on the applied force and its mass, defined by the product of mass and acceleration.",
-      equation: "F = ma",
+      equation: <><Var>F</Var> = <Var>m a</Var></>,
       icon: Zap,
       color: "#3b82f6"
     },
@@ -112,7 +117,7 @@ export function TheoreticalBasis() {
       law: "Newton's Third Law",
       title: "Action & Reaction",
       explanation: "For every action, there is an equal and opposite reaction. Forces always exist in pairs of equal magnitude.",
-      equation: "F₁ = -F₂",
+      equation: <><Var>F</Var><Sub>1</Sub> = −<Var>F</Var><Sub>2</Sub></>,
       icon: Atom,
       color: "#10b981"
     },
@@ -120,7 +125,7 @@ export function TheoreticalBasis() {
       law: "Universal Mechanics",
       title: "Conservation of Momentum",
       explanation: "The total momentum of a closed system remains constant if no external forces act upon it during interaction.",
-      equation: "p = mv",
+      equation: <><Var>p</Var> = <Var>m v</Var></>,
       icon: LineChart,
       color: "#a855f7"
     }
@@ -184,3 +189,4 @@ export function TheoreticalBasis() {
     </div>
   );
 }
+

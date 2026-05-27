@@ -1,6 +1,16 @@
 "use client";
 import React from "react";
 
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.2em]">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.2em]">{children}</sup>;
+
+const MathFrac = ({ num, den }: { num: React.ReactNode; den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-1.5 font-serif text-[0.85em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[2px] mb-[2px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 const FormulaCard = ({
   title,
   formula,
@@ -8,7 +18,7 @@ const FormulaCard = ({
   color,
 }: {
   title: string;
-  formula: string;
+  formula: React.ReactNode;
   description: string;
   color: string;
 }) => (
@@ -20,7 +30,7 @@ const FormulaCard = ({
       </h4>
     </div>
     <div className="p-4 rounded-xl bg-black/40 border border-white/5">
-      <p className="text-lg font-mono font-bold text-white tracking-wide">{formula}</p>
+      <div className="text-lg font-mono font-bold text-white tracking-wide flex items-center flex-wrap gap-1">{formula}</div>
     </div>
     <p className="text-xs text-white/40 leading-relaxed">{description}</p>
   </div>
@@ -64,13 +74,13 @@ export const GravitationTheory: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormulaCard
             title="Gravitational Force"
-            formula="F = G·M·m / r²"
+            formula={<>F = <MathFrac num="G · M · m" den={<>r<Sup>2</Sup></>} /></>}
             description="The gravitational force between two masses M and m separated by distance r. G is the universal gravitational constant (6.674 × 10⁻¹¹ N·m²/kg²)."
             color="#ec4899"
           />
           <FormulaCard
             title="Gravitational Field Strength"
-            formula="g = G·M / r²"
+            formula={<>g = <MathFrac num="G · M" den={<>r<Sup>2</Sup></>} /></>}
             description="The gravitational field strength at distance r from a mass M. This gives the acceleration due to gravity at that point, independent of the test mass."
             color="#f97316"
           />
@@ -82,25 +92,25 @@ export const GravitationTheory: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormulaCard
             title="Orbital Velocity"
-            formula="v = √(G·M / r)"
+            formula={<>v = √ ( <MathFrac num="G · M" den="r" /> )</>}
             description="The velocity required for a stable circular orbit at radius r around mass M. Faster → falls inward. Slower → spirals outward."
             color="#06b6d4"
           />
           <FormulaCard
             title="Orbital Period (Kepler's 3rd Law)"
-            formula="T² = (4π²/GM) · r³"
+            formula={<>T<Sup>2</Sup> = ( <MathFrac num={<>4π<Sup>2</Sup></>} den="G · M" /> ) · r<Sup>3</Sup></>}
             description="The time to complete one orbit is related to the cube of the orbital radius. This is Kepler's third law, derivable from Newton's gravitation."
             color="#8b5cf6"
           />
           <FormulaCard
             title="Angular Velocity"
-            formula="ω = √(G·M / r³)"
+            formula={<>ω = √ ( <MathFrac num="G · M" den={<>r<Sup>3</Sup></>} /> )</>}
             description="The rate of angular rotation for a circular orbit. Derived by equating gravitational force to the centripetal force requirement."
             color="#f59e0b"
           />
           <FormulaCard
             title="Centripetal Acceleration"
-            formula="ac = v²/r = G·M/r²"
+            formula={<>a<Sub>c</Sub> = <MathFrac num={<>v<Sup>2</Sup></>} den="r" /> = <MathFrac num="G · M" den={<>r<Sup>2</Sup></>} /></>}
             description="In a circular orbit, gravitational acceleration provides the exact centripetal acceleration needed. This is the equilibrium condition for a stable orbit."
             color="#34d399"
           />
@@ -112,25 +122,25 @@ export const GravitationTheory: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormulaCard
             title="Gravitational Potential Energy"
-            formula="PE = −G·M·m / r"
+            formula={<>PE = - <MathFrac num="G · M · m" den="r" /></>}
             description="The potential energy is always negative (bound system). It approaches zero as r → ∞. The negative sign reflects that work must be done against gravity to separate the masses."
             color="#f97316"
           />
           <FormulaCard
             title="Kinetic Energy in Orbit"
-            formula="KE = ½mv² = G·M·m / 2r"
+            formula={<>KE = ½ m v<Sup>2</Sup> = <MathFrac num="G · M · m" den="2r" /></>}
             description="For a circular orbit, KE = −½ × PE. The kinetic energy is always positive and exactly half the magnitude of the potential energy."
             color="#10b981"
           />
           <FormulaCard
             title="Total Mechanical Energy"
-            formula="E = KE + PE = −G·M·m / 2r"
+            formula={<>E = KE + PE = - <MathFrac num="G · M · m" den="2r" /></>}
             description="The total energy is negative for bound orbits. |E| = KE. A more negative total energy means a more tightly bound orbit (smaller radius)."
             color="#ec4899"
           />
           <FormulaCard
             title="Escape Velocity"
-            formula="v_esc = √(2GM / r)"
+            formula={<>v<Sub>esc</Sub> = √ ( <MathFrac num="2 G · M" den="r" /> )</>}
             description="The minimum speed needed to escape the gravitational field entirely (reach r → ∞ with v → 0). Note: v_esc = √2 × v_orbital."
             color="#06b6d4"
           />

@@ -4,6 +4,34 @@ import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { BookOpen, HelpCircle, GraduationCap } from "lucide-react";
 
+// Scientific Typography Components
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.3em] font-serif">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.3em] font-serif">{children}</sup>;
+const Var = ({ children, className }: { children: React.ReactNode, className?: string }) => <span className={`font-serif italic mx-0.5 text-slate-200 tracking-wide ${className || ""}`}>{children}</span>;
+
+const MathEq = ({ children, block = false, label }: { children: React.ReactNode, block?: boolean, label?: string }) => {
+  if (!block) {
+    return <span className="font-serif italic mx-0.5 text-slate-200 tracking-wide">{children}</span>;
+  }
+  return (
+    <div className="my-6 relative group w-full">
+      {label && <div className="absolute -top-3 left-6 bg-[#18181b] px-3 text-[9px] uppercase tracking-[0.2em] text-teal-500 font-black z-10 shadow-sm">{label}</div>}
+      <div className="bg-black/40 border border-white/10 rounded-2xl py-6 px-6 flex items-center justify-center overflow-x-auto shadow-inner relative">
+        <div className="font-serif text-lg tracking-wider text-white whitespace-nowrap flex items-center gap-1">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MathFrac = ({ num, den }: { num: React.ReactNode, den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-2 font-serif text-[0.9em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[3px] mb-[3px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 export const SoundWavesTheory: React.FC = () => {
   const [level, setLevel] = useState<"beginner" | "intermediate" | "advanced">("beginner");
 
@@ -87,8 +115,8 @@ export const SoundWavesTheory: React.FC = () => {
               <div className="flex items-start gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
                 <span className="w-3 h-3 rounded-full bg-purple-500 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="text-purple-400 block">Dashed Purple Line = Displacement {"\u03BE"}(x,t)</strong>
-                  Shows how far each air molecule has moved from its equilibrium position. This is always 90{"\u00B0"} ahead of the pressure wave.
+                  <strong className="text-purple-400 block">Dashed Purple Line = Displacement ξ(x,t)</strong>
+                  Shows how far each air molecule has moved from its equilibrium position. This is always 90° ahead of the pressure wave.
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
@@ -106,15 +134,15 @@ export const SoundWavesTheory: React.FC = () => {
             <p className="text-sm text-white/80 leading-relaxed">
               Every sound wave has core characteristics that map to how humans hear them:
             </p>
-            <ul className="list-disc pl-5 space-y-2 text-xs text-white/70">
+            <ul className="list-disc pl-5 space-y-3 text-xs text-white/70">
               <li>
-                <strong className="text-white">Pitch (Frequency):</strong> The rate at which the wave oscillates back and forth. More cycles per second (measured in Hertz, Hz) create a higher pitch.
+                <strong className="text-white font-sans uppercase tracking-widest text-[10px] block mb-1">Pitch (Frequency)</strong> The rate at which the wave oscillates back and forth. More cycles per second (measured in Hertz, Hz) create a higher pitch.
               </li>
               <li>
-                <strong className="text-white">Loudness (Amplitude):</strong> Measured in decibels SPL (dB SPL), this is computed as 20{"\u00B7"}log{"\u2081\u2080"}(p{"\u2098\u2099\u2098"}/p{"\u2080"}) where p{"\u2080"} = 20 {"\u00B5"}Pa is the threshold of human hearing.
+                <strong className="text-white font-sans uppercase tracking-widest text-[10px] block mb-1">Loudness (Amplitude)</strong> Measured in decibels SPL (dB SPL), this is computed as <Var>L</Var> = 20 log<Sub>10</Sub>(<MathFrac num={<>p<Sub>rms</Sub></>} den={<>p<Sub>0</Sub></>} />) where <Var>p</Var><Sub>0</Sub> = 20 μPa is the threshold of human hearing.
               </li>
               <li>
-                <strong className="text-white">Speed of Sound:</strong> How fast the energy travels through the medium. In air at room temperature, sound travels at roughly 343 meters per second. The speed depends on the medium: c = {"\u221A"}(B/{"\u03C1"}), where B is the bulk modulus and {"\u03C1"} is density.
+                <strong className="text-white font-sans uppercase tracking-widest text-[10px] block mb-1">Speed of Sound</strong> How fast the energy travels through the medium. In air at room temperature, sound travels at roughly 343 meters per second. The speed depends on the medium: <Var>c</Var> = √(<MathFrac num={<Var>B</Var>} den="ρ" />), where <Var>B</Var> is the bulk modulus and ρ is density.
               </li>
             </ul>
           </div>
@@ -125,87 +153,111 @@ export const SoundWavesTheory: React.FC = () => {
       {level === "intermediate" && (
         <div className="space-y-6 w-full animate-fadeIn">
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">Acoustic Variables & Wave Formulas</h3>
+            <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider font-display">Acoustic Variables & Wave Formulas</h3>
             <p className="text-sm text-white/80 leading-relaxed font-sans">
               To describe sound waves mathematically, we connect several interrelated quantities:
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs text-teal-300 bg-black/40 border border-white/5 p-6 rounded-2xl">
-              <div className="space-y-1.5">
-                <div>Wavelength: {"\u03BB"} = c / f</div>
-                <div>Angular Frequency: {"\u03C9"} = 2{"\u03C0"}f</div>
-                <div>Wavenumber: k = 2{"\u03C0"} / {"\u03BB"} = {"\u03C9"}/c</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-serif text-sm text-teal-300 bg-black/40 border border-white/5 p-6 rounded-2xl">
+              <div className="space-y-4 flex flex-col justify-center">
+                <div className="flex items-center gap-1">Wavelength: <Var>λ</Var> = <MathFrac num={<Var>c</Var>} den={<Var>f</Var>} /></div>
+                <div className="flex items-center gap-1">Angular Frequency: <Var>ω</Var> = 2π<Var>f</Var></div>
+                <div className="flex items-center gap-1">Wavenumber: <Var>k</Var> = <MathFrac num="2π" den={<Var>λ</Var>} /> = <MathFrac num={<Var>ω</Var>} den={<Var>c</Var>} /></div>
               </div>
-              <div className="space-y-1.5">
-                <div>Acoustic Impedance: Z = {"\u03C1"}{"\u00B7"}c</div>
-                <div>Acoustic Intensity: I = p{"\u00B7"}v = p{"\u00B2"}{"\u2098\u2099\u2098"} / ({"\u03C1"}{"\u00B7"}c)</div>
-                <div>SPL: L = 20{"\u00B7"}log{"\u2081\u2080"}(p{"\u2098\u2099\u2098"} / 20 {"\u00B5"}Pa)</div>
+              <div className="space-y-4 flex flex-col justify-center border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6">
+                <div className="flex items-center gap-1">Acoustic Impedance: <Var>Z</Var> = ρ<Var>c</Var></div>
+                <div className="flex items-center gap-1">Acoustic Intensity: <Var>I</Var> = <Var>p v</Var> = <MathFrac num={<>p<Sup>2</Sup><Sub>rms</Sub></>} den="ρ c" /></div>
+                <div className="flex items-center gap-1">SPL: <Var>L</Var> = 20 log<Sub>10</Sub>(<MathFrac num={<>p<Sub>rms</Sub></>} den="20 μPa" />)</div>
               </div>
             </div>
             <p className="text-xs text-white/50 italic leading-relaxed pt-2">
-              Note: The decibel formula uses 20{"\u00B7"}log{"\u2081\u2080"}(p/p{"\u2080"}) for pressure ratios (not 10{"\u00B7"}log{"\u2081\u2080"} which applies to intensity ratios). The reference pressure p{"\u2080"} = 20 {"\u00B5"}Pa corresponds to the threshold of human hearing at 1 kHz.
+              Note: The decibel formula uses 20 log<Sub>10</Sub>(p/p<Sub>0</Sub>) for pressure ratios (not 10 log<Sub>10</Sub> which applies to intensity ratios). The reference pressure p<Sub>0</Sub> = 20 μPa corresponds to the threshold of human hearing at 1 kHz.
             </p>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-cyan-400 uppercase tracking-wider">Phase Relationship: Pressure vs. Displacement</h3>
+            <h3 className="text-base font-bold text-cyan-400 uppercase tracking-wider font-display">Phase Relationship: Pressure vs. Displacement</h3>
             <p className="text-sm text-white/80 leading-relaxed">
-              In a traveling sound wave, pressure and displacement are always <strong>90{"\u00B0"} out of phase</strong>. This is because pressure is the spatial derivative of displacement:
+              In a traveling sound wave, pressure and displacement are always <strong>90° out of phase</strong>. This is because pressure is the spatial derivative of displacement:
             </p>
-            <div className="font-mono text-xs text-cyan-300 bg-black/40 border border-white/5 p-4 rounded-xl text-center space-y-1">
-              <div>p(x,t) = -B {"\u00B7"} {"\u2202\u03BE"}/{"\u2202"}x</div>
-              <div className="text-white/30">equivalently</div>
-              <div>If {"\u03BE"}(x,t) = {"\u03BE\u2080"} cos(kx - {"\u03C9"}t)  then  p(x,t) = B{"\u00B7"}k{"\u00B7\u03BE\u2080"} sin(kx - {"\u03C9"}t)</div>
-            </div>
+            <MathEq block label="Pressure-Displacement Relation">
+              <div className="flex flex-col items-center gap-2">
+                <div><Var>p</Var>(<Var>x</Var>,<Var>t</Var>) = −<Var>B</Var> <MathFrac num={<>&part;ξ</>} den={<>&part;x</>} /></div>
+                <div className="text-[10px] text-white/30 uppercase tracking-widest font-sans font-normal my-1">equivalently</div>
+                <div>If <Var>ξ</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>ξ</Var><Sub>0</Sub> cos(<Var>kx</Var> − <Var>ωt</Var>) &nbsp;then&nbsp; <Var>p</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>B k ξ</Var><Sub>0</Sub> sin(<Var>kx</Var> − <Var>ωt</Var>)</div>
+              </div>
+            </MathEq>
             <p className="text-xs text-white/60 leading-relaxed">
               This means: where displacement is maximum (particles are at their farthest from equilibrium), pressure variation is zero. Where pressure is maximum (particles are most compressed), the displacement crosses zero. The cyan and purple curves on the canvas demonstrate this relationship in real time.
             </p>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-amber-400 uppercase tracking-wider">Air Column Resonance</h3>
+            <h3 className="text-base font-bold text-amber-400 uppercase tracking-wider font-display">Air Column Resonance</h3>
             <p className="text-sm text-white/80 leading-relaxed">
               When sound waves are confined in a tube, they reflect off the boundaries and superpose. This creates <strong>standing waves</strong>, but the boundary conditions dictate which resonant frequencies are allowed:
             </p>
             <div className="space-y-4 pt-2">
               <div className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-2">
-                <span className="text-xs font-bold text-white uppercase tracking-widest block">Open-Open Pipe (Both Ends Open)</span>
+                <span className="text-xs font-bold text-white uppercase tracking-widest block border-b border-white/5 pb-2">Open-Open Pipe (Both Ends Open)</span>
                 <p className="text-xs text-white/70">
                   Open ends communicate with the atmosphere, so pressure is constrained to zero at both boundaries (<strong>Pressure Nodes</strong>). 
                   Since particles are free to move at open ends, these are <strong>Displacement Antinodes</strong>.
                 </p>
-                <div className="font-mono text-xs text-emerald-400 space-y-1">
-                  <div>p(x,t) = p{"\u2080"} sin(n{"\u03C0"}x/L) cos({"\u03C9\u2099"}t)   {"\u2014"} nodes at x=0, x=L</div>
-                  <div>{"\u03BE"}(x,t) = {"\u03BE\u2080"} cos(n{"\u03C0"}x/L) sin({"\u03C9\u2099"}t)   {"\u2014"} antinodes at x=0, x=L</div>
-                  <div>f{"\u2099"} = n{"\u00B7"}c / (2L),  n = 1, 2, 3, 4...</div>
+                <div className="font-serif text-sm text-emerald-400 space-y-3 py-2">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <Var>p</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>p</Var><Sub>0</Sub> sin(<MathFrac num={<Var>n π x</Var>} den={<Var>L</Var>} />) cos(<Var>ω</Var><Sub>n</Sub><Var>t</Var>)
+                    <span className="text-[10px] text-white/45 uppercase tracking-widest font-sans ml-auto">nodes at x = 0, L</span>
+                  </div>
+                  <div className="flex items-center flex-wrap gap-2">
+                    <Var>ξ</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>ξ</Var><Sub>0</Sub> cos(<MathFrac num={<Var>n π x</Var>} den={<Var>L</Var>} />) sin(<Var>ω</Var><Sub>n</Sub><Var>t</Var>)
+                    <span className="text-[10px] text-white/45 uppercase tracking-widest font-sans ml-auto">antinodes at x = 0, L</span>
+                  </div>
+                  <div className="flex items-center gap-1 border-t border-emerald-500/10 pt-2 text-xs">
+                    <Var>f</Var><Sub>n</Sub> = <MathFrac num={<Var>n c</Var>} den={<>2<Var>L</Var></>} /> &nbsp;&nbsp;(where <Var>n</Var> = 1, 2, 3, 4...)
+                  </div>
                 </div>
               </div>
               <div className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-2">
-                <span className="text-xs font-bold text-white uppercase tracking-widest block">Open-Closed Pipe (One Closed End)</span>
+                <span className="text-xs font-bold text-white uppercase tracking-widest block border-b border-white/5 pb-2">Open-Closed Pipe (One Closed End)</span>
                 <p className="text-xs text-white/70">
                   The closed wall halts molecule movement (<strong>Displacement Node = Velocity Node</strong>) and creates maximum pressure variation (<strong>Pressure Antinode</strong>). 
                   The open end remains a Pressure Node / Displacement Antinode.
                 </p>
-                <div className="font-mono text-xs text-emerald-400 space-y-1">
-                  <div>p(x,t) = p{"\u2080"} sin(n{"\u03C0"}x/(2L)) cos({"\u03C9\u2099"}t)   {"\u2014"} node at x=0, antinode at x=L</div>
-                  <div>{"\u03BE"}(x,t) = {"\u03BE\u2080"} cos(n{"\u03C0"}x/(2L)) sin({"\u03C9\u2099"}t)   {"\u2014"} antinode at x=0, node at x=L</div>
-                  <div>f{"\u2099"} = n{"\u00B7"}c / (4L),  n = 1, 3, 5, 7... (odd only)</div>
+                <div className="font-serif text-sm text-emerald-400 space-y-3 py-2">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <Var>p</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>p</Var><Sub>0</Sub> sin(<MathFrac num={<Var>n π x</Var>} den={<>2<Var>L</Var></>} />) cos(<Var>ω</Var><Sub>n</Sub><Var>t</Var>)
+                    <span className="text-[10px] text-white/45 uppercase tracking-widest font-sans ml-auto">node at x = 0, antinode at x = L</span>
+                  </div>
+                  <div className="flex items-center flex-wrap gap-2">
+                    <Var>ξ</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>ξ</Var><Sub>0</Sub> cos(<MathFrac num={<Var>n π x</Var>} den={<>2<Var>L</Var></>} />) sin(<Var>ω</Var><Sub>n</Sub><Var>t</Var>)
+                    <span className="text-[10px] text-white/45 uppercase tracking-widest font-sans ml-auto">antinode at x = 0, node at x = L</span>
+                  </div>
+                  <div className="flex items-center gap-1 border-t border-emerald-500/10 pt-2 text-xs">
+                    <Var>f</Var><Sub>n</Sub> = <MathFrac num={<Var>n c</Var>} den={<>4<Var>L</Var></>} /> &nbsp;&nbsp;(where <Var>n</Var> = 1, 3, 5, 7... odd only)
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-pink-400 uppercase tracking-wider">Impedance Mismatch & Reflection</h3>
+            <h3 className="text-base font-bold text-pink-400 uppercase tracking-wider font-display">Impedance Mismatch & Reflection</h3>
             <p className="text-sm text-white/80 leading-relaxed">
               When a wave encounters a boundary between two different media (e.g., air to water), part of the energy is reflected and part is transmitted. The coefficients depend on the <strong>acoustic impedance</strong> ratio:
             </p>
-            <div className="font-mono text-xs text-pink-300 bg-black/40 border border-white/5 p-4 rounded-xl space-y-1">
-              <div>Reflection coefficient: R = (Z{"\u2082"} - Z{"\u2081"}) / (Z{"\u2082"} + Z{"\u2081"})</div>
-              <div>Transmission coefficient: T = 2Z{"\u2082"} / (Z{"\u2082"} + Z{"\u2081"})</div>
-              <div className="text-white/30 pt-2">Energy conservation: R{"\u00B2"} + (Z{"\u2081"}/Z{"\u2082"})T{"\u00B2"} = 1</div>
+            <div className="font-serif text-sm text-pink-300 bg-black/40 border border-white/5 p-6 rounded-2xl space-y-4">
+              <div className="flex items-center gap-2">
+                Reflection Coefficient: <Var>R</Var> = <MathFrac num={<>Z<Sub>2</Sub> − Z<Sub>1</Sub></>} den={<>Z<Sub>2</Sub> + Z<Sub>1</Sub></>} />
+              </div>
+              <div className="flex items-center gap-2">
+                Transmission Coefficient: <Var>T</Var> = <MathFrac num={<>2 Z<Sub>2</Sub></>} den={<>Z<Sub>2</Sub> + Z<Sub>1</Sub></>} />
+              </div>
+              <div className="flex items-center gap-2 border-t border-pink-500/10 pt-4 text-xs text-white/50">
+                Energy Conservation: <Var>R</Var><Sup>2</Sup> + (<MathFrac num={<>Z<Sub>1</Sub></>} den={<>Z<Sub>2</Sub></>} />) <Var>T</Var><Sup>2</Sup> = 1
+              </div>
             </div>
             <p className="text-xs text-white/60 leading-relaxed">
-              When Z{"\u2082"} {">"} Z{"\u2081"} (e.g., air to concrete), R is positive: the reflected wave is in-phase with the incident. When Z{"\u2082"} {"<"} Z{"\u2081"} (e.g., air to vacuum), R is negative: the reflected wave is inverted (180{"\u00B0"} phase flip).
+              When Z<Sub>2</Sub> &gt; Z<Sub>1</Sub> (e.g., air to concrete), R is positive: the reflected wave is in-phase with the incident. When Z<Sub>2</Sub> &lt; Z<Sub>1</Sub> (e.g., air to vacuum), R is negative: the reflected wave is inverted (180° phase flip).
             </p>
           </div>
         </div>
@@ -215,86 +267,92 @@ export const SoundWavesTheory: React.FC = () => {
       {level === "advanced" && (
         <div className="space-y-6 w-full animate-fadeIn">
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider">The Governing Acoustic Wave Equation</h3>
+            <h3 className="text-base font-bold text-teal-400 uppercase tracking-wider font-display">The Governing Acoustic Wave Equation</h3>
             <p className="text-sm text-white/80 leading-relaxed">
-              By combining the linearized conservation of mass (continuity equation) and linearized conservation of momentum (Euler{"\u0027"}s equation) for an inviscid, compressible fluid:
+              By combining the linearized conservation of mass (continuity equation) and linearized conservation of momentum (Euler's equation) for an inviscid, compressible fluid:
             </p>
-            <div className="font-mono text-xs text-cyan-300 bg-black/40 border border-white/5 p-4 rounded-xl space-y-2">
-              <div className="text-center text-sm">{"\u2202\u00B2"}p / {"\u2202"}t{"\u00B2"} = c{"\u00B2"} {"\u2207\u00B2"}p</div>
-              <div className="text-white/30 text-center">where c = {"\u221A"}(B/{"\u03C1\u2080"}) is the adiabatic speed of sound</div>
-            </div>
+            <MathEq block label="Acoustic Wave Equation">
+              <div className="flex flex-col items-center gap-2">
+                <div><MathFrac num={<>&part;<Sup>2</Sup><Var>p</Var></>} den={<>&part;<Var>t</Var><Sup>2</Sup></>} /> = <Var>c</Var><Sup>2</Sup> &nabla;<Sup>2</Sup><Var>p</Var></div>
+                <div className="text-[10px] text-white/30 uppercase tracking-widest font-sans font-normal mt-1">where <Var>c</Var> = √(<MathFrac num={<Var>B</Var>} den={<>ρ<Sub>0</Sub></>} />) is the adiabatic speed of sound</div>
+              </div>
+            </MathEq>
             <p className="text-sm text-white/80 leading-relaxed">
-              The displacement field {"\u03BE"}(x,t) and pressure field p(x,t) are linked by the constitutive relation:
+              The displacement field <Var>ξ</Var>(<Var>x</Var>,<Var>t</Var>) and pressure field <Var>p</Var>(<Var>x</Var>,<Var>t</Var>) are linked by the constitutive relation:
             </p>
-            <div className="font-mono text-xs text-cyan-300 bg-black/40 border border-white/5 p-4 rounded-xl text-center space-y-1">
-              <div>p = -B {"\u00B7"} {"\u2202\u03BE"}/{"\u2202"}x    (1D case)</div>
-              <div className="text-white/30">This introduces the 90{"\u00B0"} spatial phase shift between pressure and displacement.</div>
-            </div>
+            <MathEq block label="Constitutive Relation">
+              <div className="flex flex-col items-center gap-2">
+                <div><Var>p</Var> = −<Var>B</Var> <MathFrac num={<>&part;ξ</>} den={<>&part;x</>} /> &nbsp;&nbsp;(1D case)</div>
+                <div className="text-[10px] text-white/30 uppercase tracking-widest font-sans font-normal mt-1">Introduces the 90° spatial phase shift between pressure and displacement</div>
+              </div>
+            </MathEq>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-emerald-400 uppercase tracking-wider">Acoustic Energy Transport</h3>
+            <h3 className="text-base font-bold text-emerald-400 uppercase tracking-wider font-display">Acoustic Energy Transport</h3>
             <p className="text-sm text-white/80 leading-relaxed">
               Acoustic energy is transported by the instantaneous acoustic intensity vector, defined as the product of pressure and particle velocity:
             </p>
-            <div className="font-mono text-xs text-emerald-300 bg-black/40 border border-white/5 p-4 rounded-xl space-y-2">
-              <div className="text-center">I(x,t) = p(x,t) {"\u00B7"} v(x,t)   [W/m{"\u00B2"}]</div>
-              <div className="text-white/30 text-center">For a progressive plane wave: I = p{"\u00B2"}{"\u2098\u2099\u2098"} / ({"\u03C1\u2080"}c)</div>
-              <div className="text-white/30 text-center pt-1">Energy density: u = p{"\u00B2"}/(2B) + {"\u00BD"}{"\u03C1\u2080"}v{"\u00B2"}</div>
-              <div className="text-white/30 text-center">Potential energy + Kinetic energy per unit volume</div>
+            <div className="font-serif text-sm text-emerald-300 bg-black/40 border border-white/5 p-6 rounded-2xl space-y-3">
+              <div className="text-center"><Var>I</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>p</Var>(<Var>x</Var>,<Var>t</Var>) <Var>v</Var>(<Var>x</Var>,<Var>t</Var>) &nbsp; [W/m<Sup>2</Sup>]</div>
+              <div className="text-white/50 text-center text-xs">For a progressive plane wave: <Var>I</Var> = <MathFrac num={<>p<Sup>2</Sup><Sub>rms</Sub></>} den={<>ρ<Sub>0</Sub> c</>} /></div>
+              <div className="text-white/50 text-center text-xs pt-1 border-t border-emerald-500/10">Energy density: <Var>u</Var> = <MathFrac num={<>p<Sup>2</Sup></>} den="2B" /> + <MathFrac num="1" den="2" /> ρ<Sub>0</Sub> <Var>v</Var><Sup>2</Sup></div>
+              <div className="text-white/30 text-center text-[10px] uppercase tracking-widest font-sans">Potential energy + Kinetic energy per unit volume</div>
             </div>
             <p className="text-xs text-white/60 leading-relaxed">
-              In the simulator, the {"\u0022"}Acoustic Energy Flow{"\u0022"} visualization mode renders I(x,t) as vector arrows. For a progressive wave, these always point in the propagation direction. For a standing wave, the time-averaged intensity is zero (energy oscillates back and forth without net transport).
+              In the simulator, the "Acoustic Energy Flow" visualization mode renders <Var>I</Var>(<Var>x</Var>,<Var>t</Var>) as vector arrows. For a progressive wave, these always point in the propagation direction. For a standing wave, the time-averaged intensity is zero (energy oscillates back and forth without net transport).
             </p>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-amber-400 uppercase tracking-wider">Numerical PDE Solver (1D FDTD)</h3>
+            <h3 className="text-base font-bold text-amber-400 uppercase tracking-wider font-display">Numerical PDE Solver (1D FDTD)</h3>
             <p className="text-sm text-white/80 leading-relaxed">
               The real-time simulator uses a central Finite Difference Time Domain (FDTD) scheme to integrate pressure oscillations over time. 
               The discretized grid updates pressure at node i and time step n+1 via:
             </p>
-            <div className="font-mono text-[11px] text-emerald-300 bg-black/40 border border-white/5 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">
-{`p_i^(n+1) = (1 / (1 + σ·Δt/2)) × [ 2·p_i^n - (1 - σ·Δt/2)·p_i^(n-1) + C²·(p_(i+1)^n - 2·p_i^n + p_(i-1)^n) ]`}
-            </div>
+            <MathEq block label="Discretized FDTD Equation">
+              <Var>p</Var><Sub>i</Sub><Sup>n+1</Sup> = ( <MathFrac num="1" den={<>1 + <MathFrac num="σ Δt" den="2" /></>} /> ) &times; [ 2 <Var>p</Var><Sub>i</Sub><Sup>n</Sup> − (1 − <MathFrac num="σ Δt" den="2" />) <Var>p</Var><Sub>i</Sub><Sup>n−1</Sup> + <Var>C</Var><Sup>2</Sup> ( <Var>p</Var><Sub>i+1</Sub><Sup>n</Sup> − 2 <Var>p</Var><Sub>i</Sub><Sup>n</Sup> + <Var>p</Var><Sub>i−1</Sub><Sup>n</Sup> ) ]
+            </MathEq>
             <p className="text-xs text-white/60 leading-relaxed">
-              Where C = c{"\u00B7"}{"\u0394"}t/{"\u0394"}x is the Courant number. 
-              The CFL stability condition C {"\u2264"} 1.0 must be enforced to prevent numerical blow-up. 
-              Boundary absorption is implemented via Perfectly Matched Layers (PML) where the damping coefficient {"\u03C3"} ramps quadratically from zero to {"\u03C3"}{"\u2098\u2090\u2093"} within the first 25 grid nodes at each boundary.
+              Where C = c·Δt/Δx is the Courant number. 
+              The CFL stability condition C ≤ 1.0 must be enforced to prevent numerical blow-up. 
+              Boundary absorption is implemented via Perfectly Matched Layers (PML) where the damping coefficient σ ramps quadratically from zero to σ<Sub>max</Sub> within the first 25 grid nodes at each boundary.
             </p>
             <div className="p-3 bg-black/40 border border-white/5 rounded-xl space-y-1 text-xs text-white/50">
               <div className="font-bold text-white/70">Grid Transparency (visible in FDTD mode):</div>
-              <div>{"\u2022"} Grid nodes shown as faint tick marks along equilibrium axis</div>
-              <div>{"\u2022"} PML regions shaded in faint red at domain boundaries</div>
-              <div>{"\u2022"} CFL number and timestep displayed in HUD overlay</div>
-              <div>{"\u2022"} Numerical dispersion: phase velocity error {"\u2248"} O(({"\u0394"}x){"\u00B2"}) for central differences</div>
+              <div>• Grid nodes shown as faint tick marks along equilibrium axis</div>
+              <div>• PML regions shaded in faint red at domain boundaries</div>
+              <div>• CFL number and timestep displayed in HUD overlay</div>
+              <div>• Numerical dispersion: phase velocity error ≈ O((Δx)²) for central differences</div>
             </div>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-pink-400 uppercase tracking-wider">Sabine Reverberation and Ray Acoustics</h3>
+            <h3 className="text-base font-bold text-pink-400 uppercase tracking-wider font-display">Sabine Reverberation and Ray Acoustics</h3>
             <p className="text-sm text-white/80 leading-relaxed">
               In concert halls and room acoustics, sound propagation at high frequencies can be modeled as rays. 
-              The decay of energy in a diffuse acoustic field obeys Sabine{"\u0027"}s equation:
+              The decay of energy in a diffuse acoustic field obeys Sabine's equation:
             </p>
-            <div className="font-mono text-xs text-pink-300 bg-black/40 border border-white/5 p-4 rounded-xl text-center">
-              T{"\u2086\u2080"} = 0.161 {"\u00B7"} V / A
-            </div>
+            <MathEq block label="Sabine's Reverberation Formula">
+              <Var>T</Var><Sub>60</Sub> = 0.161 <MathFrac num={<Var>V</Var>} den={<Var>A</Var>} />
+            </MathEq>
             <p className="text-xs text-white/60 leading-relaxed">
-              Where V is the room volume (m{"\u00B3"}) and A = {"\u2211"} S{"\u1D62"}{"\u00B7"}{"\u03B1\u1D62"} is the total equivalent absorption area (metric Sabines). 
-              The simulator computes V assuming a 3m ceiling height, and uses all 6 surfaces with the user-specified absorption coefficient {"\u03B1"}.
+              Where V is the room volume (m³) and A = Σ S<Sub>i</Sub>·α<Sub>i</Sub> is the total equivalent absorption area (metric Sabines). 
+              The simulator computes V assuming a 3m ceiling height, and uses all 6 surfaces with the user-specified absorption coefficient α.
             </p>
           </div>
 
           <div className="bg-black/20 border border-white/5 rounded-3xl p-8 space-y-4">
-            <h3 className="text-base font-bold text-cyan-400 uppercase tracking-wider">Nonlinear Acoustics & Wave Steepening</h3>
+            <h3 className="text-base font-bold text-cyan-400 uppercase tracking-wider font-display">Nonlinear Acoustics & Wave Steepening</h3>
             <p className="text-sm text-white/80 leading-relaxed">
               At high amplitudes, the assumption of linear acoustics breaks down. The local speed of sound becomes pressure-dependent:
             </p>
-            <div className="font-mono text-xs text-cyan-300 bg-black/40 border border-white/5 p-4 rounded-xl text-center space-y-1">
-              <div>c(p) = c{"\u2080"} (1 + {"\u03B2"} {"\u00B7"} p / B)</div>
-              <div className="text-white/30">{"\u03B2"} = (1 + B/A)/2 {"\u2248"} 1.2 for air</div>
-            </div>
+            <MathEq block label="Nonlinear Sound Speed">
+              <div className="flex flex-col items-center gap-2">
+                <div><Var>c</Var>(<Var>p</Var>) = <Var>c</Var><Sub>0</Sub> ( 1 + β <MathFrac num={<Var>p</Var>} den={<Var>B</Var>} /> )</div>
+                <div className="text-[10px] text-white/30 uppercase tracking-widest font-sans font-normal mt-1">β = <MathFrac num={<>1 + <MathFrac num="B" den="A" /></>} den="2" /> &approx; 1.2 for air</div>
+              </div>
+            </MathEq>
             <p className="text-xs text-white/60 leading-relaxed">
               This causes compressions (high pressure) to travel faster than rarefactions, leading to <strong>wave steepening</strong> and eventually <strong>shock wave formation</strong>. The FDTD solver implements this by computing a local Courant number at each grid point based on the pressure-modified speed of sound.
             </p>

@@ -3,6 +3,13 @@
 import React from "react";
 import { Info, BookOpen, Calculator, Globe2 } from "lucide-react";
 
+const MathFrac = ({ num, den }: { num: React.ReactNode; den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-2 font-serif text-[0.85em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[2px] mb-[2px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 export const TheoreticalBasis: React.FC = () => {
   return (
     <div className="flex-1 overflow-y-auto p-12 bg-[#09090b]">
@@ -28,15 +35,21 @@ export const TheoreticalBasis: React.FC = () => {
             <div className="space-y-4 font-mono text-sm">
               <div className="p-4 rounded-xl bg-black/40 border border-white/5 flex justify-between items-center group hover:border-success/30 transition-colors">
                 <span className="text-white/40 uppercase text-[10px] font-bold tracking-widest">Horizontal Range (R)</span>
-                <span className="text-success text-lg">u² sin 2θ / g</span>
+                <span className="text-success text-base flex items-center">
+                  R = <MathFrac num={<>u<sup>2</sup> sin 2θ</>} den="g" />
+                </span>
               </div>
               <div className="p-4 rounded-xl bg-black/40 border border-white/5 flex justify-between items-center group hover:border-primary/30 transition-colors">
                 <span className="text-white/40 uppercase text-[10px] font-bold tracking-widest">Max Height (H)</span>
-                <span className="text-primary text-lg">u² sin² θ / 2g</span>
+                <span className="text-primary text-base flex items-center">
+                  H = <MathFrac num={<>u<sup>2</sup> sin<sup>2</sup> θ</>} den="2g" />
+                </span>
               </div>
               <div className="p-4 rounded-xl bg-black/40 border border-white/5 flex justify-between items-center group hover:border-accent/30 transition-colors">
                 <span className="text-white/40 uppercase text-[10px] font-bold tracking-widest">Time of Flight (T)</span>
-                <span className="text-accent text-lg">2u sin θ / g</span>
+                <span className="text-accent text-base flex items-center">
+                  T = <MathFrac num={<>2u sin θ</>} den="g" />
+                </span>
               </div>
             </div>
           </section>

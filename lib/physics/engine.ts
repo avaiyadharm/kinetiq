@@ -322,34 +322,27 @@ export class GasEngine {
            }
         }
 
-        // Hard sphere exclusion (3D elastic molecular dynamics collision resolution)
+        // Hard sphere exclusion (2D elastic molecular dynamics collision resolution)
         if (distSq < minDist * minDist) {
           const dist = Math.sqrt(distSq) || 0.1e-9;
-          
-          // Assumes 3D spheres colliding in a thin slab: 2D overlap implies offset in Z
-          const dz = (Math.random() > 0.5 ? 1 : -1) * Math.sqrt(Math.max(0, minDist * minDist - distSq));
-          const nx3D = dx / minDist;
-          const ny3D = dy / minDist;
-          const nz3D = dz / minDist;
+          const nx = dx / dist;
+          const ny = dy / dist;
 
-          // Relative velocity in 3D
+          // Relative velocity in 2D
           const kx = p1.vx - p2.vx;
           const ky = p1.vy - p2.vy;
-          const kz = p1.vz - p2.vz;
 
-          // Projection along 3D collision normal
-          const vn3D = kx * nx3D + ky * ny3D + kz * nz3D;
+          // Projection along 2D collision normal
+          const vn = kx * nx + ky * ny;
 
-          if (vn3D > 0) {
-            const impulse = (2 * vn3D) / (p1.mass + p2.mass);
+          if (vn > 0) {
+            const impulse = (2 * vn) / (p1.mass + p2.mass);
             
-            p1.vx = (p1.vx - impulse * p2.mass * nx3D) * elasticity;
-            p1.vy = (p1.vy - impulse * p2.mass * ny3D) * elasticity;
-            p1.vz = (p1.vz - impulse * p2.mass * nz3D) * elasticity;
+            p1.vx = (p1.vx - impulse * p2.mass * nx) * elasticity;
+            p1.vy = (p1.vy - impulse * p2.mass * ny) * elasticity;
             
-            p2.vx = (p2.vx + impulse * p1.mass * nx3D) * elasticity;
-            p2.vy = (p2.vy + impulse * p1.mass * ny3D) * elasticity;
-            p2.vz = (p2.vz + impulse * p1.mass * nz3D) * elasticity;
+            p2.vx = (p2.vx + impulse * p1.mass * nx) * elasticity;
+            p2.vy = (p2.vy + impulse * p1.mass * ny) * elasticity;
 
             collisionCount++;
 
@@ -363,12 +356,10 @@ export class GasEngine {
 
           // Positional correction to prevent sticking (push apart in 2D space)
           const overlap = minDist - dist;
-          const nx2D = dx / dist;
-          const ny2D = dy / dist;
-          p1.x -= nx2D * overlap * 0.5;
-          p1.y -= ny2D * overlap * 0.5;
-          p2.x += nx2D * overlap * 0.5;
-          p2.y += ny2D * overlap * 0.5;
+          p1.x -= nx * overlap * 0.5;
+          p1.y -= ny * overlap * 0.5;
+          p2.x += nx * overlap * 0.5;
+          p2.y += ny * overlap * 0.5;
         }
       }
     }

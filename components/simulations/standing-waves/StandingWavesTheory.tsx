@@ -1,5 +1,33 @@
 import React from "react";
 
+// Scientific Typography Components
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.3em] font-serif">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.3em] font-serif">{children}</sup>;
+const Var = ({ children, className }: { children: React.ReactNode, className?: string }) => <span className={`font-serif italic mx-0.5 text-slate-200 tracking-wide ${className || ""}`}>{children}</span>;
+
+const MathEq = ({ children, block = false, label }: { children: React.ReactNode, block?: boolean, label?: string }) => {
+  if (!block) {
+    return <span className="font-serif italic mx-0.5 text-slate-200 tracking-wide">{children}</span>;
+  }
+  return (
+    <div className="my-6 relative group w-full">
+      {label && <div className="absolute -top-3 left-6 bg-[#18181b] px-3 text-[9px] uppercase tracking-[0.2em] text-emerald-400 font-black z-10 shadow-sm">{label}</div>}
+      <div className="bg-black/40 border border-white/10 rounded-2xl py-6 px-6 flex items-center justify-center overflow-x-auto shadow-inner relative">
+        <div className="font-serif text-lg tracking-wider text-white whitespace-nowrap flex items-center gap-1">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MathFrac = ({ num, den }: { num: React.ReactNode, den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-2 font-serif text-[0.9em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[3px] mb-[3px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 export const StandingWavesTheory = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-24 text-white">
@@ -28,24 +56,24 @@ export const StandingWavesTheory = () => {
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
           A standing wave is not a separate physical wave form, but rather the steady-state interference pattern resulting from the superposition of two identical traveling waves propagating in opposite directions:
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4 font-mono text-xs relative z-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4 font-serif text-sm relative z-10">
           <div className="p-4 bg-black/40 rounded-xl border border-white/5 text-center">
-            <span className="text-white/40 block mb-1">Right-Traveling Wave</span>
-            <span className="text-cyan-400 font-bold">y₁(x,t) = A e<sup>-βt</sup> sin(kx - ωt)</span>
+            <span className="text-white/40 block mb-1 text-[10px] uppercase tracking-wider font-sans">Right-Traveling Wave</span>
+            <span className="text-cyan-400 font-bold"><Var className="text-cyan-400">y</Var><Sub>1</Sub>(<Var className="text-cyan-400">x</Var>,<Var className="text-cyan-400">t</Var>) = <Var className="text-cyan-400">A e</Var><Sup>−βt</Sup> sin(<Var className="text-cyan-400">kx − ωt</Var>)</span>
           </div>
           <div className="p-4 bg-black/40 rounded-xl border border-white/5 text-center">
-            <span className="text-white/40 block mb-1">Left-Traveling Wave</span>
-            <span className="text-rose-400 font-bold">y₂(x,t) = A e<sup>-βt</sup> sin(kx + ωt)</span>
+            <span className="text-white/40 block mb-1 text-[10px] uppercase tracking-wider font-sans">Left-Traveling Wave</span>
+            <span className="text-rose-400 font-bold"><Var className="text-rose-400">y</Var><Sub>2</Sub>(<Var className="text-rose-400">x</Var>,<Var className="text-rose-400">t</Var>) = <Var className="text-rose-400">A e</Var><Sup>−βt</Sup> sin(<Var className="text-rose-400">kx + ωt</Var>)</span>
           </div>
         </div>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          By applying the trigonometric sum-to-product identity, <span className="font-serif italic">sin(α) + sin(β) = 2 sin((α+β)/2) cos((α-β)/2)</span>, the combined displacement <span className="font-serif italic">y(x,t) = y₁ + y₂</span> is:
+          By applying the trigonometric sum-to-product identity, <span className="font-serif italic text-slate-200">sin(α) + sin(β) = 2 sin((α+β)/2) cos((α-β)/2)</span>, the combined displacement <span className="font-serif italic text-slate-200">y(x,t) = y₁ + y₂</span> is:
         </p>
-        <div className="p-6 bg-black/50 rounded-2xl border border-white/5 text-center font-mono text-emerald-400 text-lg font-bold tracking-wider my-4 relative z-10">
-          y(x,t) = 2A e<sup>-βt</sup> sin(kx) cos(ωt)
-        </div>
+        <MathEq block label="Superposition Formula">
+          <Var>y</Var>(<Var>x</Var>,<Var>t</Var>) = 2<Var>A e</Var><Sup>−βt</Sup> sin(<Var>kx</Var>) cos(<Var>ωt</Var>)
+        </MathEq>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          Here, the spatial dependent part <span className="font-serif italic">sin(kx)</span> represents the wave envelope (amplitude envelope), while the time dependent part <span className="font-serif italic">cos(ωt)</span> represents temporal oscillation. The phase terms <span className="font-serif italic">kx</span> and <span className="font-serif italic">ωt</span> are completely decoupled. Consequently, the nodes (zeros) and antinodes (peaks) remain fixed in space, and the wave oscillates in place without moving energy along the medium.
+          Here, the spatial dependent part <Var>sin(kx)</Var> represents the wave envelope (amplitude envelope), while the time dependent part <Var>cos(ωt)</Var> represents temporal oscillation. The phase terms <Var>kx</Var> and <Var>ωt</Var> are completely decoupled. Consequently, the nodes (zeros) and antinodes (peaks) remain fixed in space, and the wave oscillates in place without moving energy along the medium.
         </p>
       </section>
 
@@ -58,50 +86,50 @@ export const StandingWavesTheory = () => {
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
           Boundaries constrain wave propagation by forcing specific value requirements at the ends of the medium. We define the characteristic mechanical impedance of the string as:
         </p>
-        <div className="p-4 bg-black/40 rounded-xl border border-white/5 text-center font-mono text-xs text-white/80 my-3">
-          Z₁ = &radic;(T &middot; &mu;) &nbsp; [kg/s]
-        </div>
+        <MathEq block label="Mechanical Impedance">
+          <Var>Z</Var><Sub>1</Sub> = &radic;(<Var>T</Var> &middot; &mu;) &nbsp;&nbsp; [kg/s]
+        </MathEq>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          When a wave encounters an arbitrary boundary terminated by a mechanical load of impedance <span className="font-serif italic">Z<sub>2</sub></span>, it undergoes partial reflection. The reflection coefficient <span className="font-serif italic">R</span> is governed by the impedance mismatch:
+          When a wave encounters an arbitrary boundary terminated by a mechanical load of impedance <Var>Z</Var><Sub>2</Sub>, it undergoes partial reflection. The reflection coefficient <Var>R</Var> is governed by the impedance mismatch:
         </p>
-        <div className="p-4 bg-black/40 rounded-xl border border-white/5 text-center font-mono text-xs text-cyan-400 font-bold my-3">
-          R = (Z<sub>2</sub> - Z₁) / (Z<sub>2</sub> + Z₁)
-        </div>
+        <MathEq block label="Reflection Coefficient">
+          <Var>R</Var> = <MathFrac num={<>Z<Sub>2</Sub> − Z<Sub>1</Sub></>} den={<>Z<Sub>2</Sub> + Z<Sub>1</Sub></>} />
+        </MathEq>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          We identify four key boundary conditions for a medium of length <span className="font-serif italic">L</span>:
+          We identify four key boundary conditions for a medium of length <Var>L</Var>:
         </p>
         <div className="overflow-x-auto relative z-10">
-          <table className="w-full text-xs font-mono text-left border-collapse border border-white/10 rounded-xl overflow-hidden">
+          <table className="w-full text-xs font-serif text-left border-collapse border border-white/10 rounded-xl overflow-hidden">
             <thead>
-              <tr className="bg-white/5 text-white/80">
+              <tr className="bg-white/5 text-white/80 font-sans uppercase tracking-wider text-[10px]">
                 <th className="p-3 border border-white/10">Type</th>
                 <th className="p-3 border border-white/10">Math Boundary Condition</th>
-                <th className="p-3 border border-white/10">Allowed Wavelength (&lambda;<sub>n</sub>)</th>
+                <th className="p-3 border border-white/10">Allowed Wavelength (λ<Sub>n</Sub>)</th>
                 <th className="p-3 border border-white/10">Harmonic Series</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="p-3 border border-white/10 font-bold text-white">Fixed-Fixed</td>
-                <td className="p-3 border border-white/10">y(0,t) = 0, y(L,t) = 0</td>
-                <td className="p-3 border border-white/10">2L / n</td>
-                <td className="p-3 border border-white/10">n = 1, 2, 3, 4,...</td>
+                <td className="p-3 border border-white/10 font-bold font-sans text-white">Fixed-Fixed</td>
+                <td className="p-3 border border-white/10"><Var>y</Var>(0,<Var>t</Var>) = 0, <Var>y</Var>(<Var>L</Var>,<Var>t</Var>) = 0</td>
+                <td className="p-3 border border-white/10"><MathFrac num={<>2<Var>L</Var></>} den={<Var>n</Var>} /></td>
+                <td className="p-3 border border-white/10"><Var>n</Var> = 1, 2, 3, 4,...</td>
               </tr>
               <tr className="bg-white/[0.02]">
-                <td className="p-3 border border-white/10 font-bold text-white">Free-Free</td>
-                <td className="p-3 border border-white/10">&part;y/&part;x |<sub>x=0,L</sub> = 0</td>
-                <td className="p-3 border border-white/10">2L / n</td>
-                <td className="p-3 border border-white/10">n = 1, 2, 3, 4,...</td>
+                <td className="p-3 border border-white/10 font-bold font-sans text-white">Free-Free</td>
+                <td className="p-3 border border-white/10"><MathFrac num={<>&part;<Var>y</Var></>} den={<>&part;<Var>x</Var></>} /> |<Sub><Var>x</Var>=0,<Var>L</Var></Sub> = 0</td>
+                <td className="p-3 border border-white/10"><MathFrac num={<>2<Var>L</Var></>} den={<Var>n</Var>} /></td>
+                <td className="p-3 border border-white/10"><Var>n</Var> = 1, 2, 3, 4,...</td>
               </tr>
               <tr>
-                <td className="p-3 border border-white/10 font-bold text-white">Fixed-Free</td>
-                <td className="p-3 border border-white/10">y(0,t) = 0, &part;y/&part;x |<sub>x=L</sub> = 0</td>
-                <td className="p-3 border border-white/10">4L / n</td>
-                <td className="p-3 border border-white/10">n = 1, 3, 5, 7,... (odd only)</td>
+                <td className="p-3 border border-white/10 font-bold font-sans text-white">Fixed-Free</td>
+                <td className="p-3 border border-white/10"><Var>y</Var>(0,<Var>t</Var>) = 0, <MathFrac num={<>&part;<Var>y</Var></>} den={<>&part;<Var>x</Var></>} /> |<Sub><Var>x</Var>=<Var>L</Var></Sub> = 0</td>
+                <td className="p-3 border border-white/10"><MathFrac num={<>4<Var>L</Var></>} den={<Var>n</Var>} /></td>
+                <td className="p-3 border border-white/10"><Var>n</Var> = 1, 3, 5, 7,... (odd only)</td>
               </tr>
               <tr className="bg-white/[0.02]">
-                <td className="p-3 border border-white/10 font-bold text-white">Partial Impedance</td>
-                <td className="p-3 border border-white/10">T &part;y/&part;x |<sub>x=L</sub> = -Z<sub>2</sub> &part;y/&part;t</td>
+                <td className="p-3 border border-white/10 font-bold font-sans text-white">Partial Impedance</td>
+                <td className="p-3 border border-white/10"><Var>T</Var> <MathFrac num={<>&part;<Var>y</Var></>} den={<>&part;<Var>x</Var></>} /> |<Sub><Var>x</Var>=<Var>L</Var></Sub> = −<Var>Z</Var><Sub>2</Sub> <MathFrac num={<>&part;<Var>y</Var></>} den={<>&part;<Var>t</Var></>} /></td>
                 <td className="p-3 border border-white/10">Non-integral spectrum</td>
                 <td className="p-3 border border-white/10">Continuous wave leakage</td>
               </tr>
@@ -120,13 +148,19 @@ export const StandingWavesTheory = () => {
           Resonance in air columns (such as organ pipes or wind instruments) is described by longitudinal sound pressure waves. Unlike strings where displacement is transverse, air column waves oscillate parallel to the direction of propagation.
         </p>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          There is a fundamental 90&deg; spatial phase shift between air particle displacement wave <span className="font-serif italic">s(x,t)</span> and pressure deviation wave <span className="font-serif italic">p(x,t)</span>. The acoustic pressure variation is related to the spatial derivative of displacement via the bulk modulus <span className="font-serif italic">B</span> of air:
+          There is a fundamental 90° spatial phase shift between air particle displacement wave <Var>s</Var>(<Var>x</Var>,<Var>t</Var>) and pressure deviation wave <Var>p</Var>(<Var>x</Var>,<Var>t</Var>). The acoustic pressure variation is related to the spatial derivative of displacement via the bulk modulus <Var>B</Var> of air:
         </p>
-        <div className="p-6 bg-black/50 rounded-2xl border border-white/5 text-center font-mono text-cyan-400 text-lg font-bold tracking-wider my-4 relative z-10 flex flex-col gap-2">
-          <span>s(x,t) = s₀ sin(kx) cos(ωt) &nbsp; [Displacement]</span>
-          <span className="text-rose-400">p(x,t) = -B &part;s/&part;x = -B k s₀ cos(kx) cos(ωt) &nbsp; [Pressure]</span>
+        <div className="p-6 bg-black/50 rounded-2xl border border-white/5 text-center font-serif text-cyan-400 text-lg font-bold tracking-wider my-4 relative z-10 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 border-b border-white/5 pb-2">
+            <span><Var>s</Var>(<Var>x</Var>,<Var>t</Var>) = <Var>s</Var><Sub>0</Sub> sin(<Var>kx</Var>) cos(<Var>ωt</Var>)</span>
+            <span className="text-[10px] text-white/30 uppercase tracking-widest font-sans font-normal">[Displacement]</span>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-rose-400">
+            <span><Var>p</Var>(<Var>x</Var>,<Var>t</Var>) = −<Var>B</Var> <MathFrac num={<>&part;s</>} den={<>&part;x</>} /> = −<Var>B k s</Var><Sub>0</Sub> cos(<Var>kx</Var>) cos(<Var>ωt</Var>)</span>
+            <span className="text-[10px] text-white/30 uppercase tracking-widest font-sans font-normal">[Pressure]</span>
+          </div>
         </div>
-        <p className="text-white/70 text-sm leading-relaxed relative z-10">
+        <p className="text-white/70 text-sm leading-relaxed relative z-10 font-sans text-xs">
           Consequently:
           <br />• At an <strong>open end</strong>: Air particles are free to move, producing a <strong>displacement antinode</strong>. Because it is exposed to the atmosphere, the pressure must remain at ambient pressure, forming a <strong>pressure node</strong>.
           <br />• At a <strong>closed end</strong>: Air particles are blocked by a rigid wall, producing a <strong>displacement node</strong>. The compression of air against the wall generates a maximum pressure fluctuation, forming a <strong>pressure antinode</strong>.
@@ -142,58 +176,58 @@ export const StandingWavesTheory = () => {
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
           A 2D flexible membrane (drumhead) vibrates according to the 2D wave equation:
         </p>
-        <div className="p-4 bg-black/40 rounded-xl border border-white/5 text-center font-mono text-xs text-white/80 my-3">
-          &part;²z/&part;t² = v² (&part;²z/&part;x² + &part;²z/&part;y²)
-        </div>
+        <MathEq block label="2D Wave Equation">
+          <MathFrac num={<>&part;<Sup>2</Sup><Var>z</Var></>} den={<>&part;<Var>t</Var><Sup>2</Sup></>} /> = <Var>v</Var><Sup>2</Sup> ( <MathFrac num={<>&part;<Sup>2</Sup><Var>z</Var></>} den={<>&part;<Var>x</Var><Sup>2</Sup></>} /> + <MathFrac num={<>&part;<Sup>2</Sup><Var>z</Var></>} den={<>&part;<Var>y</Var><Sup>2</Sup></>} /> )
+        </MathEq>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          For a circular membrane of radius <span className="font-serif italic">a</span> clamped at the boundary (<span className="font-serif italic">z(a, &theta;) = 0</span>), the normal modes are described in polar coordinates using Bessel functions of the first kind:
+          For a circular membrane of radius <Var>a</Var> clamped at the boundary (<Var>z</Var>(<Var>a</Var>, &theta;) = 0), the normal modes are described in polar coordinates using Bessel functions of the first kind:
         </p>
-        <div className="p-5 bg-black/50 rounded-2xl border border-white/5 text-center font-mono text-cyan-400 text-sm font-bold tracking-wider my-4 relative z-10">
-          z(r, &theta;, t) = A &middot; J<sub>m</sub>(k<sub>mn</sub> r) &middot; cos(m &theta;) &middot; cos(&omega;<sub>mn</sub> t)
-        </div>
+        <MathEq block label="Circular Membrane Modes">
+          <Var>z</Var>(<Var>r</Var>, &theta;, <Var>t</Var>) = <Var>A</Var> &middot; <Var>J</Var><Sub>m</Sub>(<Var>k</Var><Sub>mn</Sub><Var>r</Var>) cos(<Var>m</Var>&theta;) cos(ω<Sub>mn</Sub><Var>t</Var>)
+        </MathEq>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          Where <span className="font-serif italic">J<sub>m</sub></span> is the Bessel function of order <span className="font-serif italic">m</span>, and <span className="font-serif italic">k<sub>mn</sub> = x<sub>mn</sub> / a</span>, with <span className="font-serif italic">x<sub>mn</sub></span> representing the <span className="font-serif italic">n</span>-th zero of <span className="font-serif italic">J<sub>m</sub>(x)</span>.
+          Where <Var>J</Var><Sub>m</Sub> is the Bessel function of order <Var>m</Var>, and <Var>k</Var><Sub>mn</Sub> = <Var>x</Var><Sub>mn</Sub> / <Var>a</Var>, with <Var>x</Var><Sub>mn</Sub> representing the <Var>n</Var>-th zero of <Var>J</Var><Sub>m</Sub>(<Var>x</Var>).
         </p>
         <p className="text-white/70 text-sm leading-relaxed relative z-10 font-bold text-amber-400">
           Physics of Chladni Sand Patterns:
         </p>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          When the membrane is driven into resonance, its local vertical acceleration oscillates as <span className="font-serif italic">a<sub>z</sub>(x,y,t) = -&omega;² z(x,y,t)</span>. Sand particles placed on the membrane will bounce violently when the peak vertical acceleration exceeds gravity (<span className="font-serif italic">&omega;² |z(x,y)| &gt; g</span>). 
+          When the membrane is driven into resonance, its local vertical acceleration oscillates as <Var>a</Var><Sub>z</Sub>(<Var>x</Var>,<Var>y</Var>,<Var>t</Var>) = −&omega;<Sup>2</Sup> <Var>z</Var>(<Var>x</Var>,<Var>y</Var>,<Var>t</Var>). Sand particles placed on the membrane will bounce violently when the peak vertical acceleration exceeds gravity (&omega;<Sup>2</Sup> |<Var>z</Var>(<Var>x</Var>,<Var>y</Var>)| &gt; <Var>g</Var>). 
         </p>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          As a particle lands, it receives a random kinetic kick that shifts its position laterally. However, in regions near the <strong>nodal lines</strong> where the displacement amplitude is zero (<span className="font-serif italic">z(x,y) &approx; 0</span>), the acceleration is less than gravity. The particle remains stationary here. Over time, sand migrates away from high-acceleration regions and settles exclusively on the nodal lines, drawing the mode's spatial geometry.
+          As a particle lands, it receives a random kinetic kick that shifts its position laterally. However, in regions near the <strong>nodal lines</strong> where the displacement amplitude is zero (<Var>z</Var>(<Var>x</Var>,<Var>y</Var>) &approx; 0), the acceleration is less than gravity. The particle remains stationary here. Over time, sand migrates away from high-acceleration regions and settles exclusively on the nodal lines, drawing the mode's spatial geometry.
         </p>
       </section>
 
       {/* 5. Coupled Oscillators */}
       <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
-        <h3 className="text-lg font-black uppercase tracking-widest text-emerald-400 mb-4 flex items-center gap-3 relative z-10">
+        <h3 className="text-lg font-black uppercase tracking-tight text-emerald-400 mb-4 flex items-center gap-3 relative z-10">
           <span className="w-6 h-[2px] bg-emerald-400/50" /> 
           5. Coupled Oscillators and the Continuous Limit
         </h3>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          A continuous string can be mathematically modeled as the limit of a series of discrete coupled mass oscillators. Consider a chain of <span className="font-serif italic">N</span> identical beads of mass <span className="font-serif italic">m</span> separated by spacing <span className="font-serif italic">dx</span>, under uniform tension <span className="font-serif italic">T</span>.
+          A continuous string can be mathematically modeled as the limit of a series of discrete coupled mass oscillators. Consider a chain of <Var>N</Var> identical beads of mass <Var>m</Var> separated by spacing <Var>dx</Var>, under uniform tension <Var>T</Var>.
         </p>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          Applying Newton's second law to the transverse displacement <span className="font-serif italic">y<sub>i</sub></span> of the <span className="font-serif italic">i</span>-th bead:
+          Applying Newton's second law to the transverse displacement <Var>y</Var><Sub><Var>i</Var></Sub> of the <Var>i</Var>-th bead:
         </p>
-        <div className="p-5 bg-black/50 rounded-2xl border border-white/5 text-center font-mono text-rose-400 text-sm font-bold tracking-wider my-4 relative z-10">
-          m d²y<sub>i</sub>/dt² = T &middot; [ (y<sub>i+1</sub> - y<sub>i</sub>)/dx - (y<sub>i</sub> - y<sub>i-1</sub>)/dx ] - b dy<sub>i</sub>/dt
-        </div>
+        <MathEq block label="Bead Equation of Motion">
+          <Var>m</Var> <MathFrac num={<>d<Sup>2</Sup><Var>y</Var><Sub><Var>i</Var></Sub></>} den={<>d<Var>t</Var><Sup>2</Sup></>} /> = <Var>T</Var> &middot; [ <MathFrac num={<><Var>y</Var><Sub><Var>i</Var>+1</Sub> − <Var>y</Var><Sub><Var>i</Var></Sub></>} den="dx" /> − <MathFrac num={<><Var>y</Var><Sub><Var>i</Var></Sub> − <Var>y</Var><Sub><Var>i</Var>−1</Sub></>} den="dx" /> ] − <Var>b</Var> <MathFrac num={<>d<Var>y</Var><Sub><Var>i</Var></Sub></>} den="dt" />
+        </MathEq>
         <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          Dividing by mass <span className="font-serif italic">m = &mu; dx</span>:
+          Dividing by mass <Var>m</Var> = &mu; <Var>dx</Var>:
         </p>
-        <div className="p-4 bg-black/40 rounded-xl border border-white/5 text-center font-mono text-xs text-white/80 my-3">
-          d²y<sub>i</sub>/dt² = (T / &mu;) &middot; [ (y<sub>i+1</sub> - 2y<sub>i</sub> + y<sub>i-1</sub>) / dx² ] - (b / &mu; dx) dy<sub>i</sub>/dt
-        </div>
-        <p className="text-white/70 text-sm leading-relaxed relative z-10">
-          As the number of beads <span className="font-serif italic">N &rarr; &infin;</span> and the spacing <span className="font-serif italic">dx &rarr; 0</span>, the finite difference term becomes the partial spatial derivative <span className="font-serif italic">&part;²y/&part;x²</span>, recovering the continuous classical wave equation. By offering a discrete bead-spring visualization, we highlight this fundamental relationship between finite degrees of freedom and continuous wave fields.
+        <MathEq block label="Continuous Limit Differential Step">
+          <MathFrac num={<>d<Sup>2</Sup><Var>y</Var><Sub><Var>i</Var></Sub></>} den={<>d<Var>t</Var><Sup>2</Sup></>} /> = ( <MathFrac num={<Var>T</Var>} den="&mu;" /> ) &middot; [ <MathFrac num={<><Var>y</Var><Sub><Var>i</Var>+1</Sub> − 2<Var>y</Var><Sub><Var>i</Var></Sub> + <Var>y</Var><Sub><Var>i</Var>−1</Sub></>} den="dx²" /> ] − ( <MathFrac num="b" den={<>&mu; dx</>} /> ) <MathFrac num={<>d<Var>y</Var><Sub><Var>i</Var></Sub></>} den="dt" />
+        </MathEq>
+        <p className="text-white/70 text-sm leading-relaxed relative z-10 font-sans">
+          As the number of beads <Var>N</Var> &rarr; &infin; and the spacing <Var>dx</Var> &rarr; 0, the finite difference term becomes the partial spatial derivative <MathFrac num={<>&part;<Sup>2</Sup><Var>y</Var></>} den={<>&part;<Var>x</Var><Sup>2</Sup></>} />, recovering the continuous classical wave equation. By offering a discrete bead-spring visualization, we highlight this fundamental relationship between finite degrees of freedom and continuous wave fields.
         </p>
       </section>
 
       {/* 6. Real World Connections */}
       <section className="space-y-6 bg-[#18181b] p-8 rounded-[32px] border border-white/5 shadow-xl relative overflow-hidden group">
-        <h3 className="text-lg font-black uppercase tracking-widest text-emerald-400 mb-4 flex items-center gap-3 relative z-10">
+        <h3 className="text-lg font-black uppercase tracking-tight text-emerald-400 mb-4 flex items-center gap-3 relative z-10">
           <span className="w-6 h-[2px] bg-emerald-400/50" /> 
           6. Real-World Physical Applications
         </h3>
@@ -227,3 +261,4 @@ export const StandingWavesTheory = () => {
     </div>
   );
 };
+

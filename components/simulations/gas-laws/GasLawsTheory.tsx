@@ -268,41 +268,41 @@ export const GasLawsTheory: React.FC<{ expertiseLevel: "beginner" | "intermediat
           <div className="space-y-6">
             <SectionHeader title="1. Classical & Statistical Thermodynamics" icon={Cpu} />
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              The macroscopic state of an ideal gas can be derived from the partition function of a canonical ensemble. Let a system contain <MathEq>{"N"}</MathEq> non-interacting particles of mass <MathEq>{"m"}</MathEq> in a 2D volume <MathEq>{"V"}</MathEq> at temperature <MathEq>{"T"}</MathEq>. The canonical partition function is:
+              The macroscopic state of an ideal gas can be derived from the partition function of a canonical ensemble. Let a system contain <MathEq>N</MathEq> non-interacting particles of mass <MathEq>m</MathEq> in a 2D volume <MathEq>V</MathEq> at temperature <MathEq>T</MathEq>. The canonical partition function is:
             </p>
 
             <MathEq block label="Canonical Partition Function">
-              {"Z_N(V, T) = \\frac{1}{N! h^{2N}} \\int e^{-\\beta H(p,q)} d^{2N}p \\, d^{2N}q = \\frac{1}{N!} \\left[ V \\left( \\frac{2 \\pi m k_B T}{h^2} \\right) \\right]^N"}
+              Z<Sub>N</Sub>(V, T) = <MathFrac num="1" den={<>N! h<Sup>2N</Sup></>} /> ∫ e<Sup>-βH(p,q)</Sup> d<Sup>2N</Sup>p d<Sup>2N</Sup>q = <MathFrac num="1" den="N!" /> [ V ( <MathFrac num={<>2πm k<Sub>B</Sub>T</>} den={<>h<Sup>2</Sup></>} /> ) ]<Sup>N</Sup>
             </MathEq>
 
             <p className="text-sm text-white/70 leading-relaxed mt-4 font-serif">
-              The Helmholtz free energy is given by <MathEq>{"F = -k_B T \\ln Z_N"}</MathEq>. Using Stirling's approximation for <MathEq>{"\\ln N! \\approx N \\ln N - N"}</MathEq>:
+              The Helmholtz free energy is given by <MathEq>F = -k<Sub>B</Sub>T ln Z<Sub>N</Sub></MathEq>. Using Stirling's approximation for <MathEq>ln N! ≈ N ln N - N</MathEq>:
             </p>
             <MathEq block>
-              {"F = -N k_B T \\left[ \\ln\\left( \\frac{V}{N} \\left( \\frac{2\\pi m k_B T}{h^2} \\right) \\right) + 1 \\right]"}
+              F = -N k<Sub>B</Sub>T [ ln ( <MathFrac num="V" den="N" /> ( <MathFrac num={<>2πm k<Sub>B</Sub>T</>} den={<>h<Sup>2</Sup></>} /> ) ) + 1 ]
             </MathEq>
             <p className="text-sm text-white/70 leading-relaxed mt-4 font-serif">
-              The macroscopic pressure <MathEq>{"P"}</MathEq> is defined as the negative volume derivative of <MathEq>{"F"}</MathEq>:
+              The macroscopic pressure <MathEq>P</MathEq> is defined as the negative volume derivative of <MathEq>F</MathEq>:
             </p>
             <MathEq block label="Equation of State Derivation">
-              {"P = -\\left( \\frac{\\partial F}{\\partial V} \\right)_{N,T} = \\frac{N k_B T}{V} \\implies PV = N k_B T"}
+              P = -( <MathFrac num="∂F" den="∂V" /> )<Sub>N,T</Sub> = <MathFrac num={<>N k<Sub>B</Sub>T</>} den="V" /> ⇒ PV = N k<Sub>B</Sub>T
             </MathEq>
 
             <SectionHeader title="2. Kinetic Collision Theory & Pressure" icon={Activity} />
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              In our custom 2D physics engine, pressure is calculated directly from the elastic wall collision momentum transfers. Consider particles of mass <MathEq>{"m"}</MathEq> colliding with a vertical wall of height <MathEq>{"L_y"}</MathEq>. The momentum transfer per collision is:
+              In our custom 2D physics engine, pressure is calculated directly from the elastic wall collision momentum transfers. Consider particles of mass <MathEq>m</MathEq> colliding with a vertical wall of height <MathEq>L<Sub>y</Sub></MathEq>. The momentum transfer per collision is:
             </p>
             <MathEq block>
-              {"\\Delta p_x = 2 m |v_{x}|"}
+              Δp<Sub>x</Sub> = 2 m |v<Sub>x</Sub>|
             </MathEq>
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              Integrating over a time period <MathEq>{"\\Delta t"}</MathEq>, the total average force <MathEq>{"F_x"}</MathEq> on the wall is the sum of momentum transfers divided by time. The pressure is the force per unit boundary perimeter <MathEq>{"L"}</MathEq>:
+              Integrating over a time period <MathEq>Δt</MathEq>, the total average force <MathEq>F<Sub>x</Sub></MathEq> on the wall is the sum of momentum transfers divided by time. The pressure is the force per unit boundary perimeter <MathEq>L</MathEq>:
             </p>
             <MathEq block label="Mechanical Pressure Integration">
-              {"P = \\frac{\\sum_i 2 m |v_{x,i}|}{L \\cdot \\Delta t}"}
+              P = <MathFrac num={<>Σ<Sub>i</Sub> 2 m |v<Sub>x,i</Sub>|</>} den={<>L · Δt</>} />
             </MathEq>
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              This momentum accumulator computes the simulated pressure telemetry live on canvas, exhibiting shot noise fluctuations at low <MathEq>{"N"}</MathEq>.
+              This momentum accumulator computes the simulated pressure telemetry live on canvas, exhibiting shot noise fluctuations at low <MathEq>N</MathEq>.
             </p>
 
             <SectionHeader title="3. Maxwell-Boltzmann Speed Distribution in 2D" icon={Layers} />
@@ -310,24 +310,24 @@ export const GasLawsTheory: React.FC<{ expertiseLevel: "beginner" | "intermediat
               In a 2D isotropic velocity space, the probability density function for velocity components is Gaussian:
             </p>
             <MathEq block>
-              {"f(v_x, v_y) \\, dv_x \\, dv_y = \\left( \\frac{m}{2 \\pi k_B T} \\right) \\exp\\left( - \\frac{m(v_x^2 + v_y^2)}{2 k_B T} \\right) dv_x \\, dv_y"}
+              f(v<Sub>x</Sub>, v<Sub>y</Sub>) dv<Sub>x</Sub> dv<Sub>y</Sub> = ( <MathFrac num="m" den={<>2π k<Sub>B</Sub>T</>} /> ) exp( - <MathFrac num={<>m(v<Sub>x</Sub><Sup>2</Sup> + v<Sub>y</Sub><Sup>2</Sup>)</>} den={<>2 k<Sub>B</Sub>T</>} /> ) dv<Sub>x</Sub> dv<Sub>y</Sub>
             </MathEq>
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              To find the probability of speed <MathEq>{"v = \\sqrt{v_x^2 + v_y^2}"}</MathEq>, we transform to polar coordinates, integrating out the angle component <MathEq>{"d\\theta"}</MathEq> from <MathEq>{"0"}</MathEq> to <MathEq>{"2\\pi"}</MathEq>:
+              To find the probability of speed <MathEq>v = √ ( v<Sub>x</Sub><Sup>2</Sup> + v<Sub>y</Sub><Sup>2</Sup> )</MathEq>, we transform to polar coordinates, integrating out the angle component <MathEq>dθ</MathEq> from <MathEq>0</MathEq> to <MathEq>2π</MathEq>:
             </p>
             <MathEq block label="2D Maxwell-Boltzmann Probability Density">
-              {"f(v) \\, dv = \\int_0^{2\\pi} \\left( \\frac{m}{2 \\pi k_B T} \\right) \\exp\\left( -\\frac{m v^2}{2 k_B T} \\right) v \\, d\\theta \\, dv = \\left( \\frac{m v}{k_B T} \\right) \\exp\\left( -\\frac{m v^2}{2 k_B T} \\right) dv"}
+              f(v) dv = ∫<Sub>0</Sub><Sup>2π</Sup> ( <MathFrac num="m" den={<>2π k<Sub>B</Sub>T</>} /> ) exp( - <MathFrac num={<>m v<Sup>2</Sup></>} den={<>2 k<Sub>B</Sub>T</>} /> ) v dθ dv = ( <MathFrac num={<>m v</>} den={<>k<Sub>B</Sub>T</>} /> ) exp( - <MathFrac num={<>m v<Sup>2</Sup></>} den={<>2 k<Sub>B</Sub>T</>} /> ) dv
             </MathEq>
 
             <SectionHeader title="4. Spatial Shannon Entropy" icon={Box} />
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              Dividing the physical coordinates <MathEq>{"[X_{min}, X_{max}] \\times [Y_{min}, Y_{max}]"}</MathEq> into <MathEq>{"M^2"}</MathEq> micro-cells, let <MathEq>{"N_i"}</MathEq> be the particle count in cell <MathEq>{"i"}</MathEq>. The probability of occupancy is <MathEq>{"P_i = N_i / N"}</MathEq>. The spatial Shannon Entropy is computed as:
+              Dividing the physical coordinates <MathEq>[X<Sub>min</Sub>, X<Sub>max</Sub>] × [Y<Sub>min</Sub>, Y<Sub>max</Sub>]</MathEq> into <MathEq>M<Sup>2</Sup></MathEq> micro-cells, let <MathEq>N<Sub>i</Sub></MathEq> be the particle count in cell <MathEq>i</MathEq>. The probability of occupancy is <MathEq>P<Sub>i</Sub> = N<Sub>i</Sub> / N</MathEq>. The spatial Shannon Entropy is computed as:
             </p>
             <MathEq block label="Shannon Entropy Formula">
-              {"S = -k_B \\sum_{i=1}^{M^2} P_i \\ln P_i"}
+              S = -k<Sub>B</Sub> Σ<Sub>i=1</Sub><Sup>M²</Sup> P<Sub>i</Sub> ln P<Sub>i</Sub>
             </MathEq>
             <p className="text-sm text-white/70 leading-relaxed font-serif">
-              When particles are initially constrained behind a barrier, they occupy only a fraction of cells, resulting in a low <MathEq>{"S"}</MathEq>. Removing the barrier lets particles expand freely across the phase space grid cells, and <MathEq>{"S"}</MathEq> increases monotonically towards the maximum state of <MathEq>{"\\ln(M^2)"}</MathEq>, demonstrating the Second Law of Thermodynamics.
+              When particles are initially constrained behind a barrier, they occupy only a fraction of cells, resulting in a low <MathEq>S</MathEq>. Removing the barrier lets particles expand freely across the phase space grid cells, and <MathEq>S</MathEq> increases monotonically towards the maximum state of <MathEq>ln(M<Sup>2</Sup>)</MathEq>, demonstrating the Second Law of Thermodynamics.
             </p>
           </div>
         )}

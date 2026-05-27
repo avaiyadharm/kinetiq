@@ -6,6 +6,16 @@ import { Info, BookOpen, Calculator, Globe, Maximize2, Compass, MoveUpRight } fr
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.2em]">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.2em]">{children}</sup>;
+
+const MathFrac = ({ num, den }: { num: React.ReactNode; den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-1.5 font-serif text-[0.85em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[2px] mb-[2px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
@@ -166,17 +176,17 @@ export const CircularMotionTheory: React.FC = () => {
                     <h3 className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Angular Kinematics (θ in radians)</h3>
                     <div className="space-y-3">
                         <FormulaBox 
-                            formula="s = rθ" 
+                            formula={<>s = r · θ</>} 
                             label="Arc Length" 
                             desc="The distance traveled along the circular path (path length)." 
                         />
                         <FormulaBox 
-                            formula="ω = dθ / dt" 
+                            formula={<>ω = <MathFrac num="dθ" den="dt" /></>} 
                             label="Angular Velocity" 
                             desc="Rate of change of angular displacement (rad/s)." 
                         />
                         <FormulaBox 
-                            formula="α = dω / dt" 
+                            formula={<>α = <MathFrac num="dω" den="dt" /></>} 
                             label="Angular Acceleration" 
                             desc="Rate of change of angular velocity (rad/s²)." 
                         />
@@ -187,17 +197,17 @@ export const CircularMotionTheory: React.FC = () => {
                     <h3 className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Linear-Angular Relation</h3>
                     <div className="space-y-3">
                         <FormulaBox 
-                            formula="v = rω" 
+                            formula={<>v = r · ω</>} 
                             label="Tangential Velocity" 
                             desc="Linear speed magnitude at a point tangent to path." 
                         />
                         <FormulaBox 
-                            formula="aₜ = rα" 
+                            formula={<>a<Sub>t</Sub> = r · α</>} 
                             label="Tangential Acceleration" 
                             desc="Magnitude of the component changing the linear speed." 
                         />
                         <FormulaBox 
-                            formula="a꜀ = v² / r = rω²" 
+                            formula={<>a<Sub>c</Sub> = <MathFrac num={<>v<Sup>2</Sup></>} den="r" /> = r · ω<Sup>2</Sup></>} 
                             label="Centripetal Acceleration" 
                             desc="Magnitude of the radial component changing direction." 
                         />
@@ -219,7 +229,7 @@ export const CircularMotionTheory: React.FC = () => {
                         </div>
                         <div className="p-8 bg-black/60 rounded-[24px] border border-white/10 font-mono text-3xl text-primary shadow-2xl relative group">
                             <div className="absolute inset-0 bg-primary/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <span className="relative">|a⃗| = √(a꜀² + aₜ²)</span>
+                            <span className="relative flex items-center flex-wrap gap-1">|a⃗| = √ ( a<Sub>c</Sub><Sup>2</Sup> + a<Sub>t</Sub><Sup>2</Sup> )</span>
                         </div>
                     </div>
                 </CardContent>
@@ -248,22 +258,22 @@ export const CircularMotionTheory: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="p-6 bg-black/40 rounded-2xl border border-white/5 flex flex-col items-center justify-center space-y-4">
                              <div className="text-[10px] uppercase tracking-widest font-bold text-primary/60">Geometric Relation</div>
-                             <div className="font-mono text-xl text-primary italic">
-                                (|Δv⃗|) / v = (|Δr⃗|) / r
+                             <div className="font-mono text-xl text-primary flex items-center flex-wrap gap-1">
+                                <MathFrac num="|Δv|" den="v" /> = <MathFrac num="|Δr|" den="r" />
                              </div>
                         </div>
                         <div className="p-6 bg-black/40 rounded-2xl border border-white/5 flex flex-col items-center justify-center space-y-4">
                              <div className="text-[10px] uppercase tracking-widest font-bold text-primary/60">Limit of Magnitude</div>
-                             <div className="font-mono text-xl text-primary italic">
-                                |Δv⃗| = (v/r) |Δr⃗|
+                             <div className="font-mono text-xl text-primary flex items-center flex-wrap gap-1">
+                                |Δv| = ( <MathFrac num="v" den="r" /> ) |Δr|
                              </div>
                         </div>
                     </div>
                     <p>
                         Since instantaneous linear speed is defined as <strong>v = lim(Δt→0) |Δr⃗| / Δt</strong>, we can derive the radial acceleration by dividing by the time interval:
                     </p>
-                    <div className="p-8 bg-black/60 rounded-[24px] border border-primary/20 font-mono text-2xl text-center text-primary shadow-lg italic">
-                        a꜀ = lim(Δt→0) |Δv⃗| / Δt = (v/r) lim(Δt→0) (|Δr⃗| / Δt) = v²/r
+                    <div className="p-8 bg-black/60 rounded-[24px] border border-primary/20 font-mono text-2xl text-center text-primary shadow-lg flex items-center justify-center flex-wrap gap-1">
+                        a<Sub>c</Sub> = lim<Sub>Δt→0</Sub> <MathFrac num="|Δv|" den="Δt" /> = ( <MathFrac num="v" den="r" /> ) lim<Sub>Δt→0</Sub> ( <MathFrac num="|Δr|" den="Δt" /> ) = <MathFrac num={<>v<Sup>2</Sup></>} den="r" />
                     </div>
                 </CardContent>
             </Card>
@@ -276,8 +286,8 @@ export const CircularMotionTheory: React.FC = () => {
                     <p>
                         In Uniform Circular Motion, the centripetal force vector <strong>F⃗꜀</strong> is always strictly <strong>orthogonal</strong> to the infinitesimal displacement vector <strong>ds⃗</strong>. Applying the definition of work as a line integral:
                     </p>
-                    <div className="p-8 bg-black/60 rounded-[24px] border border-orange-500/20 font-mono text-2xl text-center text-orange-400 shadow-lg italic">
-                        W = ∫ F⃗꜀ · ds⃗ = ∫ F꜀ ds cos(90°) = 0
+                    <div className="p-8 bg-black/60 rounded-[24px] border border-orange-500/20 font-mono text-2xl text-center text-orange-400 shadow-lg flex items-center justify-center flex-wrap gap-1">
+                        W = ∫ F<Sub>c</Sub> · ds = ∫ F<Sub>c</Sub> ds cos(90°) = 0
                     </div>
                     <p>
                         "Centripetal force is always perpendicular to displacement, therefore the dot product is zero and no work is done." This mathematical result confirms that the kinetic energy (and thus speed) remains invariant during UCM.
@@ -323,7 +333,7 @@ export const CircularMotionTheory: React.FC = () => {
   );
 };
 
-const FormulaBox = ({ formula, label, desc }: { formula: string; label: string; desc: string }) => (
+const FormulaBox = ({ formula, label, desc }: { formula: React.ReactNode; label: string; desc: string }) => (
     <div className="group p-5 rounded-[24px] bg-white/[0.03] border border-white/5 hover:border-primary/30 transition-all shadow-lg">
         <div className="flex justify-between items-start mb-2">
             <span className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em]">{label}</span>
@@ -331,7 +341,7 @@ const FormulaBox = ({ formula, label, desc }: { formula: string; label: string; 
                 <Info className="w-3.5 h-3.5" />
             </div>
         </div>
-        <div className="font-mono text-xl text-white mb-2 tracking-tight">{formula}</div>
+        <div className="font-mono text-xl text-white mb-2 tracking-tight flex items-center flex-wrap gap-1">{formula}</div>
         <p className="text-[10px] text-white/40 leading-relaxed italic">{desc}</p>
     </div>
 );

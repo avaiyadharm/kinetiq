@@ -1,8 +1,18 @@
 "use client";
 import React from "react";
 
+const Sub = ({ children }: { children: React.ReactNode }) => <sub className="text-[0.7em] relative bottom-[-0.2em]">{children}</sub>;
+const Sup = ({ children }: { children: React.ReactNode }) => <sup className="text-[0.7em] relative top-[-0.2em]">{children}</sup>;
+
+const MathFrac = ({ num, den }: { num: React.ReactNode; den: React.ReactNode }) => (
+  <span className="inline-flex flex-col items-center justify-center align-middle mx-1.5 font-serif text-[0.85em] translate-y-[-0.1em]">
+    <span className="border-b border-white/60 pb-[2px] mb-[2px] px-1">{num}</span>
+    <span className="pt-[1px] px-1">{den}</span>
+  </span>
+);
+
 const FormulaCard = ({ title, formula, description, color }: {
-  title: string; formula: string; description: string; color: string;
+  title: string; formula: React.ReactNode; description: string; color: string;
 }) => (
   <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3 hover:border-white/10 transition-all group">
     <div className="flex items-center gap-2">
@@ -10,7 +20,7 @@ const FormulaCard = ({ title, formula, description, color }: {
       <h4 className="text-xs font-bold uppercase tracking-widest text-white/60 group-hover:text-white/80 transition-colors">{title}</h4>
     </div>
     <div className="p-4 rounded-xl bg-black/40 border border-white/5">
-      <p className="text-lg font-mono font-bold text-white tracking-wide">{formula}</p>
+      <div className="text-lg font-mono font-bold text-white tracking-wide flex items-center flex-wrap gap-1">{formula}</div>
     </div>
     <p className="text-xs text-white/40 leading-relaxed">{description}</p>
   </div>
@@ -80,25 +90,25 @@ export const CollisionTheory: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormulaCard
             title="Momentum (p)"
-            formula="p = m × v"
+            formula={<>p = m · v</>}
             description="Linear momentum is the product of mass and velocity. It is a vector quantity — direction matters. A heavier or faster object carries more momentum."
             color="#ec4899"
           />
           <FormulaCard
             title="Conservation Law"
-            formula="m₁v₁ + m₂v₂ = m₁v₁' + m₂v₂'"
+            formula={<>m<Sub>1</Sub>v<Sub>1</Sub> + m<Sub>2</Sub>v<Sub>2</Sub> = m<Sub>1</Sub>v<Sub>1</Sub>' + m<Sub>2</Sub>v<Sub>2</Sub>'</>}
             description="In the absence of external forces, the total momentum of a system is conserved. This holds for ALL collision types — elastic, inelastic, and perfectly inelastic."
             color="#8b5cf6"
           />
           <FormulaCard
             title="Impulse (J) & Momentum Change"
-            formula="J = ∫F dt = Δp"
+            formula={<>J = ∫ F dt = Δp</>}
             description="The impulse (J) experienced during a collision equals the change in momentum (Δp). The area under the Force-Time graph equals this momentum change. A larger force over a shorter time produces the SAME impulse as a smaller force over a longer time."
             color="#06b6d4"
           />
           <FormulaCard
             title="Center of Mass Velocity"
-            formula="v_cm = (m₁v₁ + m₂v₂) / (m₁ + m₂)"
+            formula={<>v<Sub>cm</Sub> = <MathFrac num={<>m<Sub>1</Sub>v<Sub>1</Sub> + m<Sub>2</Sub>v<Sub>2</Sub></>} den={<>m<Sub>1</Sub> + m<Sub>2</Sub></>} /></>}
             description="The velocity of the center of mass remains constant throughout any collision (no external forces). This is a powerful frame for analysis."
             color="#f59e0b"
           />
@@ -110,25 +120,25 @@ export const CollisionTheory: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormulaCard
             title="Post-Collision Velocity of m₁"
-            formula="v₁' = [(m₁−m₂)v₁ + 2m₂v₂] / (m₁+m₂)"
+            formula={<>v<Sub>1</Sub>' = <MathFrac num={<>(m<Sub>1</Sub> - m<Sub>2</Sub>)v<Sub>1</Sub> + 2m<Sub>2</Sub>v<Sub>2</Sub></>} den={<>m<Sub>1</Sub> + m<Sub>2</Sub></>} /></>}
             description="In a 1D elastic collision, this gives the final velocity of mass 1. If m₁ = m₂, the objects simply exchange velocities — a beautiful result!"
             color="#8b5cf6"
           />
           <FormulaCard
             title="Post-Collision Velocity of m₂"
-            formula="v₂' = [(m₂−m₁)v₂ + 2m₁v₁] / (m₁+m₂)"
+            formula={<>v<Sub>2</Sub>' = <MathFrac num={<>(m<Sub>2</Sub> - m<Sub>1</Sub>)v<Sub>2</Sub> + 2m<Sub>1</Sub>v<Sub>1</Sub></>} den={<>m<Sub>1</Sub> + m<Sub>2</Sub></>} /></>}
             description="Symmetric to v₁'. Note: when a light object hits a heavy stationary one, it bounces back. When a heavy object hits a light one, both move forward."
             color="#06b6d4"
           />
           <FormulaCard
             title="KE Conservation Check"
-            formula="½m₁v₁² + ½m₂v₂² = ½m₁v₁'² + ½m₂v₂'²"
+            formula={<>½m<Sub>1</Sub>v<Sub>1</Sub><Sup>2</Sup> + ½m<Sub>2</Sub>v<Sub>2</Sub><Sup>2</Sup> = ½m<Sub>1</Sub>v<Sub>1</Sub>'<Sup>2</Sup> + ½m<Sub>2</Sub>v<Sub>2</Sub>'<Sup>2</Sup></>}
             description="In an elastic collision, the total kinetic energy before equals the total after. This provides a second equation alongside momentum conservation."
             color="#10b981"
           />
           <FormulaCard
             title="Relative Velocity Reversal"
-            formula="v₁ − v₂ = −(v₁' − v₂')"
+            formula={<>v<Sub>1</Sub> - v<Sub>2</Sub> = -(v<Sub>1</Sub>' - v<Sub>2</Sub>')</>}
             description="In elastic collisions, the relative velocity of approach equals the relative velocity of separation. This is equivalent to e = 1."
             color="#f97316"
           />
@@ -140,13 +150,13 @@ export const CollisionTheory: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormulaCard
             title="Definition"
-            formula="e = |v₂' − v₁'| / |v₁ − v₂|"
+            formula={<>e = <MathFrac num={<>|v<Sub>2</Sub>' - v<Sub>1</Sub>'|</>} den={<>|v<Sub>1</Sub> - v<Sub>2</Sub>|</>} /></>}
             description="The ratio of relative speed of separation to relative speed of approach. It quantifies the 'bounciness' of a collision from 0 (perfectly inelastic) to 1 (perfectly elastic)."
             color="#f59e0b"
           />
           <FormulaCard
             title="Energy Loss Relation"
-            formula="KE_lost = ½μv_rel²(1 − e²)"
+            formula={<>KE<Sub>lost</Sub> = ½μ v<Sub>rel</Sub><Sup>2</Sup>(1 - e<Sup>2</Sup>)</>}
             description="Where μ = m₁m₂/(m₁+m₂) is the reduced mass and v_rel is the relative approach velocity. This elegantly connects e to the fraction of kinetic energy dissipated."
             color="#ec4899"
           />
