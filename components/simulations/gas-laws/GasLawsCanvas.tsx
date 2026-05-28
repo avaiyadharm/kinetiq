@@ -4,8 +4,7 @@ import React, { useRef, useEffect } from "react";
 import { GasEngine, Particle } from "@/lib/physics/engine";
 import { ThermodynamicsAnalyzer } from "@/lib/physics/thermodynamics";
 import { useGasLawsStore } from "@/store/gasLawsStore";
-import { GasLawsScientificGraphPanel } from "./graphs/GasLawsScientificGraphPanel";
-
+import { AdaptiveGraphEngine } from "./graphs/AdaptiveGraphEngine";
 const FONT_SANS = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const FONT_MONO = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
 
@@ -623,9 +622,8 @@ export const GasLawsCanvas: React.FC<GasLawsCanvasProps> = ({
         onMouseLeave={handleMouseUp}
         className="block bg-[#09090b] absolute inset-0 z-0"
       />
-      {/* Dynamic Indicator Diagram / Scientific Graph Engine Panel */}
-      <div className="absolute top-0 right-0 h-full w-[38%] p-8 flex flex-col pointer-events-none z-10">
-          <GasLawsScientificGraphPanel
+      <div className="absolute top-0 right-0 h-full w-[38%] p-8 flex flex-col z-10">
+          <AdaptiveGraphEngine
             regime={regime}
             gasPreset={gasPreset}
             particleMode={particleMode}
