@@ -99,10 +99,10 @@ export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
 
     // ── Draw 4 cycle segments ─────────────────────────────────────────────────
     const segments: [number, number, string, string][] = [
-      [0, 60,   "#ef4444", "Isothermal Exp."],   // Hot → red
+      [0, 60, "#ef4444", "Isothermal Exp."],   // Hot → red
       [60, 120, "#f97316", "Adiabatic Exp."],    // → orange
-      [120, 180,"#3b82f6", "Isothermal Comp."],  // Cold → blue
-      [180, 240,"#94a3b8", "Adiabatic Comp."],   // → grey
+      [120, 180, "#3b82f6", "Isothermal Comp."],  // Cold → blue
+      [180, 240, "#94a3b8", "Adiabatic Comp."],   // → grey
     ];
 
     segments.forEach(([start, end, color]) => {
@@ -180,22 +180,22 @@ export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
       // State label
       ctx.font = "bold 8px monospace";
       ctx.textAlign = "center";
-      ctx.fillStyle = "rgba(6,182,212,0.9)";
+      ctx.fillStyle = "#06b6d4";
       ctx.fillText(`${(liveState.V).toFixed(1)}L`, dotX, dotY - 12);
     }
 
     // ── Axis tick marks and labels ────────────────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.font = "8px monospace";
 
     // X axis — 4 ticks
     for (let i = 0; i <= 4; i++) {
       const v = minV + (maxV - minV) * (i / 4);
       const x = toX(v);
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
       ctx.textAlign = "center";
       ctx.fillText(v.toFixed(1), x, h - mb + 14);
-      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, h - mb);
@@ -207,11 +207,11 @@ export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
     for (let i = 0; i <= 4; i++) {
       const p = maxP * (i / 4);
       const y = toY(p);
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
       ctx.textAlign = "right";
       const label = p >= 1000 ? `${(p / 1000).toFixed(1)}k` : p.toFixed(0);
       ctx.fillText(label, ml - 5, y + 3);
-      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(ml, y);
@@ -220,7 +220,7 @@ export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
     }
 
     // Axis labels
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
     ctx.font = "bold 9px monospace";
     ctx.textAlign = "center";
     ctx.fillText("Volume V (L)", ml + graphW / 2, h - 2);
@@ -230,25 +230,6 @@ export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
     ctx.rotate(-Math.PI / 2);
     ctx.fillText("Pressure P", 0, 0);
     ctx.restore();
-
-    // ── Legend ────────────────────────────────────────────────────────────────
-    const legendItems = [
-      { color: "#ef4444", label: "Isothermal Exp" },
-      { color: "#f97316", label: "Adiabatic Exp" },
-      { color: "#3b82f6", label: "Isothermal Comp" },
-      { color: "#94a3b8", label: "Adiabatic Comp" },
-    ];
-    let lx = ml + 4;
-    const ly = mt + 10;
-    legendItems.forEach(({ color, label }) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(lx, ly - 5, 12, 2);
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
-      ctx.font = "7px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText(label, lx + 14, ly);
-      lx += ctx.measureText(label).width + 26;
-    });
   }, [engine]);
 
   // ── Animation loop ────────────────────────────────────────────────────────
@@ -278,11 +259,35 @@ export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-[#0a0a0c]">
-      <canvas
-        ref={canvasRef}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-      />
+    <div className="w-full h-full flex flex-col bg-[#0a0a0c] p-4 select-none">
+      {/* Header with Title and Legend */}
+      <div className="flex items-center justify-between mb-3 shrink-0 border-b border-white/5 pb-2">
+        <span className="text-[9px] font-black text-white/55 uppercase tracking-widest">
+          P-V Diagram
+        </span>
+        <div className="flex gap-2.5 flex-wrap justify-end">
+          {[
+            { color: "#ef4444", label: "Isothermal Exp" },
+            { color: "#f97316", label: "Adiabatic Exp" },
+            { color: "#3b82f6", label: "Isothermal Comp" },
+            { color: "#94a3b8", label: "Adiabatic Comp" },
+          ].map(item => (
+            <div key={item.label} className="flex items-center gap-1">
+              <span className="w-2.5 h-0.5 rounded-full" style={{ backgroundColor: item.color }} />
+              <span className="text-[7.5px] font-mono text-white/60 font-bold whitespace-nowrap">
+                {item.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Canvas Area */}
+      <div ref={containerRef} className="flex-1 relative min-h-0">
+        <canvas
+          ref={canvasRef}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+        />
+      </div>
     </div>
   );
 };

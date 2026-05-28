@@ -204,16 +204,26 @@ export const useCarnotStore = create<CarnotState>((set, get) => ({
   tick: (dt) => {
     const state = get();
     if (!state.isPlaying) return;
+    
+    // Cap dt at 0.1s to prevent huge jumps when the browser tab is backgrounded
+    const cappedDt = Math.min(dt, 0.1);
+    
     const stageDuration = 2.5 / state.playbackSpeed;
-    const progressDelta = dt / stageDuration;
+    const progressDelta = cappedDt / stageDuration;
     let newProgress = state.stageProgress + progressDelta;
     let newStage = state.currentStage;
-    if (newProgress >= 1.0) {
+    
+    while (newProgress >= 1.0) {
       newProgress -= 1.0;
       const idx = STAGES.indexOf(newStage);
       newStage = STAGES[(idx + 1) % STAGES.length];
     }
-    set({ stageProgress: newProgress, currentStage: newStage, globalTime: state.globalTime + dt });
+    
+    set({ 
+      stageProgress: newProgress, 
+      currentStage: newStage, 
+      globalTime: state.globalTime + cappedDt 
+    });
   },
 
   reset: () => set({

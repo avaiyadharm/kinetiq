@@ -97,7 +97,6 @@ export const CarnotSimulator: React.FC = () => {
         {/* Sidebar Controls & Graph */}
         <div className="flex flex-col gap-5 overflow-y-auto custom-scrollbar pr-1">
           <div className="bg-[#18181b] border border-white/5 rounded-2xl overflow-hidden h-[260px] relative shadow-lg shrink-0">
-            <div className="absolute top-3 left-4 text-[9px] font-black text-white/25 uppercase tracking-widest z-10">P-V Indicator Diagram</div>
             <CarnotPVGraph engine={engine} />
           </div>
 
