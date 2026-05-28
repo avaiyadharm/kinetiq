@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useCallback } from "react";
 import { CarnotEngineCore } from "@/lib/physics/carnot";
 import { useCarnotStore } from "@/store/carnotStore";
 
@@ -10,118 +10,279 @@ interface CarnotPVGraphProps {
 
 export const CarnotPVGraph: React.FC<CarnotPVGraphProps> = ({ engine }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  const currentStage = useCarnotStore(state => state.currentStage);
-  const stageProgress = useCarnotStore(state => state.stageProgress);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<number>(0);
 
+  // Use refs for the animation loop so it always reads fresh values
+  const storeRef = useRef({ stage: useCarnotStore.getState().currentStage, progress: useCarnotStore.getState().stageProgress });
+
+  // Subscribe to store changes and keep ref current
   useEffect(() => {
+    const unsub = useCarnotStore.subscribe(state => {
+      storeRef.current.stage = state.currentStage;
+      storeRef.current.progress = state.stageProgress;
+    });
+    return unsub;
+  }, []);
+
+  const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animationId: number;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
 
-    const render = () => {
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-      }
+    if (w === 0 || h === 0) return;
 
-      ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
       ctx.scale(dpr, dpr);
+    }
 
-      const w = rect.width;
-      const h = rect.height;
-      ctx.clearRect(0, 0, w, h);
+    ctx.clearRect(0, 0, w, h);
 
-      // Setup axes
-      const ml = 40, mb = 30, mt = 20, mr = 20;
-      const graphW = w - ml - mr;
-      const graphH = h - mt - mb;
+    // ── Layout ────────────────────────────────────────────────────────────────
+    const ml = 44, mb = 28, mt = 16, mr = 16;
+    const graphW = w - ml - mr;
+    const graphH = h - mt - mb;
 
-      // Draw background
-      ctx.fillStyle = "#0c0c0e";
-      ctx.fillRect(ml, mt, graphW, graphH);
-      ctx.strokeStyle = "#27272a";
-      ctx.strokeRect(ml, mt, graphW, graphH);
+    // ── Background ────────────────────────────────────────────────────────────
+    ctx.fillStyle = "#0a0a0c";
+    ctx.fillRect(0, 0, w, h);
 
-      // Calculate bounds for PV
-      const path = engine.getCyclePath(50);
-      const minV = 0; // Start at 0 for V
-      const maxV = Math.max(...path.map(p => p.v)) * 1.1;
-      const minP = 0; // Start at 0 for P
-      const maxP = Math.max(...path.map(p => p.p)) * 1.1;
+    // Engineering grid
+    ctx.strokeStyle = "rgba(6, 182, 212, 0.04)";
+    ctx.lineWidth = 1;
+    const gridStep = 32;
+    for (let x = ml; x < w - mr; x += gridStep) {
+      ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, h - mb); ctx.stroke();
+    }
+    for (let y = mt; y < h - mb; y += gridStep) {
+      ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(w - mr, y); ctx.stroke();
+    }
 
-      const toPxX = (v: number) => ml + ((v - minV) / (maxV - minV)) * graphW;
-      const toPxY = (p: number) => mt + graphH - ((p - minP) / (maxP - minP)) * graphH;
+    // Graph area border
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ml, mt, graphW, graphH);
 
-      // Fill area under curve (Net Work)
+    // ── PV Path Data ──────────────────────────────────────────────────────────
+    const path = engine.getCyclePath(60);
+    if (path.length < 2) return;
+
+    const allV = path.map(p => p.v);
+    const allP = path.map(p => p.p);
+    const minV = Math.min(...allV);
+    const maxV = Math.max(...allV) * 1.08;
+    const minP = 0;
+    const maxP = Math.max(...allP) * 1.12;
+
+    const toX = (v: number) => ml + ((v - minV) / (maxV - minV + 1e-9)) * graphW;
+    const toY = (p: number) => mt + graphH - ((p - minP) / (maxP - minP + 1e-9)) * graphH;
+
+    // ── Fill enclosed area (net work) ─────────────────────────────────────────
+    ctx.beginPath();
+    ctx.moveTo(toX(path[0].v), toY(path[0].p));
+    for (let i = 1; i < path.length; i++) ctx.lineTo(toX(path[i].v), toY(path[i].p));
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(ml, mt, ml, mt + graphH);
+    grad.addColorStop(0, "rgba(16,185,129,0.18)");
+    grad.addColorStop(1, "rgba(16,185,129,0.04)");
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // ── Draw 4 cycle segments ─────────────────────────────────────────────────
+    const segments: [number, number, string, string][] = [
+      [0, 60,   "#ef4444", "Isothermal Exp."],   // Hot → red
+      [60, 120, "#f97316", "Adiabatic Exp."],    // → orange
+      [120, 180,"#3b82f6", "Isothermal Comp."],  // Cold → blue
+      [180, 240,"#94a3b8", "Adiabatic Comp."],   // → grey
+    ];
+
+    segments.forEach(([start, end, color]) => {
+      const clampedEnd = Math.min(end, path.length - 1);
       ctx.beginPath();
-      ctx.moveTo(toPxX(path[0].v), toPxY(path[0].p));
-      for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(toPxX(path[i].v), toPxY(path[i].p));
+      ctx.moveTo(toX(path[start].v), toY(path[start].p));
+      for (let i = start + 1; i <= clampedEnd; i++) {
+        ctx.lineTo(toX(path[i].v), toY(path[i].p));
       }
-      ctx.closePath();
-      ctx.fillStyle = "rgba(16, 185, 129, 0.15)";
-      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    });
 
-      // Draw path segments with different colors
-      const drawSegment = (startIdx: number, endIdx: number, color: string) => {
-        ctx.beginPath();
-        ctx.moveTo(toPxX(path[startIdx].v), toPxY(path[startIdx].p));
-        for (let i = startIdx + 1; i <= endIdx; i++) {
-          ctx.lineTo(toPxX(path[i].v), toPxY(path[i].p));
-        }
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      };
+    // ── Isothermal labels ─────────────────────────────────────────────────────
+    ctx.font = "bold 8px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(239,68,68,0.7)";
+    ctx.fillText("T_H", toX(path[10].v) + 4, toY(path[10].p) - 4);
+    ctx.fillStyle = "rgba(59,130,246,0.7)";
+    ctx.fillText("T_C", toX(path[150].v) + 4, toY(path[150].p) + 12);
 
-      // path has 4 segments, 50 points each (0-50, 50-100, 100-150, 150-200)
-      drawSegment(0, 50, "#ef4444"); // Isothermal Exp (Hot)
-      drawSegment(50, 100, "#a1a1aa"); // Adiabatic Exp
-      drawSegment(100, 150, "#3b82f6"); // Isothermal Comp (Cold)
-      drawSegment(150, 200, "#a1a1aa"); // Adiabatic Comp
-
-      // Draw current state dot
-      const currentState = engine.getStateAt(currentStage, stageProgress);
-      const dotX = toPxX(currentState.V);
-      const dotY = toPxY(currentState.P);
-
+    // ── Arrow tip at end of each segment (direction indicator) ───────────────
+    const drawArrow = (x: number, y: number, dx: number, dy: number, color: string) => {
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx = dx / len, ny = dy / len;
+      const size = 5;
       ctx.beginPath();
-      ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - nx * size - ny * size * 0.5, y - ny * size + nx * size * 0.5);
+      ctx.lineTo(x - nx * size + ny * size * 0.5, y - ny * size - nx * size * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = "#10b981";
+    };
+    // Midpoint arrows
+    [[30, "#ef4444"], [90, "#f97316"], [150, "#3b82f6"], [210, "#94a3b8"]].forEach(([mid, color]) => {
+      const idx = mid as number;
+      if (idx > 0 && idx < path.length - 1) {
+        const dx = toX(path[idx].v) - toX(path[idx - 1].v);
+        const dy = toY(path[idx].p) - toY(path[idx - 1].p);
+        drawArrow(toX(path[idx].v), toY(path[idx].p), dx, dy, color as string);
+      }
+    });
+
+    // ── Live state dot ────────────────────────────────────────────────────────
+    const liveState = engine.getStateAt(storeRef.current.stage, storeRef.current.progress);
+    const dotX = toX(liveState.V);
+    const dotY = toY(liveState.P);
+
+    // Guard against NaN coordinates before drawing
+    if (isFinite(dotX) && isFinite(dotY)) {
+      // Outer glow using shadowBlur (no CanvasGradient type issues)
+      ctx.save();
+      ctx.shadowColor = "rgba(6,182,212,0.7)";
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#06b6d4";
+      ctx.fill();
+      ctx.restore();
+
+      // White dot core
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 4.5, 0, Math.PI * 2);
+      ctx.strokeStyle = "#06b6d4";
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Draw Axes Labels
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.font = "10px sans-serif";
+      // State label
+      ctx.font = "bold 8px monospace";
       ctx.textAlign = "center";
-      ctx.fillText("Volume V", ml + graphW / 2, h - 10);
-      
-      ctx.save();
-      ctx.translate(15, mt + graphH / 2);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText("Pressure P", 0, 0);
-      ctx.restore();
+      ctx.fillStyle = "rgba(6,182,212,0.9)";
+      ctx.fillText(`${(liveState.V).toFixed(1)}L`, dotX, dotY - 12);
+    }
 
-      ctx.restore();
-      animationId = requestAnimationFrame(render);
+    // ── Axis tick marks and labels ────────────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.font = "8px monospace";
+
+    // X axis — 4 ticks
+    for (let i = 0; i <= 4; i++) {
+      const v = minV + (maxV - minV) * (i / 4);
+      const x = toX(v);
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.textAlign = "center";
+      ctx.fillText(v.toFixed(1), x, h - mb + 14);
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, h - mb);
+      ctx.lineTo(x, h - mb + 4);
+      ctx.stroke();
+    }
+
+    // Y axis — 4 ticks
+    for (let i = 0; i <= 4; i++) {
+      const p = maxP * (i / 4);
+      const y = toY(p);
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.textAlign = "right";
+      const label = p >= 1000 ? `${(p / 1000).toFixed(1)}k` : p.toFixed(0);
+      ctx.fillText(label, ml - 5, y + 3);
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ml, y);
+      ctx.lineTo(ml - 4, y);
+      ctx.stroke();
+    }
+
+    // Axis labels
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "bold 9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Volume V (L)", ml + graphW / 2, h - 2);
+
+    ctx.save();
+    ctx.translate(9, mt + graphH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText("Pressure P", 0, 0);
+    ctx.restore();
+
+    // ── Legend ────────────────────────────────────────────────────────────────
+    const legendItems = [
+      { color: "#ef4444", label: "Isothermal Exp" },
+      { color: "#f97316", label: "Adiabatic Exp" },
+      { color: "#3b82f6", label: "Isothermal Comp" },
+      { color: "#94a3b8", label: "Adiabatic Comp" },
+    ];
+    let lx = ml + 4;
+    const ly = mt + 10;
+    legendItems.forEach(({ color, label }) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(lx, ly - 5, 12, 2);
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.font = "7px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(label, lx + 14, ly);
+      lx += ctx.measureText(label).width + 26;
+    });
+  }, [engine]);
+
+  // ── Animation loop ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const loop = () => {
+      draw();
+      animationRef.current = requestAnimationFrame(loop);
     };
+    animationRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animationRef.current);
+  }, [draw]);
 
-    animationId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animationId);
-  }, [engine, currentStage, stageProgress]);
+  // ── ResizeObserver for dynamic layout ────────────────────────────────────
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      // Reset canvas size on resize so it redraws at new dimensions
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div className="w-full h-full relative">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+    <div ref={containerRef} className="w-full h-full relative bg-[#0a0a0c]">
+      <canvas
+        ref={canvasRef}
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+      />
     </div>
   );
 };
