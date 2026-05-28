@@ -178,7 +178,7 @@ export const CarnotConfig: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#09090b] custom-scrollbar">
+    <div className="flex-1 overflow-y-auto bg-[#111113] custom-scrollbar">
       {/* Engineering grid background */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
         style={{ backgroundImage: "linear-gradient(rgba(6,182,212,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(6,182,212,0.5) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
