@@ -42,6 +42,7 @@ export const ThermalExpansionGraphs: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.save();
     const w = canvas.width / window.devicePixelRatio;
     const h = canvas.height / window.devicePixelRatio;
 
@@ -85,6 +86,7 @@ export const ThermalExpansionGraphs: React.FC = () => {
     } else {
       drawStandardPlot(ctx, ml, mt, graphW, graphH, w, h);
     }
+    ctx.restore();
 
   }, [history, activePlot, materialId, L0, thickness, crossSectionalArea, constraint, gapSize, graphSettings, hoverPos]);
 

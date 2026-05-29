@@ -55,6 +55,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.save();
     const w = canvas.width / window.devicePixelRatio;
     const h = canvas.height / window.devicePixelRatio;
 
@@ -111,6 +112,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     if (isBroken) {
       drawFailureOverlay(ctx, w, h);
     }
+    ctx.restore();
 
   }, [temperature, materialId, objectType, constraint, gapSize, bimetallicMat1, bimetallicMat2, atomCount, bondStiffness, vizSettings, isBroken, isDeformed, crackLocations, plasticStrain, fatigueAccumulated, time]);
 
