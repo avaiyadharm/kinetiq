@@ -42,11 +42,11 @@ export const ThermalExpansionGraphs: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     const w = canvas.width / window.devicePixelRatio;
     const h = canvas.height / window.devicePixelRatio;
 
-    ctx.clearRect(0, 0, w, h);
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
     // Padding settings
