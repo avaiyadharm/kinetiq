@@ -346,12 +346,22 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         set({ targetTemperature: targetT });
       }
 
-      // ── 2. Heat diffusion ──────────────────────────────
+      // ── 2. Heat diffusion (with heating rate ramping) ──
+      let activeTargetT = targetT;
+      if (s.experimentMode !== "fatigue" && s.experimentMode !== "spacecraft") {
+        const currentRefT = s.heatingMode === "uniform" ? s.avgTemperature : s.thermalProfile[0];
+        const maxDeltaT = s.heatingRate * scaledDt;
+        const diff = targetT - currentRefT;
+        if (Math.abs(diff) > maxDeltaT) {
+          activeTargetT = currentRefT + Math.sign(diff) * maxDeltaT;
+        }
+      }
+
       const newProfile = PhysicsEngine.heatDiffusionMultiStep(
         s.thermalProfile,
         mat,
         s.L0,
-        targetT,
+        activeTargetT,
         s.ambientTemperature,
         scaledDt,
         s.heatingMode
@@ -392,9 +402,8 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      // ── 7. Buckling check ──────────────────────────────
       const bucklingResult = PhysicsEngine.bucklingCriticalLoad(
-        mat, avgTemp, s.L0, s.crossSectionalArea, "circular", s.diameter
+        mat, avgTemp, s.L0, s.crossSectionalArea, s.constraint, s.gapSize, "circular", s.diameter
       );
       if (bucklingResult.willBuckle && !s.willBuckle) {
         get().addLog(

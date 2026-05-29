@@ -28,6 +28,7 @@ export const ThermalExpansionControls: React.FC = () => {
     setHeatingMode,
     vizSettings,
     setVizSetting,
+    heatingRate,
   } = useThermalExpansionStore();
 
   const mat = MATERIAL_DB[materialId];
@@ -179,7 +180,7 @@ export const ThermalExpansionControls: React.FC = () => {
               disabled={isFailed}
               className="w-full accent-amber-500 mb-2.5"
             />
-            <div className="flex gap-1.5 flex-wrap">
+            <div className="flex gap-1.5 flex-wrap mb-3.5">
               {tempPresets.map(p => (
                 <button
                   key={p.label}
@@ -191,6 +192,23 @@ export const ThermalExpansionControls: React.FC = () => {
                   {p.label}
                 </button>
               ))}
+            </div>
+            {/* Heating Rate Slider */}
+            <div className="mt-3.5 pt-3.5 border-t border-white/5">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Heating Rate</span>
+                <span className="text-[9px] font-mono font-bold text-amber-400">{heatingRate} K/s</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={500}
+                step={5}
+                value={heatingRate}
+                onChange={e => setConfig("heatingRate", Number(e.target.value))}
+                disabled={isFailed}
+                className="w-full accent-amber-500"
+              />
             </div>
           </>
         )}
@@ -232,13 +250,26 @@ export const ThermalExpansionControls: React.FC = () => {
           <h4 className="text-[8.5px] font-black text-white/40 uppercase tracking-widest">Visual Magnification</h4>
           <span className="text-[9px] font-mono font-black text-cyan-400">×{vizSettings.magnification}</span>
         </div>
+        <input
+          type="range"
+          min={1}
+          max={1000}
+          step={1}
+          value={vizSettings.magnification}
+          onChange={e => {
+            setVizSetting("magnification", Number(e.target.value));
+            setVizSetting("autoMagnification", false);
+          }}
+          disabled={vizSettings.autoMagnification}
+          className="w-full accent-cyan-500 mb-2"
+        />
         <div className="flex gap-1.5 flex-wrap">
           {[1, 10, 50, 100, 200, 500].map(m => (
             <button
               key={m}
               onClick={() => { setVizSetting("magnification", m); setVizSetting("autoMagnification", false); }}
               className={cn(
-                "px-2.5 py-1 rounded-lg text-[8px] font-mono border transition-all",
+                "px-2 py-1 rounded-lg text-[8px] font-mono border transition-all",
                 vizSettings.magnification === m && !vizSettings.autoMagnification
                   ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-400"
                   : "bg-black/20 border-white/5 text-white/40 hover:text-white"
