@@ -1,12 +1,46 @@
 "use client";
 
 import React from "react";
-import { useThermalExpansionStore, StructuralConstraint, ShapeType, SimulationEngineType } from "@/store/thermalExpansionStore";
-import { MATERIAL_DATABASE } from "@/lib/physics/thermalExpansion";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { useThermalExpansionStore, ConstraintType, ShapeType } from "@/store/thermalExpansionStore";
+import { MATERIAL_DB } from "@/lib/physics/thermalExpansion";
+import { Settings, Layers, Ruler, Eye, BarChart2 } from "lucide-react";
+
+const SectionTitle: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon, title }) => (
+  <div className="flex items-center gap-2 mb-3">
+    <span className="text-cyan-400">{icon}</span>
+    <h3 className="text-[10px] font-black text-white/50 uppercase tracking-widest">{title}</h3>
+  </div>
+);
+
+const ConfigRow: React.FC<{ label: string; sub?: string; children: React.ReactNode }> = ({ label, sub, children }) => (
+  <div className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+    <div>
+      <div className="text-[11px] font-semibold text-white/80">{label}</div>
+      {sub && <div className="text-[9px] text-white/30 font-mono mt-0.5">{sub}</div>}
+    </div>
+    <div className="ml-4">{children}</div>
+  </div>
+);
+
+const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
+  <button
+    onClick={() => onChange(!checked)}
+    className={`w-10 h-5 rounded-full border transition-all relative ${
+      checked ? "bg-cyan-500/20 border-cyan-500/40" : "bg-black/40 border-white/10"
+    }`}
+  >
+    <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
+      checked ? "left-5 bg-cyan-400" : "left-0.5 bg-white/30"
+    }`} />
+  </button>
+);
+
+const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (props) => (
+  <select
+    {...props}
+    className="bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-white focus:outline-none min-w-[130px]"
+  />
+);
 
 export const ThermalExpansionConfig: React.FC = () => {
   const {
@@ -16,376 +50,222 @@ export const ThermalExpansionConfig: React.FC = () => {
     setObjectType,
     constraint,
     setConstraint,
-    engineType,
     L0,
     thickness,
-    crossSectionalArea,
+    diameter,
     gapSize,
     bimetallicMat1,
     bimetallicMat2,
-    atomCount,
-    bondStiffness,
     vizSettings,
     graphSettings,
     setConfig,
     setVizSetting,
-    setGraphSetting
+    setGraphSetting,
   } = useThermalExpansionStore();
 
-  const handleMaterialChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setMaterialId(e.target.value);
-  };
-
-  const handleObjectTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setObjectType(e.target.value as ShapeType);
-  };
-
-  const handleConstraintChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setConstraint(e.target.value as StructuralConstraint);
-  };
-
-  const handleEngineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setConfig("engineType", e.target.value as SimulationEngineType);
-  };
-
   return (
-    <div className="flex-1 bg-[#09090b] p-8 overflow-y-auto custom-scrollbar select-none">
-      <div className="max-w-4xl mx-auto space-y-8">
-        
+    <div className="flex-1 bg-[#09090b] overflow-y-auto custom-scrollbar select-text">
+      <div className="max-w-3xl mx-auto p-8 pb-16 space-y-8">
+
         {/* Header */}
-        <div>
-          <h2 className="text-3xl font-extrabold tracking-tight text-white font-display">ENVIRONMENT CONFIGURATION</h2>
-          <p className="text-sm text-white/40 mt-1 uppercase tracking-wider font-mono">
-            Tune scientific boundary limits, custom materials, and solver constraints
+        <div className="border-b border-white/5 pb-6">
+          <h2 className="text-3xl font-extrabold tracking-tight text-white font-display">Environment Configuration</h2>
+          <p className="text-sm text-cyan-400 mt-1 font-mono uppercase tracking-wider">
+            Physics Parameters · Geometry · Visualization
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
-          {/* Column 1: Object & Material Selection */}
-          <div className="space-y-6">
-            
-            {/* Simulation Setup */}
-            <Card className="bg-[#18181b] border-white/5 shadow-2xl">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-xs font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-2">
-                  Simulation Object Configuration
-                </h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider mb-2 block">
-                      Physical Model Representation
-                    </Label>
-                    <select
-                      value={objectType}
-                      onChange={handleObjectTypeChange}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500/50"
-                    >
-                      <option value="rod">Solid Cylindrical Rod</option>
-                      <option value="bridge">Suspended Bridge Deck</option>
-                      <option value="railway">Frictionless Railway Track</option>
-                      <option value="cube">Isotropic Solid Cube (3D)</option>
-                      <option value="plate">Uniform Solid Plate (2D)</option>
-                      <option value="ring">Concentric Solid Ring</option>
-                      <option value="liquid">Liquid Volumetric Container</option>
-                      <option value="bimetallic">Bimetallic Composite Strip</option>
-                    </select>
+        {/* Material */}
+        <div className="bg-[#18181b] p-5 rounded-2xl border border-white/5">
+          <SectionTitle icon={<Layers className="w-4 h-4" />} title="Material Selection" />
+          <div className="space-y-0">
+            <ConfigRow label="Primary Material" sub="α, E, σ_y are all temperature-dependent">
+              <Select value={materialId} onChange={e => setMaterialId(e.target.value)}>
+                {Object.entries(MATERIAL_DB).map(([id, m]) => (
+                  <option key={id} value={id}>{m.name}</option>
+                ))}
+              </Select>
+            </ConfigRow>
+            {materialId && MATERIAL_DB[materialId] && (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {[
+                  ["α₀", `${(MATERIAL_DB[materialId].alpha0 * 1e6).toFixed(2)} ×10⁻⁶/K`],
+                  ["E₀", `${(MATERIAL_DB[materialId].youngsModulus / 1e9).toFixed(0)} GPa`],
+                  ["σ_y0", `${(MATERIAL_DB[materialId].yieldStrength / 1e6).toFixed(0)} MPa`],
+                  ["ρ", `${MATERIAL_DB[materialId].density} kg/m³`],
+                  ["k", `${MATERIAL_DB[materialId].thermalConductivity} W/m·K`],
+                  ["T_m", `${MATERIAL_DB[materialId].meltingPoint.toFixed(0)} K`],
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-black/30 rounded-lg px-3 py-2 border border-white/5">
+                    <div className="text-[8px] text-white/30 font-mono">{k}</div>
+                    <div className="text-[10px] font-mono text-white/70 font-bold">{v}</div>
                   </div>
-
-                  {objectType === "bimetallic" ? (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider mb-2 block">
-                          Top Alloy Layer
-                        </Label>
-                        <select
-                          value={bimetallicMat1}
-                          onChange={(e) => setConfig("bimetallicMat1", e.target.value)}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500/50"
-                        >
-                          {Object.entries(MATERIAL_DATABASE).map(([id, m]) => (
-                            <option key={id} value={id}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider mb-2 block">
-                          Bottom Alloy Layer
-                        </Label>
-                        <select
-                          value={bimetallicMat2}
-                          onChange={(e) => setConfig("bimetallicMat2", e.target.value)}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500/50"
-                        >
-                          {Object.entries(MATERIAL_DATABASE).map(([id, m]) => (
-                            <option key={id} value={id}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider mb-2 block">
-                        Material Preset
-                      </Label>
-                      <select
-                        value={materialId}
-                        onChange={handleMaterialChange}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500/50"
-                      >
-                        {Object.entries(MATERIAL_DATABASE).map(([id, m]) => (
-                          <option key={id} value={id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  <div>
-                    <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider mb-2 block">
-                      Structural Constraint
-                    </Label>
-                    <select
-                      value={constraint}
-                      onChange={handleConstraintChange}
-                      disabled={objectType === "bimetallic"}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500/50 disabled:opacity-30"
-                    >
-                      <option value="free">Free Expansion (Stress = 0)</option>
-                      <option value="fixed">Fixed Boundaries (Max Stress)</option>
-                      <option value="partial">Pre-set Gap Joint Limit</option>
-                      <option value="multi">Damped Spring Supports</option>
-                    </select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Geometry Parameters */}
-            <Card className="bg-[#18181b] border-white/5 shadow-2xl">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-xs font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-2">
-                  Geometric Bounds
-                </h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider">
-                        Initial Length (L₀)
-                      </Label>
-                      <span className="text-xs text-white/80 font-mono">{L0} m</span>
-                    </div>
-                    <Slider
-                      value={[L0]}
-                      min={1}
-                      max={20}
-                      step={0.5}
-                      onValueChange={(val) => setConfig("L0", val[0])}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider">
-                        Cross-Section Thickness
-                      </Label>
-                      <span className="text-xs text-white/80 font-mono">{(thickness * 100).toFixed(1)} cm</span>
-                    </div>
-                    <Slider
-                      value={[thickness]}
-                      min={0.02}
-                      max={0.5}
-                      step={0.01}
-                      onValueChange={(val) => setConfig("thickness", val[0])}
-                    />
-                  </div>
-
-                  {constraint === "partial" && (
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider">
-                          Expansion Joint Gap Size
-                        </Label>
-                        <span className="text-xs text-cyan-400 font-mono">{(gapSize * 1000).toFixed(1)} mm</span>
-                      </div>
-                      <Slider
-                        value={[gapSize]}
-                        min={0.001}
-                        max={0.05}
-                        step={0.001}
-                        onValueChange={(val) => setConfig("gapSize", val[0])}
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                ))}
+              </div>
+            )}
+            <ConfigRow label="Bimetallic Layer 1" sub="Top layer material">
+              <Select value={bimetallicMat1} onChange={e => setConfig("bimetallicMat1", e.target.value)}>
+                {Object.entries(MATERIAL_DB).map(([id, m]) => (
+                  <option key={id} value={id}>{m.name.split(" ")[0]}</option>
+                ))}
+              </Select>
+            </ConfigRow>
+            <ConfigRow label="Bimetallic Layer 2" sub="Bottom layer material">
+              <Select value={bimetallicMat2} onChange={e => setConfig("bimetallicMat2", e.target.value)}>
+                {Object.entries(MATERIAL_DB).map(([id, m]) => (
+                  <option key={id} value={id}>{m.name.split(" ")[0]}</option>
+                ))}
+              </Select>
+            </ConfigRow>
           </div>
-
-          {/* Column 2: Atomic Lattice & Solver Engine */}
-          <div className="space-y-6">
-            
-            {/* Solver Type Selection */}
-            <Card className="bg-[#18181b] border-white/5 shadow-2xl">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-xs font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-2">
-                  Simulation Physics Engine
-                </h3>
-                
-                <div>
-                  <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider mb-2 block">
-                    Mathematical Solver Method
-                  </Label>
-                  <select
-                    value={engineType}
-                    onChange={handleEngineChange}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500/50"
-                  >
-                    <option value="fea">Finite Element Approximation (Macroscopic Contour)</option>
-                    <option value="md">Molecular Dynamics (LJ-Potential Atoms)</option>
-                    <option value="statistical">Statistical Thermodynamic Integrator</option>
-                    <option value="hybrid">Hybrid Macroscopic-Microscopic Engine</option>
-                  </select>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Atomic Particle Configuration */}
-            <Card className="bg-[#18181b] border-white/5 shadow-2xl">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-xs font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-2">
-                  Microscopic Particle Lattice Config
-                </h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider">
-                        Atom Mesh Count
-                      </Label>
-                      <span className="text-xs text-white/80 font-mono">{atomCount} particles</span>
-                    </div>
-                    <Slider
-                      value={[atomCount]}
-                      min={40}
-                      max={250}
-                      step={10}
-                      onValueChange={(val) => setConfig("atomCount", val[0])}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <Label className="text-white/60 text-[10px] font-bold uppercase tracking-wider">
-                        Interatomic Potential Stiffness
-                      </Label>
-                      <span className="text-xs text-white/80 font-mono">{bondStiffness.toFixed(1)} N/m</span>
-                    </div>
-                    <Slider
-                      value={[bondStiffness]}
-                      min={2.0}
-                      max={30.0}
-                      step={0.5}
-                      onValueChange={(val) => setConfig("bondStiffness", val[0])}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Visual Overlays & HUD Filters */}
-            <Card className="bg-[#18181b] border-white/5 shadow-2xl">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-xs font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-2">
-                  Visualization Overlays
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
-                      Thermal Glow
-                    </Label>
-                    <Switch
-                      checked={vizSettings.thermalGlow}
-                      onCheckedChange={(val) => setVizSetting("thermalGlow", val)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
-                      Stress Heatmap
-                    </Label>
-                    <Switch
-                      checked={vizSettings.heatmaps}
-                      onCheckedChange={(val) => setVizSetting("heatmaps", val)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
-                      Lattice Overlay
-                    </Label>
-                    <Switch
-                      checked={vizSettings.latticeRendering}
-                      onCheckedChange={(val) => setVizSetting("latticeRendering", val)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
-                      Deformation Scaling
-                    </Label>
-                    <div className="flex items-center gap-1.5">
-                      <select
-                        value={vizSettings.deformationAmplification}
-                        onChange={(e) => setVizSetting("deformationAmplification", Number(e.target.value))}
-                        className="bg-black border border-white/10 rounded px-1 text-[10px] text-white"
-                      >
-                        <option value="1">1x</option>
-                        <option value="2">2x</option>
-                        <option value="5">5x</option>
-                        <option value="10">10x</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Graphing Engine configuration */}
-            <Card className="bg-[#18181b] border-white/5 shadow-2xl">
-              <CardContent className="p-6 space-y-4">
-                <h3 className="text-xs font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-2">
-                  Telemetry Graph Setup
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
-                      Log Scale Y-Axis
-                    </Label>
-                    <Switch
-                      checked={graphSettings.logScale}
-                      onCheckedChange={(val) => setGraphSetting("logScale", val)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
-                      Overlay Ideal Curves
-                    </Label>
-                    <Switch
-                      checked={graphSettings.overlayComparison}
-                      onCheckedChange={(val) => setGraphSetting("overlayComparison", val)}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
         </div>
+
+        {/* Geometry */}
+        <div className="bg-[#18181b] p-5 rounded-2xl border border-white/5">
+          <SectionTitle icon={<Ruler className="w-4 h-4" />} title="Geometry Parameters" />
+          <div className="space-y-0">
+            <ConfigRow label="Object Shape" sub="Controls which physics renderer activates">
+              <Select
+                value={objectType}
+                onChange={e => setObjectType(e.target.value as ShapeType)}
+              >
+                <option value="rod">Rod (1D)</option>
+                <option value="plate">Plate (2D)</option>
+                <option value="ring">Ring / Annulus</option>
+                <option value="bridge">Bridge Deck</option>
+                <option value="railway">Railway Track</option>
+                <option value="bimetallic">Bimetallic Strip</option>
+              </Select>
+            </ConfigRow>
+            <ConfigRow label="Boundary Condition" sub="Determines stress state">
+              <Select
+                value={constraint}
+                onChange={e => setConstraint(e.target.value as ConstraintType)}
+              >
+                <option value="free">Free (σ=0)</option>
+                <option value="fixed">Fixed (ΔL=0)</option>
+                <option value="partial">Partial (gap joint)</option>
+                <option value="spring">Spring-mounted</option>
+              </Select>
+            </ConfigRow>
+            <ConfigRow
+              label="Initial Length L₀"
+              sub={`Current: ${L0.toFixed(2)} m`}
+            >
+              <input
+                type="range"
+                min={0.1}
+                max={50}
+                step={0.1}
+                value={L0}
+                onChange={e => setConfig("L0", Number(e.target.value))}
+                className="w-28 accent-cyan-500"
+              />
+            </ConfigRow>
+            <ConfigRow
+              label="Section Diameter"
+              sub={`d = ${(diameter * 100).toFixed(1)} cm`}
+            >
+              <input
+                type="range"
+                min={0.01}
+                max={0.3}
+                step={0.005}
+                value={diameter}
+                onChange={e => {
+                  const d = Number(e.target.value);
+                  setConfig("diameter", d);
+                  setConfig("crossSectionalArea", Math.PI * (d / 2) ** 2);
+                }}
+                className="w-28 accent-cyan-500"
+              />
+            </ConfigRow>
+            <ConfigRow
+              label="Strip Thickness"
+              sub={`t = ${(thickness * 100).toFixed(1)} cm`}
+            >
+              <input
+                type="range"
+                min={0.002}
+                max={0.1}
+                step={0.001}
+                value={thickness}
+                onChange={e => setConfig("thickness", Number(e.target.value))}
+                className="w-28 accent-cyan-500"
+              />
+            </ConfigRow>
+            <ConfigRow
+              label="Expansion Joint Gap"
+              sub={`g = ${(gapSize * 1000).toFixed(1)} mm`}
+            >
+              <input
+                type="range"
+                min={0.001}
+                max={0.1}
+                step={0.001}
+                value={gapSize}
+                onChange={e => setConfig("gapSize", Number(e.target.value))}
+                className="w-28 accent-cyan-500"
+              />
+            </ConfigRow>
+          </div>
+        </div>
+
+        {/* Visualization */}
+        <div className="bg-[#18181b] p-5 rounded-2xl border border-white/5">
+          <SectionTitle icon={<Eye className="w-4 h-4" />} title="Visualization Settings" />
+          <div className="space-y-0">
+            <ConfigRow label="Thermal Gradient Colors" sub="Colors rod by local temperature (blue→orange→white)">
+              <Toggle checked={vizSettings.showThermalGradient} onChange={v => setVizSetting("showThermalGradient", v)} />
+            </ConfigRow>
+            <ConfigRow label="Stress Color Overlay" sub="FEA-style compressive (blue) vs tensile (red)">
+              <Toggle checked={vizSettings.showStressColors} onChange={v => setVizSetting("showStressColors", v)} />
+            </ConfigRow>
+            <ConfigRow label="Atomic Lattice Panel" sub="Anharmonic potential well + vibrational envelopes">
+              <Toggle checked={vizSettings.showAtomicLattice} onChange={v => setVizSetting("showAtomicLattice", v)} />
+            </ConfigRow>
+            <ConfigRow label="Heat Front Propagation" sub="Shows diffusion wave along rod from heated end">
+              <Toggle checked={vizSettings.showHeatFront} onChange={v => setVizSetting("showHeatFront", v)} />
+            </ConfigRow>
+            <ConfigRow label="Auto-Magnification" sub="Automatically scale visual ΔL to 5% of canvas width">
+              <Toggle checked={vizSettings.autoMagnification} onChange={v => setVizSetting("autoMagnification", v)} />
+            </ConfigRow>
+            <ConfigRow
+              label="Manual Magnification"
+              sub={`×${vizSettings.magnification} (real ΔL × factor = visual)`}
+            >
+              <input
+                type="range"
+                min={1}
+                max={1000}
+                step={1}
+                value={vizSettings.magnification}
+                onChange={e => {
+                  setVizSetting("magnification", Number(e.target.value));
+                  setVizSetting("autoMagnification", false);
+                }}
+                className="w-28 accent-amber-500"
+              />
+            </ConfigRow>
+          </div>
+        </div>
+
+        {/* Graph Settings */}
+        <div className="bg-[#18181b] p-5 rounded-2xl border border-white/5">
+          <SectionTitle icon={<BarChart2 className="w-4 h-4" />} title="Graph Settings" />
+          <div className="space-y-0">
+            <ConfigRow label="Overlay Ideal (Theoretical) Curve" sub="Show L=L₀(1+αΔT) reference line in green">
+              <Toggle checked={graphSettings.overlayIdeal} onChange={v => setGraphSetting("overlayIdeal", v)} />
+            </ConfigRow>
+            <ConfigRow label="Yield Strength Limit Line" sub="Show σ_y(T) as horizontal reference in stress plots">
+              <Toggle checked={graphSettings.showYieldLine} onChange={v => setGraphSetting("showYieldLine", v)} />
+            </ConfigRow>
+            <ConfigRow label="Critical Buckling Load Line" sub="Show P_cr intersection in buckling plot">
+              <Toggle checked={graphSettings.showCriticalLoad} onChange={v => setGraphSetting("showCriticalLoad", v)} />
+            </ConfigRow>
+          </div>
+        </div>
+
       </div>
     </div>
   );

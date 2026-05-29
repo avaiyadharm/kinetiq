@@ -2,632 +2,668 @@
 
 import React, { useRef, useEffect, useState, MouseEvent } from "react";
 import { useThermalExpansionStore, HistoryPoint } from "@/store/thermalExpansionStore";
-import { MATERIAL_DATABASE, MaterialData, ThermalExpansionPhysicsEngine } from "@/lib/physics/thermalExpansion";
+import { MATERIAL_DB, PhysicsEngine } from "@/lib/physics/thermalExpansion";
 import { BarChart, ChevronDown, Download, Grid3X3, Eye } from "lucide-react";
 
-type PlotType = "length_temp" | "expansion_temp" | "stress_temp" | "vibe_dist" | "energy_temp" | "multi_material" | "hysteresis";
+// ============================================================
+// Experiment-linked graph engine
+// Each experiment mode → specific physically meaningful graph
+// ============================================================
+
+type PlotType =
+  | "length_vs_temp"
+  | "stress_vs_temp"
+  | "spatial_temp"
+  | "buckling_load"
+  | "curvature_vs_temp"
+  | "damage_vs_cycle"
+  | "shock_gradient"
+  | "multi_material";
+
+interface PlotConfig {
+  title: string;
+  xLabel: string;
+  yLabel: string;
+  color: string;
+}
+
+const PLOT_CONFIGS: Record<PlotType, PlotConfig> = {
+  length_vs_temp:    { title: "Length vs Temperature",          xLabel: "T (K)",     yLabel: "L (m)",         color: "#06b6d4" },
+  stress_vs_temp:    { title: "Thermal Stress vs Temperature",  xLabel: "T (K)",     yLabel: "σ (MPa)",       color: "#f97316" },
+  spatial_temp:      { title: "Spatial Temperature Profile",    xLabel: "x/L₀",      yLabel: "T (K)",         color: "#eab308" },
+  buckling_load:     { title: "Buckling Load vs Temperature",   xLabel: "T (K)",     yLabel: "Load (kN)",     color: "#ef4444" },
+  curvature_vs_temp: { title: "Curvature vs Temperature",       xLabel: "T (K)",     yLabel: "κ (m⁻¹)",       color: "#a855f7" },
+  damage_vs_cycle:   { title: "Fatigue Damage vs Cycle Count",  xLabel: "Cycles",    yLabel: "Damage D",      color: "#f43f5e" },
+  shock_gradient:    { title: "Spatial Temperature (Shock)",    xLabel: "x/L₀",      yLabel: "T (K)",         color: "#fb923c" },
+  multi_material:    { title: "Multi-Material Expansion",       xLabel: "T (K)",     yLabel: "ε_th (%)",      color: "#ffffff" },
+};
+
+// Default graph per experiment mode
+const DEFAULT_PLOT: Record<string, PlotType> = {
+  free_expansion:   "length_vs_temp",
+  fixed_constraint: "stress_vs_temp",
+  bridge_gap:       "stress_vs_temp",
+  railway_buckling: "buckling_load",
+  bimetallic:       "curvature_vs_temp",
+  thermal_shock:    "shock_gradient",
+  cryogenic:        "stress_vs_temp",
+  fatigue:          "damage_vs_cycle",
+  spacecraft:       "curvature_vs_temp",
+  precision:        "length_vs_temp",
+};
 
 export const ThermalExpansionGraphs: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activePlot, setActivePlot] = useState<PlotType>("length_temp");
-  const [hoverPos, setHoverPos] = useState<{ x: number; y: number; mx: number; my: number } | null>(null);
+  const [activePlot, setActivePlot] = useState<PlotType>("length_vs_temp");
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
 
-  const { history, materialId, L0, thickness, crossSectionalArea, constraint, gapSize, graphSettings, objectType, plasticStrain, bondStiffness } = useThermalExpansionStore();
-  const currentMaterial = MATERIAL_DATABASE[materialId];
+  const {
+    history,
+    materialId,
+    bimetallicMat1,
+    bimetallicMat2,
+    L0,
+    crossSectionalArea,
+    diameter,
+    experimentMode,
+    constraint,
+    graphSettings,
+    thermalProfile,
+    bucklingCriticalLoad,
+    avgTemperature,
+  } = useThermalExpansionStore();
 
-  // Canvas Resizing
+  const mat = MATERIAL_DB[materialId];
+
+  // Auto-switch plot when experiment mode changes
   useEffect(() => {
-    const handleResize = () => {
-      const canvas = canvasRef.current;
-      const container = containerRef.current;
-      if (!canvas || !container) return;
-      canvas.width = container.clientWidth * window.devicePixelRatio;
-      canvas.height = container.clientHeight * window.devicePixelRatio;
+    setActivePlot(DEFAULT_PLOT[experimentMode] ?? "length_vs_temp");
+  }, [experimentMode]);
+
+  // Canvas resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = container.clientWidth * dpr;
+      canvas.height = container.clientHeight * dpr;
       canvas.style.width = `${container.clientWidth}px`;
       canvas.style.height = `${container.clientHeight}px`;
     };
-
-    handleResize();
-    const observer = new ResizeObserver(handleResize);
-    if (containerRef.current) observer.observe(containerRef.current);
-    
-    return () => observer.disconnect();
+    resize();
+    const obs = new ResizeObserver(resize);
+    obs.observe(container);
+    return () => obs.disconnect();
   }, [activePlot]);
 
-  // Main drawing loop
+  // Main drawing
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    const w = canvas.width / window.devicePixelRatio;
-    const h = canvas.height / window.devicePixelRatio;
+    ctx.scale(dpr, dpr);
 
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    const ml = 52, mr = 20, mt = 28, mb = 40;
+    const gW = W - ml - mr;
+    const gH = H - mt - mb;
 
-    // Padding settings
-    const ml = 60;
-    const mr = 30;
-    const mt = 35;
-    const mb = 45;
-    const graphW = w - ml - mr;
-    const graphH = h - mt - mb;
+    // Background
+    ctx.fillStyle = "#0a0a0c";
+    ctx.fillRect(ml, mt, gW, gH);
 
-    // Background Grid
-    ctx.fillStyle = "#0c0c0e";
-    ctx.fillRect(ml, mt, graphW, graphH);
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+    // Grid
+    ctx.strokeStyle = "rgba(255,255,255,0.03)";
     ctx.lineWidth = 1;
-    
-    const gridCols = 8;
-    const gridRows = 6;
-    for (let i = 0; i <= gridCols; i++) {
-      const x = ml + (i / gridCols) * graphW;
-      ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, mt + graphH); ctx.stroke();
-    }
-    for (let i = 0; i <= gridRows; i++) {
-      const y = mt + (i / gridRows) * graphH;
-      ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(ml + graphW, y); ctx.stroke();
+    for (let i = 0; i <= 8; i++) { const x = ml + (i / 8) * gW; ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, mt + gH); ctx.stroke(); }
+    for (let i = 0; i <= 6; i++) { const y = mt + (i / 6) * gH; ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(ml + gW, y); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.strokeRect(ml, mt, gW, gH);
+
+    // Route to correct drawing function
+    switch (activePlot) {
+      case "length_vs_temp":    drawLengthVsTemp(ctx, ml, mt, gW, gH, W, H); break;
+      case "stress_vs_temp":    drawStressVsTemp(ctx, ml, mt, gW, gH, W, H); break;
+      case "spatial_temp":      drawSpatialTemp(ctx, ml, mt, gW, gH, W, H); break;
+      case "buckling_load":     drawBucklingLoad(ctx, ml, mt, gW, gH, W, H); break;
+      case "curvature_vs_temp": drawCurvatureVsTemp(ctx, ml, mt, gW, gH, W, H); break;
+      case "damage_vs_cycle":   drawDamageVsCycle(ctx, ml, mt, gW, gH, W, H); break;
+      case "shock_gradient":    drawSpatialTemp(ctx, ml, mt, gW, gH, W, H); break;
+      case "multi_material":    drawMultiMaterial(ctx, ml, mt, gW, gH, W, H); break;
     }
 
-    // Graph Area Border
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.strokeRect(ml, mt, graphW, graphH);
-
-    // Render logic per plot type
-    if (activePlot === "vibe_dist") {
-      drawVibeDist(ctx, ml, mt, graphW, graphH, w, h);
-    } else if (activePlot === "multi_material") {
-      drawMultiMaterial(ctx, ml, mt, graphW, graphH, w, h);
-    } else {
-      drawStandardPlot(ctx, ml, mt, graphW, graphH, w, h);
-    }
     ctx.restore();
+  }, [history, activePlot, materialId, thermalProfile, bucklingCriticalLoad, hoverPos]);
 
-  }, [history, activePlot, materialId, L0, thickness, crossSectionalArea, constraint, gapSize, graphSettings, hoverPos]);
+  // ── PLOT: Length vs Temperature ────────────────────────────
+  const drawLengthVsTemp = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    if (!mat || history.length < 2) { drawNoData(ctx, ml, mt, gW, gH); return; }
 
-  // Export current history as CSV
-  const handleExportCSV = () => {
-    if (history.length === 0) return;
-    let csv = "Time(s),Temperature(K),Length(m),DeltaL(m),Stress(MPa),Strain,Energy(J),Deflection(m)\n";
-    history.forEach(p => {
-      csv += `${p.time.toFixed(4)},${p.temp.toFixed(2)},${p.length.toFixed(6)},${p.deltaL.toFixed(6)},${p.stress.toFixed(4)},${p.strain.toFixed(6)},${p.energy.toFixed(2)},${p.deflection.toFixed(6)}\n`;
-    });
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `kinetiq_thermal_expansion_${materialId}_${activePlot}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+    const allT = history.map(p => p.avgTemp);
+    const allL = history.map(p => L0 + p.deltaL);
+    const xMin = Math.min(...allT) - 5;
+    const xMax = Math.max(...allT) + 5;
+    const yMin = Math.min(...allL) - 0.0001;
+    const yMax = Math.max(...allL) + 0.0001;
 
-  // Export graph frame as PNG
-  const handleExportPNG = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `kinetiq_thermal_chart_${activePlot}.png`;
-    link.click();
-  };
+    const toX = (t: number) => ml + ((t - xMin) / (xMax - xMin)) * gW;
+    const toY = (l: number) => mt + gH - ((l - yMin) / (yMax - yMin)) * gH;
 
-  // Helper 1: Standard History Curve Drawing (Length, Expansion, Stress, Energy, Hysteresis)
-  const drawStandardPlot = (
-    ctx: CanvasRenderingContext2D,
-    ml: number,
-    mt: number,
-    graphW: number,
-    graphH: number,
-    w: number,
-    h: number
-  ) => {
-    if (history.length < 2) {
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.font = "12px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("AWAITING EXPERIMENTAL DATA...", ml + graphW / 2, mt + graphH / 2);
-      return;
-    }
-
-    // Determine Y value mapping
-    const getYVal = (p: HistoryPoint) => {
-      switch (activePlot) {
-        case "length_temp": return p.length;
-        case "expansion_temp": return p.deltaL * 1000; // in mm
-        case "stress_temp": return p.stress; // in MPa
-        case "energy_temp": return p.energy / 1000; // in kJ
-        case "hysteresis": return objectType === "bimetallic" ? p.deflection * 1000 : p.length;
-        default: return p.length;
-      }
-    };
-
-    const getXVal = (p: HistoryPoint) => {
-      // For hysteresis, plot against temperature. For others, can be temperature or time.
-      return p.temp;
-    };
-
-    const allX = history.map(getXVal);
-    const allY = history.map(getYVal);
-
-    let xMin = Math.min(...allX);
-    let xMax = Math.max(...allX);
-    let yMin = Math.min(...allY);
-    let yMax = Math.max(...allY);
-
-    // Padding scales
-    if (xMax - xMin < 5) { xMin -= 2.5; xMax += 2.5; }
-    if (yMax - yMin < 1e-4) { yMin -= 1; yMax += 1; }
-    
-    // Slight margin offsets
-    const xRange = xMax - xMin;
-    const yRange = yMax - yMin;
-    xMin -= xRange * 0.05;
-    xMax += xRange * 0.05;
-    yMin -= yRange * 0.08;
-    yMax += yRange * 0.08;
-
-    const toX = (mx: number) => ml + ((mx - xMin) / (xMax - xMin)) * graphW;
-    const toY = (my: number) => mt + graphH - ((my - yMin) / (yMax - yMin)) * graphH;
-
-    // Draw reference ideal curve (without plastic hysteresis)
-    if (graphSettings.overlayComparison && activePlot === "length_temp") {
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.25)";
-      ctx.setLineDash([4, 4]);
+    // Ideal theoretical line
+    if (graphSettings.overlayIdeal) {
+      ctx.strokeStyle = "rgba(16,185,129,0.3)";
       ctx.lineWidth = 1.5;
-      
-      const step = (xMax - xMin) / 100;
-      for (let i = 0; i <= 100; i++) {
-        const temp = xMin + i * step;
-        const L_ideal = ThermalExpansionPhysicsEngine.getLength(L0, currentMaterial, temp, 0);
-        const pxX = toX(temp);
-        const pxY = toY(L_ideal);
-        if (i === 0) ctx.moveTo(pxX, pxY);
-        else ctx.lineTo(pxX, pxY);
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      for (let i = 0; i <= 60; i++) {
+        const T = xMin + (i / 60) * (xMax - xMin);
+        const L = PhysicsEngine.rodLength(mat, L0, T);
+        const px = toX(T), py = toY(L);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.stroke();
-      ctx.setLineDash([]); // clear dash
+      ctx.setLineDash([]);
     }
 
-    // Plot main curve
+    // Actual data
     ctx.beginPath();
-    ctx.strokeStyle = getPlotColor();
+    ctx.strokeStyle = "#06b6d4";
     ctx.lineWidth = 2.5;
     ctx.lineJoin = "round";
-
-    history.forEach((p, idx) => {
-      const pxX = toX(getXVal(p));
-      const pxY = toY(getYVal(p));
-      if (idx === 0) ctx.moveTo(pxX, pxY);
-      else ctx.lineTo(pxX, pxY);
+    history.forEach((p, i) => {
+      const px = toX(p.avgTemp), py = toY(L0 + p.deltaL);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     });
     ctx.stroke();
 
-    // Live dot at the end
-    const lastP = history[history.length - 1];
-    const dotX = toX(getXVal(lastP));
-    const dotY = toY(getYVal(lastP));
-    
-    if (isFinite(dotX) && isFinite(dotY)) {
-      ctx.save();
-      ctx.shadowColor = getPlotColor();
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, 6, 0, Math.PI * 2);
-      ctx.fillStyle = getPlotColor();
-      ctx.fill();
-      ctx.restore();
+    // Live dot
+    drawLiveDot(ctx, toX(history.at(-1)!.avgTemp), toY(L0 + history.at(-1)!.deltaL), "#06b6d4");
 
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-    }
-
-    // Axes Text Labels
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-
-    // X Axis Ticks (5 divisions)
-    for (let i = 0; i <= 4; i++) {
-      const val = xMin + (i / 4) * (xMax - xMin);
-      const px = toX(val);
-      ctx.fillText(`${val.toFixed(0)} K`, px, mt + graphH + 12);
-      ctx.strokeStyle = "rgba(255,255,255,0.15)";
-      ctx.beginPath(); ctx.moveTo(px, mt + graphH); ctx.lineTo(px, mt + graphH + 4); ctx.stroke();
-    }
-
-    // Y Axis Ticks (5 divisions)
-    ctx.textAlign = "right";
-    for (let i = 0; i <= 4; i++) {
-      const val = yMin + (i / 4) * (yMax - yMin);
-      const py = toY(val);
-      ctx.fillText(formatScientific(val), ml - 6, py + 3);
-      ctx.strokeStyle = "rgba(255,255,255,0.15)";
-      ctx.beginPath(); ctx.moveTo(ml, py); ctx.lineTo(ml - 4, py); ctx.stroke();
-    }
-
-    // Outer Axis Labels
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 9px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("TEMPERATURE T (Kelvin)", ml + graphW / 2, h - 8);
-
-    ctx.save();
-    ctx.translate(14, mt + graphH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText(getYAxisLabel(), 0, 0);
-    ctx.restore();
-
-    // Hover Tooltip
-    if (hoverPos) {
-      const hoverMX = xMin + ((hoverPos.x - ml) / graphW) * (xMax - xMin);
-      
-      // Find closest point in history to hover position
-      let closestP = history[0];
-      let minDist = Infinity;
-      history.forEach(p => {
-        const dist = Math.abs(getXVal(p) - hoverMX);
-        if (dist < minDist) {
-          minDist = dist;
-          closestP = p;
-        }
-      });
-
-      if (closestP) {
-        const tipX = toX(getXVal(closestP));
-        const tipY = toY(getYVal(closestP));
-
-        // Draw crosshair lines
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-        ctx.setLineDash([2, 2]);
-        ctx.beginPath(); ctx.moveTo(tipX, mt); ctx.lineTo(tipX, mt + graphH); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(ml, tipY); ctx.lineTo(ml + graphW, tipY); ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Tooltip container box
-        const tooltipW = 120;
-        const tooltipH = 50;
-        let tX = tipX + 15;
-        let tY = tipY - 25;
-        if (tX + tooltipW > w - 10) tX = tipX - tooltipW - 15;
-        if (tY < mt + 5) tY = mt + 5;
-
-        ctx.fillStyle = "rgba(9, 9, 11, 0.85)";
-        ctx.strokeStyle = getPlotColor();
-        ctx.lineWidth = 1.5;
-        ctx.fillRect(tX, tY, tooltipW, tooltipH);
-        ctx.strokeRect(tX, tY, tooltipW, tooltipH);
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 8px monospace";
-        ctx.textAlign = "left";
-        ctx.fillText(`Temp: ${closestP.temp.toFixed(1)} K`, tX + 8, tY + 14);
-        ctx.fillText(`${activePlot.replace(/_/g, " ").toUpperCase()}:`, tX + 8, tY + 26);
-        ctx.fillStyle = getPlotColor();
-        ctx.fillText(formatScientific(getYVal(closestP)), tX + 8, tY + 38);
-      }
-    }
+    drawAxes(ctx, ml, mt, gW, gH, W, H, xMin, xMax, yMin, yMax,
+      "Temperature T (K)", "Length L (m)", 4, v => v.toFixed(4));
   };
 
-  // Helper 2: Multi-Material Comparison Curve (Static preview curves for all materials)
-  const drawMultiMaterial = (
-    ctx: CanvasRenderingContext2D,
-    ml: number,
-    mt: number,
-    graphW: number,
-    graphH: number,
-    w: number,
-    h: number
-  ) => {
-    const mr = 30;
-    // X axis represents temperature range (100K to 1000K)
-    const T_min = 100;
-    const T_max = 1000;
-    
-    // Y axis represents Expansion strain ΔL/L₀ = α * dT (unitless / percent)
-    // Steel max expansion at 1000K is ~12e-6 * 700 = 8.4e-3
-    // Aluminum max expansion at 933K (melting) is ~23e-6 * 640 = 1.47e-2
-    // Let's set Y bounds from -0.005 to 0.02 (or -0.5% to 2% expansion strain)
-    const y_Min = -0.003;
-    const y_Max = 0.016;
+  // ── PLOT: Stress vs Temperature ────────────────────────────
+  const drawStressVsTemp = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    if (!mat || history.length < 2) { drawNoData(ctx, ml, mt, gW, gH); return; }
 
-    const toX = (mx: number) => ml + ((mx - T_min) / (T_max - T_min)) * graphW;
-    const toY = (my: number) => mt + graphH - ((my - y_Min) / (y_Max - y_Min)) * graphH;
+    const allT = history.map(p => p.avgTemp);
+    const allS = history.map(p => p.stress / 1e6);
+    const xMin = Math.min(...allT) - 5;
+    const xMax = Math.max(...allT) + 5;
+    const yMax = Math.max(...allS, mat.yieldStrength / 1e6 * 1.2, 10);
+    const yMin = Math.min(...allS, 0, -mat.yieldStrength / 1e6 * 1.2);
 
-    // Draw Curves for each material
+    const toX = (t: number) => ml + ((t - xMin) / (xMax - xMin)) * gW;
+    const toY = (s: number) => mt + gH - ((s - yMin) / (yMax - yMin)) * gH;
+
+    // Yield strength line
+    if (graphSettings.showYieldLine) {
+      const σ_y = mat.yieldStrength / 1e6;
+      ctx.strokeStyle = "rgba(239,68,68,0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      // Positive yield
+      const yY = toY(σ_y);
+      ctx.beginPath(); ctx.moveTo(ml, yY); ctx.lineTo(ml + gW, yY); ctx.stroke();
+      // Negative yield
+      const yYn = toY(-σ_y);
+      ctx.beginPath(); ctx.moveTo(ml, yYn); ctx.lineTo(ml + gW, yYn); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(239,68,68,0.55)";
+      ctx.font = "7px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(`+σ_y = ${σ_y.toFixed(0)} MPa`, ml + gW - 4, yY - 4);
+      ctx.fillText(`−σ_y = ${σ_y.toFixed(0)} MPa`, ml + gW - 4, yYn + 9);
+    }
+
+    // Zero stress line
+    const zeroY = toY(0);
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ml, zeroY); ctx.lineTo(ml + gW, zeroY); ctx.stroke();
+
+    // Theoretical line σ = -EαΔT
+    if (graphSettings.overlayIdeal && constraint === "fixed") {
+      ctx.strokeStyle = "rgba(16,185,129,0.3)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      for (let i = 0; i <= 60; i++) {
+        const T = xMin + (i / 60) * (xMax - xMin);
+        if (T > mat.meltingPoint) break;
+        const E = PhysicsEngine.youngsModulus(mat, T);
+        const σ = -E * mat.alpha0 * (T - PhysicsEngine.T_REF) / 1e6;
+        const px = toX(T), py = toY(σ);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Actual data
+    ctx.beginPath();
+    ctx.strokeStyle = "#f97316";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    history.forEach((p, i) => {
+      const px = toX(p.avgTemp), py = toY(p.stress / 1e6);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    drawLiveDot(ctx, toX(history.at(-1)!.avgTemp), toY(history.at(-1)!.stress / 1e6), "#f97316");
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, xMin, xMax, yMin, yMax,
+      "Temperature T (K)", "Thermal Stress σ (MPa)", 4, v => v.toFixed(0));
+  };
+
+  // ── PLOT: Spatial Temperature Profile ──────────────────────
+  const drawSpatialTemp = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    const N = thermalProfile.length;
+    const allT = thermalProfile;
+    const yMin = Math.min(...allT) - 5;
+    const yMax = Math.max(...allT) + 20;
+
+    const toX = (i: number) => ml + (i / (N - 1)) * gW;
+    const toY = (T: number) => mt + gH - ((T - yMin) / (yMax - yMin)) * gH;
+
+    // Filled area under curve
+    ctx.beginPath();
+    ctx.moveTo(toX(0), mt + gH);
+    thermalProfile.forEach((T, i) => ctx.lineTo(toX(i), toY(T)));
+    ctx.lineTo(toX(N - 1), mt + gH);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(ml, 0, ml + gW, 0);
+    grad.addColorStop(0, "rgba(251,146,60,0.3)");
+    grad.addColorStop(1, "rgba(6,182,212,0.1)");
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Curve
+    ctx.beginPath();
+    ctx.strokeStyle = "#eab308";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    thermalProfile.forEach((T, i) => {
+      if (i === 0) ctx.moveTo(toX(i), toY(T)); else ctx.lineTo(toX(i), toY(T));
+    });
+    ctx.stroke();
+
+    // Ambient reference
+    const ambY = toY(293.15);
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ml, ambY); ctx.lineTo(ml + gW, ambY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.font = "7px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("T_ambient", ml + 4, ambY - 4);
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, 0, 1, yMin, yMax,
+      "Position x/L₀", "Temperature T (K)", 4, v => v.toFixed(0),
+      (i, n) => (i / n).toFixed(1));
+  };
+
+  // ── PLOT: Buckling Load vs Temperature ─────────────────────
+  const drawBucklingLoad = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    if (!mat) { drawNoData(ctx, ml, mt, gW, gH); return; }
+
+    const T_min = 200, T_max = Math.min(mat.meltingPoint, 1200);
+    const I = (Math.PI / 64) * Math.pow(0.05, 4);
+    const loads: { T: number; Pcr: number; Pth: number }[] = [];
+
+    for (let i = 0; i <= 100; i++) {
+      const T = T_min + (i / 100) * (T_max - T_min);
+      const E = PhysicsEngine.youngsModulus(mat, T);
+      const Pcr = (Math.PI * Math.PI * E * I) / (L0 * L0);
+      const Pth = E * mat.alpha0 * (T - PhysicsEngine.T_REF) * crossSectionalArea;
+      loads.push({ T, Pcr, Pth });
+    }
+
+    const maxLoad = Math.max(...loads.map(l => Math.max(l.Pcr, l.Pth)));
+    const yMax = maxLoad * 1.1 / 1e3;
+    const yMin = 0;
+
+    const toX = (T: number) => ml + ((T - T_min) / (T_max - T_min)) * gW;
+    const toY = (P: number) => mt + gH - ((P / 1e3 - yMin) / (yMax - yMin)) * gH;
+
+    // P_cr line (decreases with T as E decreases)
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(6,182,212,0.8)";
+    ctx.lineWidth = 2;
+    loads.forEach((l, i) => {
+      if (i === 0) ctx.moveTo(toX(l.T), toY(l.Pcr)); else ctx.lineTo(toX(l.T), toY(l.Pcr));
+    });
+    ctx.stroke();
+    ctx.fillStyle = "rgba(6,182,212,0.6)";
+    ctx.font = "7px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("P_cr (Euler)", ml + 4, toY(loads[0].Pcr) - 5);
+
+    // P_thermal line (increases with T)
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(239,68,68,0.8)";
+    ctx.lineWidth = 2;
+    loads.forEach((l, i) => {
+      if (i === 0) ctx.moveTo(toX(l.T), toY(l.Pth)); else ctx.lineTo(toX(l.T), toY(l.Pth));
+    });
+    ctx.stroke();
+    ctx.fillStyle = "rgba(239,68,68,0.6)";
+    ctx.fillText("P_thermal", ml + 4, toY(loads[5].Pth) + 10);
+
+    // Intersection — buckling onset
+    for (let i = 1; i < loads.length; i++) {
+      if (loads[i].Pth >= loads[i].Pcr) {
+        const tBuckle = loads[i].T;
+        const xB = toX(tBuckle);
+        ctx.strokeStyle = "rgba(239,68,68,0.5)";
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xB, mt); ctx.lineTo(xB, mt + gH); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(239,68,68,0.7)";
+        ctx.font = "bold 7.5px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`T_buckle ≈ ${tBuckle.toFixed(0)} K`, xB, mt + 12);
+        break;
+      }
+    }
+
+    // Current state dot
+    const curLoad = loads.find(l => Math.abs(l.T - avgTemperature) < 5);
+    if (curLoad) {
+      drawLiveDot(ctx, toX(curLoad.T), toY(curLoad.Pth), "#ef4444");
+    }
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, T_min, T_max, yMin, yMax,
+      "Temperature T (K)", "Load (kN)", 4, v => v.toFixed(0));
+  };
+
+  // ── PLOT: Curvature vs Temperature ────────────────────────
+  const drawCurvatureVsTemp = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    if (history.length < 2) { drawNoData(ctx, ml, mt, gW, gH); return; }
+
+    const allT = history.map(p => p.avgTemp);
+    const allK = history.map(p => p.curvature);
+    const xMin = Math.min(...allT) - 5;
+    const xMax = Math.max(...allT) + 5;
+    const yRange = Math.max(...allK.map(Math.abs), 0.001);
+    const yMin = -yRange * 1.1;
+    const yMax = yRange * 1.1;
+
+    const toX = (T: number) => ml + ((T - xMin) / (xMax - xMin)) * gW;
+    const toY = (k: number) => mt + gH - ((k - yMin) / (yMax - yMin)) * gH;
+
+    // Zero line
+    const zY = toY(0);
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ml, zY); ctx.lineTo(ml + gW, zY); ctx.stroke();
+
+    ctx.beginPath();
+    ctx.strokeStyle = "#a855f7";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    history.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(toX(p.avgTemp), toY(p.curvature));
+      else ctx.lineTo(toX(p.avgTemp), toY(p.curvature));
+    });
+    ctx.stroke();
+    drawLiveDot(ctx, toX(history.at(-1)!.avgTemp), toY(history.at(-1)!.curvature), "#a855f7");
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, xMin, xMax, yMin, yMax,
+      "Temperature T (K)", "Curvature κ (m⁻¹)", 4, v => v.toFixed(4));
+  };
+
+  // ── PLOT: Fatigue Damage vs Cycle ─────────────────────────
+  const drawDamageVsCycle = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    if (history.length < 2) { drawNoData(ctx, ml, mt, gW, gH); return; }
+
+    const allC = history.map(p => p.cycleCount);
+    const allD = history.map(p => p.damage);
+    const xMin = 0;
+    const xMax = Math.max(...allC, 10);
+    const yMin = 0;
+    const yMax = 1.05;
+
+    const toX = (c: number) => ml + ((c - xMin) / (xMax - xMin)) * gW;
+    const toY = (d: number) => mt + gH - ((d - yMin) / (yMax - yMin)) * gH;
+
+    // Failure line at D = 1
+    const failY = toY(1.0);
+    ctx.strokeStyle = "rgba(239,68,68,0.5)";
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(ml, failY); ctx.lineTo(ml + gW, failY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(239,68,68,0.55)";
+    ctx.font = "7px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText("D = 1.0 (failure)", ml + gW - 4, failY - 4);
+
+    ctx.beginPath();
+    ctx.strokeStyle = "#f43f5e";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    history.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(toX(p.cycleCount), toY(p.damage));
+      else ctx.lineTo(toX(p.cycleCount), toY(p.damage));
+    });
+    ctx.stroke();
+    drawLiveDot(ctx, toX(history.at(-1)!.cycleCount), toY(history.at(-1)!.damage), "#f43f5e");
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, xMin, xMax, yMin, yMax,
+      "Cycle Count N", "Damage D (0–1)", 4, v => v.toFixed(2));
+  };
+
+  // ── PLOT: Multi-Material Comparison ───────────────────────
+  const drawMultiMaterial = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
+    const T_min = 77, T_max = 1000;
+    const yMin = -0.001, yMax = 0.018;
+    const toX = (T: number) => ml + ((T - T_min) / (T_max - T_min)) * gW;
+    const toY = (ε: number) => mt + gH - ((ε - yMin) / (yMax - yMin)) * gH;
+
     const matColors: Record<string, string> = {
-      aluminum: "#f43f5e", // rose
-      steel: "#3b82f6",    // blue
-      copper: "#f97316",   // orange
-      glass: "#a855f7",    // purple
-      concrete: "#10b981", // green
-      titanium: "#eab308", // yellow
-      invar: "#06b6d4"     // cyan
+      steel: "#94a3b8", aluminum: "#e2e8f0", copper: "#b45309", titanium: "#6366f1",
+      invar: "#06b6d4", stainless: "#64748b", glass: "#7dd3fc", carbon_fiber: "#374151",
+      silicon: "#818cf8", tungsten: "#52525b", brass: "#ca8a04", concrete: "#a8a29e"
     };
 
-    Object.entries(MATERIAL_DATABASE).forEach(([id, mat]) => {
+    Object.entries(MATERIAL_DB).forEach(([id, m]) => {
+      if (id === "ice") return; // ice melts below range
       ctx.beginPath();
-      ctx.strokeStyle = matColors[id] || "#ffffff";
-      ctx.lineWidth = materialId === id ? 3 : 1.2;
-      ctx.setLineDash(materialId === id ? [] : [2, 2]);
+      ctx.strokeStyle = matColors[id] ?? "#ffffff";
+      ctx.lineWidth = id === materialId ? 2.5 : 1;
+      ctx.setLineDash(id === materialId ? [] : [3, 3]);
 
-      const steps = 100;
-      for (let i = 0; i <= steps; i++) {
-        const temp = T_min + (i / steps) * (T_max - T_min);
-        // Do not draw beyond melting point
-        if (temp > mat.meltingPoint) break;
-        
-        const dT = temp - ThermalExpansionPhysicsEngine.T_REF;
-        const alpha = ThermalExpansionPhysicsEngine.getAlphaAtT(mat, temp);
-        const strain = alpha * dT;
-        
-        const pxX = toX(temp);
-        const pxY = toY(strain);
-        if (i === 0) ctx.moveTo(pxX, pxY);
-        else ctx.lineTo(pxX, pxY);
+      for (let i = 0; i <= 80; i++) {
+        const T = T_min + (i / 80) * (T_max - T_min);
+        if (T > m.meltingPoint) break;
+        const ε = m.alpha0 * (T - PhysicsEngine.T_REF);
+        if (i === 0) ctx.moveTo(toX(T), toY(ε)); else ctx.lineTo(toX(T), toY(ε));
       }
       ctx.stroke();
       ctx.setLineDash([]);
     });
 
-    // Draw Axes Tick Labels
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-
-    for (let i = 0; i <= 4; i++) {
-      const val = T_min + (i / 4) * (T_max - T_min);
-      const px = toX(val);
-      ctx.fillText(`${val.toFixed(0)} K`, px, mt + graphH + 12);
-    }
-
-    ctx.textAlign = "right";
-    for (let i = 0; i <= 4; i++) {
-      const val = y_Min + (i / 4) * (y_Max - y_Min);
-      const py = toY(val);
-      ctx.fillText(`${(val * 100).toFixed(2)}%`, ml - 6, py + 3);
-    }
-
-    // Outer Axis Labels
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 9px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("TEMPERATURE T (Kelvin)", ml + graphW / 2, h - 8);
-
-    ctx.save();
-    ctx.translate(14, mt + graphH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText("THERMAL STRAIN ΔL / L₀ (%)", 0, 0);
-    ctx.restore();
-
-    // Legend panel inside canvas
-    ctx.fillStyle = "rgba(24, 24, 27, 0.85)";
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
-    ctx.lineWidth = 1;
-    ctx.fillRect(w - mr - 95, mt + 5, 90, 95);
-    ctx.strokeRect(w - mr - 95, mt + 5, 90, 95);
-
-    Object.entries(MATERIAL_DATABASE).forEach(([id, mat], idx) => {
-      const legY = mt + 13 + idx * 12;
-      ctx.fillStyle = matColors[id];
-      ctx.fillRect(w - mr - 90, legY - 5, 6, 6);
-      
-      ctx.fillStyle = materialId === id ? "#ffffff" : "rgba(255,255,255,0.6)";
-      ctx.font = materialId === id ? "bold 7.5px monospace" : "7px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText(mat.name.substring(0, 12), w - mr - 80, legY);
-    });
-  };
-
-  // Helper 3: Atomic vibration amplitude probability distribution histogram
-  const drawVibeDist = (
-    ctx: CanvasRenderingContext2D,
-    ml: number,
-    mt: number,
-    graphW: number,
-    graphH: number,
-    w: number,
-    h: number
-  ) => {
-    // P(A) = A / (sigma^2) * exp(-A^2 / (2 * sigma^2))  (Rayleigh Distribution for harmonic vibrating atoms)
-    const T = useThermalExpansionStore.getState().temperature;
-    
-    // Thermal vibration variance: sigma = sqrt(k_B * T / bondStiffness)
-    const sigma = Math.sqrt((ThermalExpansionPhysicsEngine.K_B * T * 1e20) / (bondStiffness || 1));
-
-    const steps = 100;
-    const aMax = Math.max(0.5, sigma * 4.0); // max vibration amplitude range
-    
-    const toX = (mx: number) => ml + (mx / aMax) * graphW;
-    const toY = (my: number) => mt + graphH - (my / 2.8) * graphH; // max probability density scale
-
-    // Plot Theoretical Rayleigh Distribution
-    ctx.beginPath();
-    ctx.strokeStyle = "#ec4899"; // Pink
-    ctx.lineWidth = 2.5;
-
-    for (let i = 0; i <= steps; i++) {
-      const A = (i / steps) * aMax;
-      let prob = 0;
-      if (sigma > 0) {
-        prob = (A / (sigma * sigma)) * Math.exp(-(A * A) / (2 * sigma * sigma));
-      }
-      
-      const pxX = toX(A);
-      const pxY = toY(prob);
-      if (i === 0) ctx.moveTo(pxX, pxY);
-      else ctx.lineTo(pxX, pxY);
-    }
-    ctx.stroke();
-
-    // Draw live particle samples as dots on the baseline
-    ctx.fillStyle = "rgba(6, 182, 212, 0.4)";
-    const sampleCount = 40;
-    for (let i = 0; i < sampleCount; i++) {
-      // Sample Rayleigh distribution using Box-Muller-like transform: A = sigma * sqrt(-2 ln U)
-      const u1 = Math.max(1e-9, Math.random());
-      const A_sample = sigma * Math.sqrt(-2.0 * Math.log(u1));
-      
-      const dotX = toX(A_sample);
-      const dotY = mt + graphH - 2 - Math.random() * 8; // jitter height slightly
-      if (dotX >= ml && dotX <= ml + graphW) {
-        ctx.beginPath();
-        ctx.arc(dotX, dotY, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Axes Tick Labels
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-
-    for (let i = 0; i <= 4; i++) {
-      const val = (i / 4) * aMax;
-      const px = toX(val);
-      ctx.fillText(val.toFixed(2), px, mt + graphH + 12);
-    }
-
-    ctx.textAlign = "right";
-    for (let i = 0; i <= 4; i++) {
-      const val = (i / 4) * 2.5;
-      const py = toY(val);
-      ctx.fillText(val.toFixed(1), ml - 6, py + 3);
-    }
-
-    // Outer Axis Labels
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 9px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText("VIBRATIONAL AMPLITUDE A (Angstroms Å)", ml + graphW / 2, h - 8);
-
-    ctx.save();
-    ctx.translate(14, mt + graphH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText("PROBABILITY DENSITY P(A)", 0, 0);
-    ctx.restore();
-
-    // Add equation annotation in corner
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.font = "italic 8.5px serif";
+    // Legend (top right)
+    let legY = mt + 5;
+    ctx.font = "7px monospace";
     ctx.textAlign = "left";
-    ctx.fillText("P(A) = [A / σ²] · exp(-A² / 2σ²)", ml + 12, mt + 18);
+    Object.entries(matColors).slice(0, 8).forEach(([id, color]) => {
+      const m = MATERIAL_DB[id];
+      if (!m) return;
+      ctx.fillStyle = color;
+      ctx.fillRect(ml + gW - 110, legY, 7, 7);
+      ctx.fillStyle = id === materialId ? "#ffffff" : "rgba(255,255,255,0.4)";
+      ctx.fillText(m.name.split(" ")[0].substring(0, 10), ml + gW - 100, legY + 6.5);
+      legY += 11;
+    });
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, T_min, T_max, yMin, yMax,
+      "Temperature T (K)", "Thermal Strain ε_th", 4, v => (v * 100).toFixed(2) + "%");
   };
 
-  // Helper Utilities
-  const getPlotColor = () => {
-    switch (activePlot) {
-      case "length_temp": return "#06b6d4"; // cyan
-      case "expansion_temp": return "#eab308"; // yellow
-      case "stress_temp": return "#ef4444"; // red
-      case "energy_temp": return "#f97316"; // orange
-      case "hysteresis": return "#10b981"; // emerald
-      default: return "#ffffff";
+  // ── HELPERS ────────────────────────────────────────────────
+  const drawLiveDot = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    if (!isFinite(x) || !isFinite(y)) return;
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+  };
+
+  const drawNoData = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number) => {
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    ctx.font = "11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Adjust temperature to record data…", ml + gW / 2, mt + gH / 2);
+  };
+
+  const drawAxes = (
+    ctx: CanvasRenderingContext2D,
+    ml: number, mt: number, gW: number, gH: number, W: number, H: number,
+    xMin: number, xMax: number, yMin: number, yMax: number,
+    xLabel: string, yLabel: string,
+    ticks = 4,
+    yFmt: (v: number) => string = v => v.toFixed(2),
+    xFmt?: (i: number, n: number) => string
+  ) => {
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "7.5px monospace";
+    ctx.textAlign = "center";
+
+    for (let i = 0; i <= ticks; i++) {
+      const xVal = xMin + (i / ticks) * (xMax - xMin);
+      const px = ml + (i / ticks) * gW;
+      const label = xFmt ? xFmt(i, ticks) : xVal.toFixed(0);
+      ctx.fillText(label, px, mt + gH + 12);
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, mt + gH); ctx.lineTo(px, mt + gH + 4); ctx.stroke();
     }
-  };
 
-  const getYAxisLabel = () => {
-    switch (activePlot) {
-      case "length_temp": return "TOTAL LENGTH L (meters)";
-      case "expansion_temp": return "THERMAL EXPANSION ΔL (millimeters)";
-      case "stress_temp": return "THERMAL STRESS σ (MPa)";
-      case "energy_temp": return "THERMAL HEAT ENERGY Q (kJ)";
-      case "hysteresis": return objectType === "bimetallic" ? "BIMETALLIC DEFLECTION δ (mm)" : "TOTAL LENGTH L (meters)";
-      default: return "Y-AXIS";
+    ctx.textAlign = "right";
+    for (let i = 0; i <= 4; i++) {
+      const yVal = yMin + (i / 4) * (yMax - yMin);
+      const py = mt + gH - (i / 4) * gH;
+      ctx.fillText(yFmt(yVal), ml - 4, py + 3);
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ml, py); ctx.lineTo(ml - 4, py); ctx.stroke();
     }
+
+    // Axis labels
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = "7.5px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(xLabel, ml + gW / 2, H - 5);
+    ctx.save();
+    ctx.translate(10, mt + gH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(yLabel, 0, 0);
+    ctx.restore();
   };
 
-  const formatScientific = (num: number): string => {
-    if (Math.abs(num) < 1e-3 && num !== 0) return num.toExponential(3);
-    if (num >= 10000) return num.toExponential(2);
-    // Dynamic decimal points based on scale
-    if (activePlot === "length_temp") return num.toFixed(4);
-    if (activePlot === "expansion_temp") return num.toFixed(3);
-    return num.toFixed(1);
+  // Export
+  const handleExportCSV = () => {
+    if (history.length === 0) return;
+    let csv = "Time(s),Temp(K),DeltaL(m),Stress(MPa),Strain,Energy(J),Curvature(1/m),Damage\n";
+    history.forEach(p => {
+      csv += `${p.time.toFixed(3)},${p.avgTemp.toFixed(2)},${p.deltaL.toFixed(6)},${(p.stress / 1e6).toFixed(4)},${p.strain.toFixed(6)},${p.energy.toFixed(2)},${p.curvature.toFixed(6)},${p.damage.toFixed(4)}\n`;
+    });
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `thermal_exp_${materialId}_${activePlot}.csv`; a.click();
+    URL.revokeObjectURL(url);
   };
+
+  const handleExportPNG = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `kinetiq_graph_${activePlot}.png`;
+    a.click();
+  };
+
+  const cfg = PLOT_CONFIGS[activePlot];
 
   return (
     <div className="w-full h-full flex flex-col bg-[#0a0a0c] select-none">
-
-      {/* Header Selector bar — compact */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0 border-b border-white/5">
         <div className="flex items-center gap-1.5">
           <BarChart className="w-3.5 h-3.5 text-cyan-400" />
           <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">Graph Engine</span>
         </div>
-
         <div className="flex gap-1.5 items-center">
-          {/* Dropdown plot selector — compact */}
-          <div className="relative inline-block">
+          <div className="relative">
             <select
               value={activePlot}
-              onChange={(e) => setActivePlot(e.target.value as PlotType)}
-              className="bg-[#18181b] border border-white/10 rounded-lg pl-2 pr-6 py-1.5 text-[9px] font-bold text-white focus:outline-none appearance-none cursor-pointer max-w-[160px]"
+              onChange={e => setActivePlot(e.target.value as PlotType)}
+              className="bg-[#18181b] border border-white/10 rounded-lg pl-2 pr-6 py-1.5 text-[9px] font-bold text-white focus:outline-none appearance-none cursor-pointer max-w-[155px]"
             >
-              <option value="length_temp">Length vs Temp</option>
-              <option value="expansion_temp">Expansion ΔL vs T</option>
-              <option value="stress_temp">Stress vs Temp</option>
-              <option value="vibe_dist">Atomic Distribution</option>
-              <option value="energy_temp">Energy vs Temp</option>
-              <option value="multi_material">Multi-Material</option>
-              <option value="hysteresis">Hysteresis Loop</option>
+              <option value="length_vs_temp">Length vs Temp</option>
+              <option value="stress_vs_temp">Stress vs Temp</option>
+              <option value="spatial_temp">Spatial T(x) Profile</option>
+              <option value="buckling_load">Buckling Load</option>
+              <option value="curvature_vs_temp">Curvature vs Temp</option>
+              <option value="damage_vs_cycle">Fatigue Damage</option>
+              <option value="multi_material">Multi-Material ε</option>
             </select>
             <ChevronDown className="absolute right-1.5 top-2 w-3 h-3 text-white/40 pointer-events-none" />
           </div>
-
-          {/* Export CSV / Export PNG */}
-          <button
-            onClick={handleExportCSV}
-            className="p-1.5 bg-black/40 hover:bg-white/5 border border-white/5 text-white/50 hover:text-white rounded-lg transition-all"
-            title="Download CSV dataset"
-          >
+          <button onClick={handleExportCSV} className="p-1.5 bg-black/40 hover:bg-white/5 border border-white/5 rounded-lg text-white/50 hover:text-white" title="Export CSV">
             <Download className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={handleExportPNG}
-            className="p-1.5 bg-black/40 hover:bg-white/5 border border-white/5 text-white/50 hover:text-white rounded-lg transition-all"
-            title="Save Image Frame"
-          >
+          <button onClick={handleExportPNG} className="p-1.5 bg-black/40 hover:bg-white/5 border border-white/5 rounded-lg text-white/50 hover:text-white" title="Export PNG">
             <Grid3X3 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Plot Canvas — fills remaining space */}
+      {/* Canvas */}
       <div
         ref={containerRef}
         className="flex-1 relative min-h-0"
         onMouseMove={(e: MouseEvent<HTMLDivElement>) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          setHoverPos({
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-            mx: e.clientX,
-            my: e.clientY
-          });
+          const r = e.currentTarget.getBoundingClientRect();
+          setHoverPos({ x: e.clientX - r.left, y: e.clientY - r.top });
         }}
         onMouseLeave={() => setHoverPos(null)}
       >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full cursor-crosshair"
-        />
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full cursor-crosshair" />
       </div>
 
-      {/* Real-time Legend bar — compact */}
+      {/* Footer */}
       <div className="flex gap-2 px-3 py-1.5 bg-black/30 border-t border-white/5 shrink-0 justify-between items-center text-[8.5px] font-mono text-white/30">
         <span className="flex items-center gap-1">
           <Eye className="w-3 h-3 text-cyan-400" />
-          <strong className="text-white/60">{activePlot.replace(/_/g, " ").toUpperCase()}</strong>
+          <strong className="text-white/50">{cfg.title}</strong>
         </span>
-        <span>Ref: <strong className="text-white/50">293.15 K</strong></span>
+        <span>{history.length} points</span>
       </div>
     </div>
   );

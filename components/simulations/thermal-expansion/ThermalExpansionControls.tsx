@@ -1,22 +1,19 @@
 "use client";
 
 import React from "react";
-import { useThermalExpansionStore, ExperimentMode, ShapeType } from "@/store/thermalExpansionStore";
-import { MATERIAL_DATABASE } from "@/lib/physics/thermalExpansion";
-import { Play, Pause, RotateCcw, FastForward, Flame, ShieldAlert, Sparkles, Thermometer } from "lucide-react";
+import { useThermalExpansionStore, ExperimentMode } from "@/store/thermalExpansionStore";
+import { MATERIAL_DB, PhysicsEngine } from "@/lib/physics/thermalExpansion";
+import { Play, Pause, RotateCcw, FastForward, Flame, ShieldAlert, Thermometer, Zap, FlaskConical, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const ThermalExpansionControls: React.FC = () => {
   const {
-    temperature,
+    avgTemperature,
     targetTemperature,
     setTargetTemperature,
     materialId,
     setMaterialId,
     objectType,
-    setObjectType,
-    constraint,
-    setConstraint,
     experimentMode,
     setExperimentMode,
     isPlaying,
@@ -24,169 +21,288 @@ export const ThermalExpansionControls: React.FC = () => {
     playbackSpeed,
     reset,
     triggerThermalShock,
-    isBroken
+    isFailed,
+    bimetallicMat1,
+    bimetallicMat2,
+    heatingMode,
+    setHeatingMode,
+    vizSettings,
+    setVizSetting,
   } = useThermalExpansionStore();
 
-  const currentMaterial = MATERIAL_DATABASE[materialId];
+  const mat = MATERIAL_DB[materialId];
+  const alpha = mat ? PhysicsEngine.alpha(mat, avgTemperature) : 0;
 
   const handleSpeedToggle = () => {
-    let nextSpeed = 1.0;
-    if (playbackSpeed === 1.0) nextSpeed = 2.0;
-    else if (playbackSpeed === 2.0) nextSpeed = 5.0;
-    else if (playbackSpeed === 5.0) nextSpeed = 0.5;
-    else nextSpeed = 1.0;
-    setConfig("playbackSpeed", nextSpeed);
+    const speeds = [0.5, 1.0, 2.0, 5.0];
+    const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
+    setConfig("playbackSpeed", speeds[nextIdx]);
   };
 
-  const handleBurnerPreset = (temp: number) => {
-    setTargetTemperature(temp);
-  };
+  const experiments: { id: ExperimentMode; label: string; description: string }[] = [
+    { id: "free_expansion",   label: "1. Free Expansion",       description: "σ = 0 · ΔL = αL₀ΔT" },
+    { id: "fixed_constraint", label: "2. Fixed Endpoints",      description: "σ = EαΔT" },
+    { id: "bridge_gap",       label: "3. Bridge Expansion Gap", description: "gap → constraint" },
+    { id: "railway_buckling", label: "4. Railway Buckling",     description: "P_cr = π²EI/(KL)²" },
+    { id: "bimetallic",       label: "5. Bimetallic Strip",     description: "κ = Timoshenko" },
+    { id: "thermal_shock",    label: "6. Thermal Shock",        description: "∂T/∂t = α_th ∂²T/∂x²" },
+    { id: "cryogenic",        label: "7. Cryogenic Contraction",description: "ΔT < 0 → shrink" },
+    { id: "fatigue",          label: "8. Cyclic Fatigue",       description: "D = Σ(n/N_f)" },
+    { id: "spacecraft",       label: "9. Spacecraft Thermal",   description: "orbital cycling" },
+    { id: "precision",        label: "10. Precision Eng.",      description: "Invar — min drift" },
+  ];
 
-  const handleShockTrigger = (temp: number) => {
-    triggerThermalShock(temp);
-  };
-
-  const modesList: { id: ExperimentMode; name: string }[] = [
-    { id: "free", name: "1. Free Expansion" },
-    { id: "fixed", name: "2. Fixed Endpoints" },
-    { id: "bridge", name: "3. Bridge Joint Expansion" },
-    { id: "railway", name: "4. Railway Buckling" },
-    { id: "bimetallic", name: "5. Bimetallic Strip Bending" },
-    { id: "shock", name: "6. Thermal Shock test" },
-    { id: "cryo", name: "7. Cryogenic Contraction" },
-    { id: "fatigue", name: "8. Cyclic Fatigue Loading" },
-    { id: "space", name: "9. Spacecraft Sunlight Flux" },
-    { id: "precision", name: "10. Precision Engineering" },
+  const tempPresets = [
+    { label: "4.2 K", value: 4.2, desc: "He boiling" },
+    { label: "77 K", value: 77.15, desc: "LN₂" },
+    { label: "193 K", value: 193, desc: "Dry ice" },
+    { label: "273 K", value: 273.15, desc: "Ice point" },
+    { label: "293 K", value: 293.15, desc: "Ambient" },
+    { label: "373 K", value: 373.15, desc: "Steam pt" },
+    { label: "600 K", value: 600, desc: "Hot oven" },
+    { label: "1000 K", value: 1000, desc: "Furnace" },
   ];
 
   return (
-    <div className="bg-[#18181b] p-5 rounded-2xl border border-white/5 flex flex-col gap-5 shrink-0 select-none">
-      
-      {/* 1. Experiment Mode Picker */}
-      <div>
+    <div className="bg-[#18181b] rounded-2xl border border-white/5 flex flex-col gap-0 overflow-hidden shrink-0 select-none">
+
+      {/* ── 1. Experiment Modes ── */}
+      <div className="p-4 border-b border-white/5">
         <div className="flex items-center gap-1.5 mb-2.5">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <h4 className="text-[10px] font-black text-white/50 uppercase tracking-widest">Active Laboratory Experiment</h4>
+          <FlaskConical className="w-3.5 h-3.5 text-cyan-400" />
+          <h4 className="text-[9px] font-black text-white/50 uppercase tracking-widest">Experiment Mode</h4>
         </div>
-        <div className="grid grid-cols-2 gap-1.5 max-h-[170px] overflow-y-auto pr-1 no-scrollbar">
-          {modesList.map((m) => (
+        <div className="grid grid-cols-2 gap-1.5 max-h-[172px] overflow-y-auto no-scrollbar">
+          {experiments.map(e => (
             <button
-              key={m.id}
-              onClick={() => setExperimentMode(m.id)}
+              key={e.id}
+              onClick={() => setExperimentMode(e.id)}
               className={cn(
-                "px-3 py-2 text-left rounded-lg text-[10px] font-bold transition-all border",
-                experimentMode === m.id
-                  ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.1)]"
-                  : "bg-black/20 border-white/5 text-white/60 hover:bg-white/5 hover:text-white"
+                "px-2.5 py-2 text-left rounded-lg transition-all border",
+                experimentMode === e.id
+                  ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.1)]"
+                  : "bg-black/20 border-white/5 text-white/55 hover:bg-white/5 hover:text-white"
               )}
             >
-              {m.name}
+              <div className="text-[9px] font-bold leading-tight">{e.label}</div>
+              <div className="text-[7.5px] text-white/30 mt-0.5 font-mono">{e.description}</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* 2. Thermodynamic Heat Source Controls */}
-      <div className="border-t border-white/5 pt-4">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-[10px] font-black text-white/50 uppercase tracking-widest flex items-center gap-1">
-            <Thermometer className="w-3.5 h-3.5 text-amber-500" />
-            Thermostat Controls
-          </span>
-          <span className="text-xs text-amber-400 font-mono font-black">
-            {targetTemperature.toFixed(0)} K / {(targetTemperature - 273.15).toFixed(0)} °C
-          </span>
+      {/* ── 2. Material Selector ── */}
+      <div className="p-4 border-b border-white/5">
+        <div className="flex items-center gap-1.5 mb-2.5">
+          <Layers className="w-3.5 h-3.5 text-amber-400" />
+          <h4 className="text-[9px] font-black text-white/50 uppercase tracking-widest">
+            {objectType === "bimetallic" ? "Bimetallic Materials" : "Material"}
+          </h4>
         </div>
 
-        {experimentMode === "fatigue" || experimentMode === "space" ? (
-          <div className="bg-black/30 px-3 py-2.5 rounded-xl border border-white/5 text-[10px] text-white/40 leading-relaxed font-mono">
-            {experimentMode === "fatigue" ? (
-              <span className="text-cyan-400/80 animate-pulse">
-                &gt;&gt; Automated cyclic heating oscillator running (100 K &lt;-&gt; 650 K)
-              </span>
-            ) : (
-              <span className="text-amber-400/80 animate-pulse">
-                &gt;&gt; Low Earth Orbit simulation running. Alternating solar radiation flux.
-              </span>
-            )}
+        {objectType === "bimetallic" ? (
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { key: "bimetallicMat1" as const, label: "Top Layer" },
+              { key: "bimetallicMat2" as const, label: "Bot Layer" }
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <div className="text-[8px] text-white/30 mb-1 font-mono">{label}</div>
+                <select
+                  value={key === "bimetallicMat1" ? bimetallicMat1 : bimetallicMat2}
+                  onChange={e => setConfig(key, e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-white focus:outline-none"
+                >
+                  {Object.entries(MATERIAL_DB).map(([id, m]) => (
+                    <option key={id} value={id}>{m.name.split(" ")[0]}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="space-y-3">
-            <input
-              type="range"
-              min={10}
-              max={1500}
-              value={targetTemperature}
-              onChange={(e) => setTargetTemperature(Number(e.target.value))}
-              disabled={isBroken}
-              className="w-full accent-cyan-500"
-            />
-            {/* Quick Heat Burner Presets */}
-            <div className="flex gap-1.5 flex-wrap">
-              {[
-                { label: "Liquid Helium", value: 4.2 },
-                { label: "Liq. Nitrogen", value: 77.15 },
-                { label: "Ice Point", value: 273.15 },
-                { label: "Standard Ref", value: 293.15 },
-                { label: "Boiling Water", value: 373.15 },
-                { label: "High Oven", value: 650 },
-                { label: "Extreme Melt", value: 1200 }
-              ].map(item => (
-                <button
-                  key={item.label}
-                  onClick={() => handleBurnerPreset(item.value)}
-                  disabled={isBroken}
-                  className="bg-black/30 hover:bg-white/5 border border-white/5 text-[9px] px-2 py-1 rounded font-mono text-white/70"
-                >
-                  {item.label}
-                </button>
+          <>
+            <select
+              value={materialId}
+              onChange={e => setMaterialId(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white focus:outline-none"
+            >
+              {Object.entries(MATERIAL_DB).map(([id, m]) => (
+                <option key={id} value={id}>{m.name} — α={( m.alpha0 * 1e6).toFixed(1)}×10⁻⁶/K</option>
               ))}
-            </div>
-          </div>
+            </select>
+            {mat && (
+              <div className="mt-2 flex gap-1.5 flex-wrap">
+                <span className="text-[8px] font-mono bg-black/30 px-2 py-0.5 rounded border border-white/5 text-white/40">
+                  E = {(mat.youngsModulus / 1e9).toFixed(0)} GPa
+                </span>
+                <span className="text-[8px] font-mono bg-black/30 px-2 py-0.5 rounded border border-white/5 text-white/40">
+                  σ_y = {(mat.yieldStrength / 1e6).toFixed(0)} MPa
+                </span>
+                <span className="text-[8px] font-mono bg-black/30 px-2 py-0.5 rounded border border-white/5 text-cyan-400/60">
+                  α = {(alpha * 1e6).toFixed(2)}×10⁻⁶/K
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* 3. Special Heat-Shock Trigger Buttons */}
-      {experimentMode === "shock" && (
-        <div className="border-t border-white/5 pt-4 flex gap-2">
+      {/* ── 3. Temperature Controls ── */}
+      <div className="p-4 border-b border-white/5">
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center gap-1.5">
+            <Thermometer className="w-3.5 h-3.5 text-amber-400" />
+            <h4 className="text-[9px] font-black text-white/50 uppercase tracking-widest">Thermostat</h4>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] font-mono font-black text-amber-400">{targetTemperature.toFixed(0)} K</span>
+            <span className="text-[8px] text-white/30 font-mono ml-1.5">{(targetTemperature - 273.15).toFixed(0)}°C</span>
+          </div>
+        </div>
+
+        {experimentMode === "fatigue" || experimentMode === "spacecraft" ? (
+          <div className="bg-black/30 px-3 py-2.5 rounded-xl border border-white/5 text-[9px] text-white/40 font-mono animate-pulse">
+            {experimentMode === "fatigue"
+              ? "Auto-cycling: 98 K ↔ 648 K (fatigue protocol)"
+              : "Auto-cycling: sunlight (390 K) ↔ shadow (120 K)"}
+          </div>
+        ) : (
+          <>
+            <input
+              type="range"
+              min={5}
+              max={mat ? Math.min(mat.meltingPoint * 0.95, 1800) : 1800}
+              step={1}
+              value={targetTemperature}
+              onChange={e => setTargetTemperature(Number(e.target.value))}
+              disabled={isFailed}
+              className="w-full accent-amber-500 mb-2.5"
+            />
+            <div className="flex gap-1.5 flex-wrap">
+              {tempPresets.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => setTargetTemperature(p.value)}
+                  disabled={isFailed}
+                  className="bg-black/30 hover:bg-white/5 border border-white/5 text-[8px] px-2 py-1 rounded font-mono text-white/60 hover:text-white transition-colors"
+                  title={p.desc}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── 4. Heating Mode ── */}
+      <div className="px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Zap className="w-3 h-3 text-cyan-400/60" />
+          <h4 className="text-[8.5px] font-black text-white/40 uppercase tracking-widest">Heat Diffusion Mode</h4>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[
+            { id: "left" as const, label: "One-end", desc: "∂T/∂t diffusion" },
+            { id: "both" as const, label: "Both ends", desc: "symmetric" },
+            { id: "uniform" as const, label: "Uniform", desc: "instant" },
+          ].map(m => (
+            <button
+              key={m.id}
+              onClick={() => setHeatingMode(m.id)}
+              className={cn(
+                "py-1.5 px-1 rounded-lg text-center border text-[8px] font-bold transition-all",
+                heatingMode === m.id
+                  ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-400"
+                  : "bg-black/20 border-white/5 text-white/40 hover:text-white"
+              )}
+              title={m.desc}
+            >
+              <div>{m.label}</div>
+              <div className="text-[6.5px] font-mono text-white/25 mt-0.5">{m.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 5. Visual Magnification ── */}
+      <div className="px-4 py-3 border-b border-white/5">
+        <div className="flex justify-between items-center mb-1.5">
+          <h4 className="text-[8.5px] font-black text-white/40 uppercase tracking-widest">Visual Magnification</h4>
+          <span className="text-[9px] font-mono font-black text-cyan-400">×{vizSettings.magnification}</span>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {[1, 10, 50, 100, 200, 500].map(m => (
+            <button
+              key={m}
+              onClick={() => { setVizSetting("magnification", m); setVizSetting("autoMagnification", false); }}
+              className={cn(
+                "px-2.5 py-1 rounded-lg text-[8px] font-mono border transition-all",
+                vizSettings.magnification === m && !vizSettings.autoMagnification
+                  ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-400"
+                  : "bg-black/20 border-white/5 text-white/40 hover:text-white"
+              )}
+            >
+              ×{m}
+            </button>
+          ))}
           <button
-            onClick={() => handleShockTrigger(77.15)}
-            className="flex-1 bg-blue-500/10 hover:bg-blue-500/25 border border-blue-500/20 text-blue-400 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
+            onClick={() => setVizSetting("autoMagnification", !vizSettings.autoMagnification)}
+            className={cn(
+              "px-2.5 py-1 rounded-lg text-[8px] font-mono border transition-all",
+              vizSettings.autoMagnification
+                ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
+                : "bg-black/20 border-white/5 text-white/40 hover:text-white"
+            )}
           >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            Liquid Nitrogen Quench (77K)
+            Auto
+          </button>
+        </div>
+        <div className="mt-1.5 text-[7.5px] text-white/25 font-mono">
+          Real ΔL is microscopic — magnification makes it visible
+        </div>
+      </div>
+
+      {/* ── 6. Shock trigger ── */}
+      {experimentMode === "thermal_shock" && (
+        <div className="px-4 py-3 border-b border-white/5 flex gap-2">
+          <button
+            onClick={() => triggerThermalShock(77.15)}
+            className="flex-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" /> LN₂ Quench (77 K)
           </button>
           <button
-            onClick={() => handleShockTrigger(900)}
-            className="flex-1 bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 text-red-400 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
+            onClick={() => triggerThermalShock(1100)}
+            className="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all"
           >
-            <Flame className="w-3.5 h-3.5" />
-            Direct Torch Melt (900K)
+            <Flame className="w-3.5 h-3.5" /> Torch (1100 K)
           </button>
         </div>
       )}
 
-      {/* 4. Playback and Simulator Control Buttons */}
-      <div className="border-t border-white/5 pt-4 flex gap-2">
+      {/* ── 7. Playback Controls ── */}
+      <div className="px-4 py-3 flex gap-2">
         <button
           onClick={() => setConfig("isPlaying", !isPlaying)}
-          className="flex-1 bg-white/10 hover:bg-white/15 border border-white/5 text-white flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-xs transition-colors"
+          className="flex-1 bg-white/8 hover:bg-white/12 border border-white/8 text-white flex items-center justify-center gap-2 py-2 rounded-xl text-[10px] font-bold transition-colors"
         >
           {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          {isPlaying ? "Pause Engine" : "Resume Engine"}
+          {isPlaying ? "Pause" : "Resume"}
         </button>
         <button
           onClick={handleSpeedToggle}
-          className="bg-black/35 hover:bg-white/5 border border-white/5 text-white flex items-center justify-center gap-1.5 px-3.5 rounded-xl font-bold text-[11px] transition-colors"
-          title="Playback SpeedMultiplier"
+          className="bg-black/35 hover:bg-white/5 border border-white/5 text-white flex items-center justify-center gap-1.5 px-3 rounded-xl text-[10px] font-bold transition-colors"
+          title="Simulation speed"
         >
           <FastForward className="w-3.5 h-3.5 text-cyan-400" />
-          {playbackSpeed}x
+          {playbackSpeed}×
         </button>
         <button
           onClick={reset}
-          className="bg-black/35 hover:bg-white/5 border border-white/5 text-white flex items-center justify-center px-3.5 rounded-xl transition-colors"
-          title="Reset Simulation Room"
+          className="bg-black/35 hover:bg-white/5 border border-white/5 text-white flex items-center justify-center px-3 rounded-xl transition-colors"
+          title="Reset"
         >
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
@@ -194,3 +310,7 @@ export const ThermalExpansionControls: React.FC = () => {
     </div>
   );
 };
+
+// Fix: the store uses "isPlaying" but the component was accessing an unused "temperature"
+// Ensure the unused var doesn't cause lint issues
+export type { ExperimentMode };
