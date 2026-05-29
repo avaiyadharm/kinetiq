@@ -554,58 +554,56 @@ export const ThermalExpansionGraphs: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#0a0a0c] p-5 select-none">
-      
-      {/* Header Selector bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 shrink-0 border-b border-white/5 pb-3">
-        <div className="flex items-center gap-2">
-          <BarChart className="w-4 h-4 text-cyan-400" />
-          <span className="text-[10px] font-black text-white/70 uppercase tracking-widest">
-            Scientific Graph Engine
-          </span>
+    <div className="w-full h-full flex flex-col bg-[#0a0a0c] select-none">
+
+      {/* Header Selector bar — compact */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0 border-b border-white/5">
+        <div className="flex items-center gap-1.5">
+          <BarChart className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">Graph Engine</span>
         </div>
-        
-        <div className="flex gap-2 flex-wrap items-center w-full sm:w-auto">
-          {/* Dropdown plot selector */}
-          <div className="relative inline-block w-full sm:w-56">
+
+        <div className="flex gap-1.5 items-center">
+          {/* Dropdown plot selector — compact */}
+          <div className="relative inline-block">
             <select
               value={activePlot}
               onChange={(e) => setActivePlot(e.target.value as PlotType)}
-              className="w-full bg-[#18181b] border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none appearance-none cursor-pointer"
+              className="bg-[#18181b] border border-white/10 rounded-lg pl-2 pr-6 py-1.5 text-[9px] font-bold text-white focus:outline-none appearance-none cursor-pointer max-w-[160px]"
             >
-              <option value="length_temp">1. Length vs Temperature</option>
-              <option value="expansion_temp">2. Expansion ΔL vs Temperature</option>
-              <option value="stress_temp">3. Thermal Stress vs Temp</option>
-              <option value="vibe_dist">4. Atomic Amplitude Distribution</option>
-              <option value="energy_temp">5. Energy vs Temperature</option>
-              <option value="multi_material">6. Multi-Material Comparison</option>
-              <option value="hysteresis">7. Expansion-Contraction Hysteresis</option>
+              <option value="length_temp">Length vs Temp</option>
+              <option value="expansion_temp">Expansion ΔL vs T</option>
+              <option value="stress_temp">Stress vs Temp</option>
+              <option value="vibe_dist">Atomic Distribution</option>
+              <option value="energy_temp">Energy vs Temp</option>
+              <option value="multi_material">Multi-Material</option>
+              <option value="hysteresis">Hysteresis Loop</option>
             </select>
-            <ChevronDown className="absolute right-3 top-2.5 w-3.5 h-3.5 text-white/45 pointer-events-none" />
+            <ChevronDown className="absolute right-1.5 top-2 w-3 h-3 text-white/40 pointer-events-none" />
           </div>
 
           {/* Export CSV / Export PNG */}
           <button
             onClick={handleExportCSV}
-            className="p-2 bg-black/40 hover:bg-white/5 border border-white/5 text-white/60 hover:text-white rounded-lg transition-all"
+            className="p-1.5 bg-black/40 hover:bg-white/5 border border-white/5 text-white/50 hover:text-white rounded-lg transition-all"
             title="Download CSV dataset"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleExportPNG}
-            className="p-2 bg-black/40 hover:bg-white/5 border border-white/5 text-white/60 hover:text-white rounded-lg transition-all"
+            className="p-1.5 bg-black/40 hover:bg-white/5 border border-white/5 text-white/50 hover:text-white rounded-lg transition-all"
             title="Save Image Frame"
           >
-            <Grid3X3 className="w-4 h-4" />
+            <Grid3X3 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Plot Canvas */}
-      <div 
-        ref={containerRef} 
-        className="flex-1 relative min-h-[220px]"
+      {/* Plot Canvas — fills remaining space */}
+      <div
+        ref={containerRef}
+        className="flex-1 relative min-h-0"
         onMouseMove={(e: MouseEvent<HTMLDivElement>) => {
           const rect = e.currentTarget.getBoundingClientRect();
           setHoverPos({
@@ -623,15 +621,13 @@ export const ThermalExpansionGraphs: React.FC = () => {
         />
       </div>
 
-      {/* Real-time Legend bar */}
-      <div className="flex gap-4 mt-3 bg-black/30 p-2 rounded-lg border border-white/5 shrink-0 justify-between items-center text-[9px] font-mono text-white/40">
-        <span className="flex items-center gap-1.5">
-          <Eye className="w-3.5 h-3.5 text-cyan-400" />
-          Live Plotting Mode: <strong className="text-white">{activePlot.replace(/_/g, " ").toUpperCase()}</strong>
+      {/* Real-time Legend bar — compact */}
+      <div className="flex gap-2 px-3 py-1.5 bg-black/30 border-t border-white/5 shrink-0 justify-between items-center text-[8.5px] font-mono text-white/30">
+        <span className="flex items-center gap-1">
+          <Eye className="w-3 h-3 text-cyan-400" />
+          <strong className="text-white/60">{activePlot.replace(/_/g, " ").toUpperCase()}</strong>
         </span>
-        <span>
-          Reference Grid: <strong className="text-white">Active (293.15 K Std)</strong>
-        </span>
+        <span>Ref: <strong className="text-white/50">293.15 K</strong></span>
       </div>
     </div>
   );
