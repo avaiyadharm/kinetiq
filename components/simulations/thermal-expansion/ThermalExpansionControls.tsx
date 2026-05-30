@@ -71,7 +71,10 @@ export const ThermalExpansionControls: React.FC = () => {
       <div className="p-4 border-b border-white/5">
         <div className="flex items-center gap-1.5 mb-2.5">
           <FlaskConical className="w-3.5 h-3.5 text-cyan-400" />
-          <h4 className="text-[9px] font-black text-white/50 uppercase tracking-widest">Experiment Mode</h4>
+          <h4 className="text-[9px] font-black text-white/50 uppercase tracking-widest flex-1">Experiment Mode</h4>
+          <div className="bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[7px] font-black text-emerald-400 uppercase tracking-widest animate-pulse">
+            FEA Engine Active
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-1.5 max-h-[172px] overflow-y-auto no-scrollbar">
           {experiments.map(e => (

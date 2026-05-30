@@ -8,9 +8,14 @@ import {
   ShapeType,
   HeatingMode
 } from "@/lib/physics/thermalExpansion";
+import { PhysicsWorkerManager } from "@/lib/physics/engine/WorkerManager";
 
 // Re-export types for components
 export type { ExperimentMode, ConstraintType, ShapeType, HeatingMode };
+
+// Global Worker Instance
+const physicsWorker = typeof window !== 'undefined' ? new PhysicsWorkerManager() : null;
+
 
 // ============================================================
 // Data Types
@@ -263,11 +268,13 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
 
     setObjectType: (type) => {
       set({ objectType: type, plasticStrain: 0, isFailed: false, crackLocations: [] });
+      physicsWorker?.send({ type: "INIT", payload: { L0: get().L0, materialId: get().materialId, constraint: get().constraint } });
     },
 
     setConstraint: (c) => {
       get().addLog(`Boundary condition → ${c.toUpperCase()}`, "info");
       set({ constraint: c, plasticStrain: 0, isFailed: false, isYielding: false, crackLocations: [] });
+      physicsWorker?.send({ type: "INIT", payload: { L0: get().L0, materialId: get().materialId, constraint: c } });
     },
 
     setExperimentMode: (mode) => {
@@ -413,20 +420,22 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      const newProfile = PhysicsEngine.heatDiffusionMultiStep(
-        s.thermalProfile,
-        mat,
-        s.L0,
-        activeTargetT,
-        s.ambientTemperature,
-        scaledDt,
-        s.heatingMode
-      );
+      // Dispatch heavy computations to the worker
+      if (physicsWorker) {
+        physicsWorker.send({
+          type: "STEP",
+          dt: scaledDt,
+          targetTemp: activeTargetT
+        });
+        
+        // Note: Worker callback at bottom of file will update the zustand store state asynchronously.
+        // The rest of this tick function will run hybridly using the LAST KNOWN state.
+      }
 
-      // ── 3. Derived spatial properties ─────────────────
-      const { totalDeltaL, avgTemp } = PhysicsEngine.spatialExpansion(mat, newProfile, s.L0);
-      const spatialStress = PhysicsEngine.spatialStress(mat, newProfile, s.constraint);
-      const { deltaLPerNode } = PhysicsEngine.spatialExpansion(mat, newProfile, s.L0);
+      // ── 3. Derived spatial properties (Hybrid sync fallback) ──
+      const { totalDeltaL, avgTemp } = PhysicsEngine.spatialExpansion(mat, s.thermalProfile, s.L0);
+      const spatialStress = PhysicsEngine.spatialStress(mat, s.thermalProfile, s.constraint);
+      const { deltaLPerNode } = PhysicsEngine.spatialExpansion(mat, s.thermalProfile, s.L0);
 
       // ── 4. Constraint mechanics at average temperature ─
       const constraintResult = PhysicsEngine.constraintState(
@@ -552,7 +561,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       }
 
       set({
-        thermalProfile: newProfile,
+        thermalProfile: s.thermalProfile,
         avgTemperature: avgTemp,
         realDeltaL: totalDeltaL,
         stressAtConstraint: constraintResult.stress,
@@ -600,9 +609,33 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         spatialStressProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         spatialExpansionProfile: new Array(PhysicsEngine.N_NODES).fill(0),
       });
+      physicsWorker?.send({ type: "INIT", payload: { L0: get().L0, materialId: preset.materialId ?? get().materialId, constraint: preset.constraint ?? get().constraint } });
     },
   };
 });
+
+// Attach store setter to physics worker for direct state injection
+if (physicsWorker) {
+  physicsWorker.send({ type: "INIT", payload: { L0: useThermalExpansionStore.getState().L0, materialId: useThermalExpansionStore.getState().materialId, constraint: useThermalExpansionStore.getState().constraint } });
+  
+  physicsWorker.setCallbacks(
+    (payload) => {
+      // In a real FEA pipeline we decouple the simulation loop completely.
+      // We merge worker results directly into the zustand store to trigger React renders.
+      useThermalExpansionStore.setState({
+        thermalProfile: payload.thermalProfile,
+        spatialExpansionProfile: payload.displacementProfile,
+        spatialStressProfile: payload.stressProfile,
+        avgTemperature: payload.avgTemperature,
+        realDeltaL: payload.realDeltaL,
+        stressAtConstraint: payload.stressAtConstraint
+      });
+    },
+    (msg, level) => {
+      useThermalExpansionStore.getState().addLog(msg, level as any);
+    }
+  );
+}
 
 // Backwards-compatibility alias for components that import MATERIAL_DATABASE
 export { MATERIAL_DB as MATERIAL_DATABASE };
