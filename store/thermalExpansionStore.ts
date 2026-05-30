@@ -224,7 +224,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       showStressColors: true,
       showAtomicLattice: true,
       showHeatFront: true,
-      magnification: 100,
+      magnification: 10,
       autoMagnification: true,
       deformationExaggeration: 1,
     },
@@ -243,7 +243,22 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       const mat = MATERIAL_DB[id];
       if (!mat) return;
       get().addLog(`Material → ${mat.name} | α = ${(mat.alpha0 * 1e6).toFixed(2)} ×10⁻⁶ /K | E = ${(mat.youngsModulus / 1e9).toFixed(0)} GPa`, "info");
-      set({ materialId: id, plasticStrain: 0, isFailed: false, isYielding: false, crackLocations: [] });
+      
+      // Calculate a stable magnification based on maximum expected expansion
+      const maxDT = 1200; // typical max temperature rise
+      const maxDeltaL = Math.max(1e-9, Math.abs(mat.alpha0 * maxDT * get().L0));
+      const stableMag = PhysicsEngine.recommendedMagnification(maxDeltaL, get().L0);
+
+      set(s => ({
+        materialId: id,
+        plasticStrain: 0,
+        isFailed: false,
+        isYielding: false,
+        crackLocations: [],
+        vizSettings: s.vizSettings.autoMagnification
+          ? { ...s.vizSettings, magnification: stableMag }
+          : s.vizSettings
+      }));
     },
 
     setObjectType: (type) => {
@@ -259,7 +274,18 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       const preset = EXPERIMENT_PRESETS[mode];
       const T0 = preset.targetTemperature ?? AMBIENT;
       get().addLog(`Experiment → ${mode.replace(/_/g, " ").toUpperCase()}`, "info");
-      set({
+
+      const nextMatId = preset.materialId ?? get().materialId;
+      const nextL0 = get().L0;
+      const mat = MATERIAL_DB[nextMatId];
+      let stableMag = get().vizSettings.magnification;
+      if (mat) {
+        const maxDT = 1200;
+        const maxDeltaL = Math.max(1e-9, Math.abs(mat.alpha0 * maxDT * nextL0));
+        stableMag = PhysicsEngine.recommendedMagnification(maxDeltaL, nextL0);
+      }
+
+      set(s => ({
         experimentMode: mode,
         ...preset,
         thermalProfile: initThermalProfile(AMBIENT),
@@ -270,7 +296,10 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         fatigueAccumulated: 0,
         cycleCount: 0,
         crackLocations: [],
-      });
+        vizSettings: s.vizSettings.autoMagnification
+          ? { ...s.vizSettings, magnification: stableMag }
+          : s.vizSettings
+      }));
     },
 
     setTargetTemperature: (T) => {
@@ -281,8 +310,35 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       set({ heatingMode: mode });
     },
 
-    setConfig: (key, value) => set({ [key]: value } as any),
-    setVizSetting: (key, value) => set(s => ({ vizSettings: { ...s.vizSettings, [key]: value } })),
+    setConfig: (key, value) => set(s => {
+      const nextState = { ...s, [key]: value };
+      // Recalculate stable magnification if L0 or materialId changes
+      if (key === "L0" || key === "materialId") {
+        const mat = MATERIAL_DB[nextState.materialId];
+        if (mat) {
+          const maxDT = 1200;
+          const maxDeltaL = Math.max(1e-9, Math.abs(mat.alpha0 * maxDT * nextState.L0));
+          const stableMag = PhysicsEngine.recommendedMagnification(maxDeltaL, nextState.L0);
+          nextState.vizSettings = s.vizSettings.autoMagnification
+            ? { ...nextState.vizSettings, magnification: stableMag }
+            : nextState.vizSettings;
+        }
+      }
+      return nextState;
+    }),
+    setVizSetting: (key, value) => set(s => {
+      const nextVizSettings = { ...s.vizSettings, [key]: value };
+      // If autoMagnification was just enabled, calculate the stable magnification
+      if (key === "autoMagnification" && value === true) {
+        const mat = MATERIAL_DB[s.materialId];
+        if (mat) {
+          const maxDT = 1200;
+          const maxDeltaL = Math.max(1e-9, Math.abs(mat.alpha0 * maxDT * s.L0));
+          nextVizSettings.magnification = PhysicsEngine.recommendedMagnification(maxDeltaL, s.L0);
+        }
+      }
+      return { vizSettings: nextVizSettings };
+    }),
     setGraphSetting: (key, value) => set(s => ({ graphSettings: { ...s.graphSettings, [key]: value } })),
 
     addLog: (message, type = "info") => {
@@ -426,10 +482,8 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       }
 
       // ── 9. Auto-magnification ──────────────────────────
-      let newMag = s.vizSettings.magnification;
-      if (s.vizSettings.autoMagnification && Math.abs(totalDeltaL) > 1e-9) {
-        newMag = PhysicsEngine.recommendedMagnification(totalDeltaL, s.L0);
-      }
+      // Magnification is calculated statically when material or length changes
+      // to ensure visual expansion is smooth and directly proportional to the physics equations.
 
       // ── 10. Failure check ──────────────────────────────
       let failed: boolean = s.isFailed;
@@ -450,7 +504,25 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       // ── 11. History recording ──────────────────────────
       const nextTime = s.time + scaledDt;
       const lastPt = s.history[s.history.length - 1];
-      const needsRecord = !lastPt || (nextTime - lastPt.time) >= (1 / 30);
+
+      let needsRecord = false;
+      if (!lastPt) {
+        needsRecord = true;
+      } else {
+        const timeElapsed = nextTime - lastPt.time;
+        // Record at 30 Hz only if there is a meaningful change in physical variables
+        const tempChanged = Math.abs(avgTemp - lastPt.avgTemp) > 0.15; // > 0.15 K change
+        const stressChanged = Math.abs(constraintResult.stress - lastPt.stress) > 1e5; // > 0.1 MPa change
+        const cycleChanged = newCycleCount !== lastPt.cycleCount;
+        const curvatureChanged = Math.abs(biCurvature - lastPt.curvature) > 1e-6;
+
+        if (tempChanged || stressChanged || cycleChanged || curvatureChanged) {
+          needsRecord = timeElapsed >= (1 / 30);
+        } else {
+          // If the state is steady, record very sparsely (every 3 seconds) to keep the heartbeat but avoid buffer flooding
+          needsRecord = timeElapsed >= 3.0;
+        }
+      }
 
       let newHistory = s.history;
       if (needsRecord) {
@@ -499,9 +571,6 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         spatialExpansionProfile: deltaLPerNode,
         history: newHistory,
         time: nextTime,
-        vizSettings: s.vizSettings.autoMagnification
-          ? { ...s.vizSettings, magnification: newMag }
-          : s.vizSettings,
       });
     },
 

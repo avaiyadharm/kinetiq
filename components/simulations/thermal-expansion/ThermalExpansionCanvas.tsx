@@ -170,12 +170,12 @@ export const ThermalExpansionCanvas: React.FC = () => {
   const drawRod = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     const mag = vizSettings.magnification;
     const visualDeltaL_frac = (realDeltaL * mag) / L0;
-    const centerY = H * 0.5;
+    const centerY = H * 0.36;
     const rodH = Math.min(48, H * 0.1);
 
-    const baseW = W * 0.55;
+    const baseW = W * 0.50;
     const visualW = baseW * (1 + visualDeltaL_frac);
-    const rodX = (W - visualW) / 2;
+    const rodX = W * 0.15;
     const rodY = centerY - rodH / 2;
 
     const N = thermalProfile.length;
@@ -238,7 +238,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const mag = vizSettings.magnification;
     const visualDeltaL_frac = (realDeltaL * mag) / L0;
     const deckH = 20;
-    const deckY = H * 0.44;
+    const deckY = H * 0.36;
     const deckX = W * 0.1;
     const baseW = W * 0.78;
     const deckW = baseW * (1 + visualDeltaL_frac);
@@ -306,7 +306,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
 
   // ── DRAW: RAILWAY ──────────────────────────────────────────
   const drawRailway = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
-    const railY = H * 0.44;
+    const railY = H * 0.36;
     const railX = W * 0.07;
     const railLen = W * 0.86;
     const trackSep = 22;
@@ -371,7 +371,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const stripX = W * 0.12;
     const stripLen = W * 0.65;
     const layerH = 14;
-    const anchorY = H * 0.48;
+    const anchorY = H * 0.38;
     const steps = 80;
 
     const κ = bimetallicCurvature * 0.5 * vizSettings.deformationExaggeration;
@@ -690,9 +690,9 @@ export const ThermalExpansionCanvas: React.FC = () => {
   // Physically correct: shows anharmonic asymmetry — atoms spend more
   // time on the "far" side of the potential well at high T
   const drawAtomicLattice = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
-    const cx = W - 90;
-    const cy = H - 95;
-    const radius = 78;
+    const cx = W - 75;
+    const cy = H - 75;
+    const radius = 65;
 
     // Background circle
     ctx.fillStyle = "#0c0c10";
