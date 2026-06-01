@@ -1048,7 +1048,81 @@ export class PhysicsEngine {
 
     return warnings;
   }
-}
+
+  // ----------------------------------------------------------
+  // 20. Heat Flux Profile  q(x) = -k · dT/dx   [W/m²]
+  // Central difference on interior nodes; forward/backward at ends.
+  // Positive = heat flowing in +x direction (left→right).
+  // ----------------------------------------------------------
+  static heatFluxProfile(T_nodes: number[], mat: MaterialProperties, L0: number): number[] {
+    const N = T_nodes.length;
+    const dx = L0 / (N - 1);
+    const k = mat.thermalConductivity;
+    const q = new Array<number>(N);
+
+    // Forward difference at left boundary
+    q[0] = -k * (T_nodes[1] - T_nodes[0]) / dx;
+    // Central difference on interior
+    for (let i = 1; i < N - 1; i++) {
+      q[i] = -k * (T_nodes[i + 1] - T_nodes[i - 1]) / (2 * dx);
+    }
+    // Backward difference at right boundary
+    q[N - 1] = -k * (T_nodes[N - 1] - T_nodes[N - 2]) / dx;
+
+    return q;
+  }
+
+  // ----------------------------------------------------------
+  // 21. Node Displacement Profile  u(x)  [m]
+  // Computes the cumulative axial displacement at each node
+  // due to local thermal strain, respecting boundary conditions.
+  //
+  // Free / partial / spring → left node (i=0) is the reference wall.
+  //   u_0 = 0, u_i = Σ_{j=0}^{i-1} α(T_j)·(T_j − T_ref)·Δx
+  //
+  // Fixed → both ends are pinned; distribute rigid-body correction:
+  //   u_i_free first, then subtract linear ramp so u_0 = u_{N-1} = 0
+  // ----------------------------------------------------------
+  static nodeDisplacementProfile(
+    T_nodes: number[],
+    mat: MaterialProperties,
+    L0: number,
+    constraint: "free" | "fixed" | "partial" | "spring"
+  ): number[] {
+    const N = T_nodes.length;
+    const dx = L0 / (N - 1);
+    const u = new Array<number>(N).fill(0);
+
+    // Build free-expansion cumulative displacement from left wall
+    for (let i = 1; i < N; i++) {
+      const localStrain = this.alpha(mat, T_nodes[i - 1]) * (T_nodes[i - 1] - this.T_REF);
+      u[i] = u[i - 1] + localStrain * dx;
+    }
+
+    if (constraint === "fixed") {
+      // Both ends pinned: subtract linear correction so u[0]=0, u[N-1]=0
+      const rightDisp = u[N - 1];
+      for (let i = 0; i < N; i++) {
+        u[i] -= (i / (N - 1)) * rightDisp;
+      }
+    }
+    // For free/partial/spring: u[0]=0 already (left wall fixed), right is free
+
+    return u;
+  }
+
+  // ----------------------------------------------------------
+  // 22. Expansion Velocity  v = d(ΔL)/dt  [m/s]
+  // Computed from two successive total expansion values.
+  // ----------------------------------------------------------
+  static expansionVelocity(deltaL1: number, deltaL2: number, dt: number): number {
+    if (dt < 1e-12) return 0;
+    return (deltaL2 - deltaL1) / dt;
+  }
+
+
+
+} // end class PhysicsEngine
 
 // ============================================================
 // TYPE EXPORTS

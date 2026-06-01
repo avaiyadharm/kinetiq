@@ -32,6 +32,8 @@ export interface HistoryPoint {
   curvature: number;      // 1/m
   damage: number;         // 0–1
   cycleCount: number;
+  heatFlux: number;       // W/m² — average |q| across rod
+  expansionVelocity: number; // m/s — d(ΔL)/dt
 }
 
 export interface LogEntry {
@@ -111,6 +113,9 @@ interface ThermalExpansionState {
   // Spatial profiles
   spatialStressProfile: number[];   // Pa, one per node
   spatialExpansionProfile: number[]; // m, per-node expansion
+  heatFluxProfile: number[];        // W/m², q(x) at each node
+  nodeDisplacementProfile: number[]; // m, cumulative u(x) per node
+  expansionVelocity: number;        // m/s, d(ΔL)/dt
 
   // History
   history: HistoryPoint[];
@@ -219,6 +224,9 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
 
     spatialStressProfile: new Array(N).fill(0),
     spatialExpansionProfile: new Array(N).fill(0),
+    heatFluxProfile: new Array(N).fill(0),
+    nodeDisplacementProfile: new Array(N).fill(0),
+    expansionVelocity: 0,
 
     history: [],
     logs: [{ timestamp: Date.now(), message: "Thermal Expansion Laboratory initialized. Physics engine ready.", type: "info" as const }],
@@ -420,29 +428,36 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      // Dispatch heavy computations to the worker
-      if (physicsWorker) {
-        physicsWorker.send({
-          type: "STEP",
-          dt: scaledDt,
-          targetTemp: activeTargetT
-        });
-        
-        // Note: Worker callback at bottom of file will update the zustand store state asynchronously.
-        // The rest of this tick function will run hybridly using the LAST KNOWN state.
-      }
+      // ── 3. EVOLVE THERMAL PROFILE via heat diffusion ──────
+      const newProfile = PhysicsEngine.heatDiffusionMultiStep(
+        s.thermalProfile,
+        mat,
+        s.L0,
+        activeTargetT,
+        s.ambientTemperature,
+        scaledDt,
+        s.heatingMode
+      );
 
-      // ── 3. Derived spatial properties (Hybrid sync fallback) ──
-      const { totalDeltaL, avgTemp } = PhysicsEngine.spatialExpansion(mat, s.thermalProfile, s.L0);
-      const spatialStress = PhysicsEngine.spatialStress(mat, s.thermalProfile, s.constraint);
-      const { deltaLPerNode } = PhysicsEngine.spatialExpansion(mat, s.thermalProfile, s.L0);
+      // ── 4. Derived spatial properties from EVOLVED profile ──
+      const { totalDeltaL, avgTemp, deltaLPerNode } = PhysicsEngine.spatialExpansion(mat, newProfile, s.L0);
+      const spatialStress = PhysicsEngine.spatialStress(mat, newProfile, s.constraint);
+      const heatFlux = PhysicsEngine.heatFluxProfile(newProfile, mat, s.L0);
+      const nodeDisp = PhysicsEngine.nodeDisplacementProfile(newProfile, mat, s.L0, s.constraint);
+      const avgHeatFlux = heatFlux.reduce((a, b) => a + Math.abs(b), 0) / heatFlux.length;
 
-      // ── 4. Constraint mechanics at average temperature ─
+      // Expansion velocity from last two history points
+      const lastPtForVel = s.history[s.history.length - 1];
+      const expVelocity = lastPtForVel
+        ? PhysicsEngine.expansionVelocity(lastPtForVel.deltaL, totalDeltaL, scaledDt)
+        : 0;
+
+      // ── 5. Constraint mechanics at average temperature ─
       const constraintResult = PhysicsEngine.constraintState(
         mat, s.L0, avgTemp, s.constraint, s.gapSize, 100e6, s.plasticStrain
       );
 
-      // ── 5. Plastic strain accumulation ─────────────────
+      // ── 6. Plastic strain accumulation ─────────────────
       let newPlasticStrain = s.plasticStrain;
       const σ_y = PhysicsEngine.yieldStrength(mat, avgTemp);
       if (constraintResult.isYielding && !s.isFailed) {
@@ -450,7 +465,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         newPlasticStrain += (excess / (mat.youngsModulus * 1e-6)) * scaledDt;
       }
 
-      // ── 6. Fatigue damage accumulation ─────────────────
+      // ── 7. Fatigue damage accumulation ─────────────────
       let newFatigue = s.fatigueAccumulated;
       if (s.experimentMode === "fatigue" && newCycleCount > s.cycleCount) {
         const { damagePerCycle } = PhysicsEngine.fatigueDamagePerCycle(mat, 373 - 275, 373 + 275);
@@ -467,6 +482,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
+      // ── 8. Buckling check ───────────────────────────────
       const bucklingResult = PhysicsEngine.bucklingCriticalLoad(
         mat, avgTemp, s.L0, s.crossSectionalArea, s.constraint, s.gapSize, "circular", s.diameter
       );
@@ -477,7 +493,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         );
       }
 
-      // ── 8. Bimetallic calculations ─────────────────────
+      // ── 9. Bimetallic calculations ─────────────────────
       let biCurvature = 0;
       let biDeflection = 0;
       if (s.objectType === "bimetallic" || s.experimentMode === "bimetallic" || s.experimentMode === "spacecraft") {
@@ -490,11 +506,17 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      // ── 9. Auto-magnification ──────────────────────────
-      // Magnification is calculated statically when material or length changes
-      // to ensure visual expansion is smooth and directly proportional to the physics equations.
+      // ── 10. High-temperature warnings (debounced: once per 2 seconds) ──
+      const warnings = PhysicsEngine.highTempWarnings(mat, avgTemp);
+      if (warnings.length > 0) {
+        const nextTime = s.time + scaledDt;
+        const crossedBoundary = Math.floor(s.time / 2.0) < Math.floor(nextTime / 2.0);
+        if (crossedBoundary) {
+          warnings.forEach(w => get().addLog(w, "warning"));
+        }
+      }
 
-      // ── 10. Failure check ──────────────────────────────
+      // ── 11. Failure check ──────────────────────────────
       let failed: boolean = s.isFailed;
       if (constraintResult.isFailed && !failed) {
         get().addLog(
@@ -510,7 +532,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         set({ isFailed: true, crackLocations: cracks });
       }
 
-      // ── 11. History recording ──────────────────────────
+      // ── 12. History recording ──────────────────────────
       const nextTime = s.time + scaledDt;
       const lastPt = s.history[s.history.length - 1];
 
@@ -519,16 +541,14 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         needsRecord = true;
       } else {
         const timeElapsed = nextTime - lastPt.time;
-        // Record at 30 Hz only if there is a meaningful change in physical variables
-        const tempChanged = Math.abs(avgTemp - lastPt.avgTemp) > 0.15; // > 0.15 K change
-        const stressChanged = Math.abs(constraintResult.stress - lastPt.stress) > 1e5; // > 0.1 MPa change
+        const tempChanged = Math.abs(avgTemp - lastPt.avgTemp) > 0.15;
+        const stressChanged = Math.abs(constraintResult.stress - lastPt.stress) > 1e5;
         const cycleChanged = newCycleCount !== lastPt.cycleCount;
         const curvatureChanged = Math.abs(biCurvature - lastPt.curvature) > 1e-6;
 
         if (tempChanged || stressChanged || cycleChanged || curvatureChanged) {
           needsRecord = timeElapsed >= (1 / 30);
         } else {
-          // If the state is steady, record very sparsely (every 3 seconds) to keep the heartbeat but avoid buffer flooding
           needsRecord = timeElapsed >= 3.0;
         }
       }
@@ -548,11 +568,13 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
           curvature: biCurvature,
           damage: newFatigue,
           cycleCount: newCycleCount,
+          heatFlux: avgHeatFlux,
+          expansionVelocity: expVelocity,
         };
         newHistory = [...s.history, pt].slice(-1500);
       }
 
-      // ── 12. Yield warning log ──────────────────────────
+      // ── 13. Yield warning log ──────────────────────────
       if (constraintResult.isYielding && !s.isYielding) {
         get().addLog(
           `YIELD: σ = ${(constraintResult.stress / 1e6).toFixed(0)} MPa > σ_y = ${(σ_y / 1e6).toFixed(0)} MPa at T = ${avgTemp.toFixed(0)} K`,
@@ -561,7 +583,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       }
 
       set({
-        thermalProfile: s.thermalProfile,
+        thermalProfile: newProfile,
         avgTemperature: avgTemp,
         realDeltaL: totalDeltaL,
         stressAtConstraint: constraintResult.stress,
@@ -578,6 +600,9 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         plasticStrain: newPlasticStrain,
         spatialStressProfile: spatialStress,
         spatialExpansionProfile: deltaLPerNode,
+        heatFluxProfile: heatFlux,
+        nodeDisplacementProfile: nodeDisp,
+        expansionVelocity: expVelocity,
         history: newHistory,
         time: nextTime,
       });
@@ -606,6 +631,9 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         stressAtConstraint: 0,
         mechanicalStrain: 0,
         factorOfSafety: 999,
+        expansionVelocity: 0,
+        heatFluxProfile: new Array(PhysicsEngine.N_NODES).fill(0),
+        nodeDisplacementProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         spatialStressProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         spatialExpansionProfile: new Array(PhysicsEngine.N_NODES).fill(0),
       });

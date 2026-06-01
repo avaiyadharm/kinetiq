@@ -145,21 +145,40 @@ export const ThermalExpansionGraphs: React.FC = () => {
     ctx.restore();
   }, [history, activePlot, materialId, thermalProfile, bucklingCriticalLoad, hoverPos]);
 
-  // ── PLOT: Length vs Temperature ────────────────────────────
+  // ── PLOT: Length vs Temperature ───────────────────────────────
   const drawLengthVsTemp = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
     if (!mat || history.length < 2) { drawNoData(ctx, ml, mt, gW, gH); return; }
 
     const allT = history.map(p => p.avgTemp);
-    const allL = history.map(p => L0 + p.deltaL);
+    // Show ΔL in mm for readability (real values are micrometers to millimeters)
+    const allDL = history.map(p => p.deltaL * 1000); // convert m -> mm
     const xMin = Math.min(...allT) - 5;
     const xMax = Math.max(...allT) + 5;
-    const yMin = Math.min(...allL) - 0.0001;
-    const yMax = Math.max(...allL) + 0.0001;
+    // Guard against degenerate scale (all-same values)
+    const rawMin = Math.min(...allDL);
+    const rawMax = Math.max(...allDL);
+    const yRange = Math.max(0.0001, rawMax - rawMin); // at least 0.0001 mm range
+    const yMin = rawMin - yRange * 0.15;
+    const yMax = rawMax + yRange * 0.15;
 
     const toX = (t: number) => ml + ((t - xMin) / (xMax - xMin)) * gW;
-    const toY = (l: number) => mt + gH - ((l - yMin) / (yMax - yMin)) * gH;
+    const toY = (dl: number) => mt + gH - ((dl - yMin) / (yMax - yMin)) * gH;
 
-    // Ideal theoretical line
+    // Zero line (ΔL = 0)
+    const zeroY = toY(0);
+    if (zeroY >= mt && zeroY <= mt + gH) {
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(ml, zeroY); ctx.lineTo(ml + gW, zeroY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.font = "7px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("ΔL = 0", ml + 3, zeroY - 3);
+    }
+
+    // Ideal theoretical line (ΔL = ∫α(T) dT · L₀)
     if (graphSettings.overlayIdeal) {
       ctx.strokeStyle = "rgba(16,185,129,0.3)";
       ctx.lineWidth = 1.5;
@@ -167,8 +186,8 @@ export const ThermalExpansionGraphs: React.FC = () => {
       ctx.beginPath();
       for (let i = 0; i <= 60; i++) {
         const T = xMin + (i / 60) * (xMax - xMin);
-        const L = PhysicsEngine.rodLength(mat, L0, T);
-        const px = toX(T), py = toY(L);
+        const dL_mm = PhysicsEngine.deltaL(mat, L0, T) * 1000;
+        const px = toX(T), py = toY(dL_mm);
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.stroke();
@@ -181,16 +200,25 @@ export const ThermalExpansionGraphs: React.FC = () => {
     ctx.lineWidth = 2.5;
     ctx.lineJoin = "round";
     history.forEach((p, i) => {
-      const px = toX(p.avgTemp), py = toY(L0 + p.deltaL);
+      const px = toX(p.avgTemp), py = toY(p.deltaL * 1000);
       if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     });
     ctx.stroke();
 
-    // Live dot
-    drawLiveDot(ctx, toX(history.at(-1)!.avgTemp), toY(L0 + history.at(-1)!.deltaL), "#06b6d4");
+    // Live dot + readout
+    const last = history.at(-1)!;
+    drawLiveDot(ctx, toX(last.avgTemp), toY(last.deltaL * 1000), "#06b6d4");
+
+    // Live formula readout inside graph
+    const alpha_live = PhysicsEngine.alpha(mat, last.avgTemp);
+    const formula_dL = alpha_live * (last.avgTemp - PhysicsEngine.T_REF) * L0 * 1000;
+    ctx.fillStyle = "rgba(6,182,212,0.7)";
+    ctx.font = "7px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(`α(T)·L₀·ΔT = ${formula_dL >= 0 ? "+" : ""}${formula_dL.toFixed(3)} mm`, ml + 4, mt + 10);
 
     drawAxes(ctx, ml, mt, gW, gH, W, H, xMin, xMax, yMin, yMax,
-      "Temperature T (K)", "Length L (m)", 4, v => v.toFixed(4));
+      "Temperature T (K)", "ΔL (mm)", 4, v => v.toFixed(3));
   };
 
   // ── PLOT: Stress vs Temperature ────────────────────────────
@@ -267,49 +295,75 @@ export const ThermalExpansionGraphs: React.FC = () => {
       "Temperature T (K)", "Thermal Stress σ (MPa)", 4, v => v.toFixed(0));
   };
 
-  // ── PLOT: Spatial Temperature Profile ──────────────────────
+  // ── PLOT: Spatial Temperature Profile ───────────────────────
   const drawSpatialTemp = (ctx: CanvasRenderingContext2D, ml: number, mt: number, gW: number, gH: number, W: number, H: number) => {
     const N = thermalProfile.length;
     const allT = thermalProfile;
-    const yMin = Math.min(...allT) - 5;
-    const yMax = Math.max(...allT) + 20;
+    const rawMin = Math.min(...allT);
+    const rawMax = Math.max(...allT);
+    const yRange = Math.max(1, rawMax - rawMin); // at least 1 K range
+    const yMin = rawMin - yRange * 0.08;
+    const yMax = rawMax + yRange * 0.08 + 20;
 
     const toX = (i: number) => ml + (i / (N - 1)) * gW;
     const toY = (T: number) => mt + gH - ((T - yMin) / (yMax - yMin)) * gH;
 
-    // Filled area under curve
+    // Filled area with temperature-color gradient (left=hot, right=cold or uniform)
     ctx.beginPath();
     ctx.moveTo(toX(0), mt + gH);
     thermalProfile.forEach((T, i) => ctx.lineTo(toX(i), toY(T)));
     ctx.lineTo(toX(N - 1), mt + gH);
     ctx.closePath();
+    // Use a horizontal gradient that maps thermalColor
     const grad = ctx.createLinearGradient(ml, 0, ml + gW, 0);
-    grad.addColorStop(0, "rgba(251,146,60,0.3)");
-    grad.addColorStop(1, "rgba(6,182,212,0.1)");
+    grad.addColorStop(0, `rgba(251,146,60,0.35)`);
+    grad.addColorStop(0.5, `rgba(234,179,8,0.2)`);
+    grad.addColorStop(1, `rgba(6,182,212,0.1)`);
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Curve
-    ctx.beginPath();
-    ctx.strokeStyle = "#eab308";
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = "round";
-    thermalProfile.forEach((T, i) => {
-      if (i === 0) ctx.moveTo(toX(i), toY(T)); else ctx.lineTo(toX(i), toY(T));
-    });
-    ctx.stroke();
+    // Curve colored by temperature
+    for (let i = 0; i < N - 1; i++) {
+      const T_seg = (thermalProfile[i] + thermalProfile[i + 1]) / 2;
+      ctx.beginPath();
+      ctx.strokeStyle = (() => {
+        // Map temperature to a readable color
+        const t = Math.max(0, Math.min(1, (T_seg - 77) / (1500 - 77)));
+        if (t < 0.35) return `rgba(6,182,212,${0.7 + t})`;
+        if (t < 0.6) return `rgba(234,179,8,0.9)`;
+        return `rgba(249,115,22,0.9)`;
+      })();
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round";
+      ctx.moveTo(toX(i), toY(thermalProfile[i]));
+      ctx.lineTo(toX(i + 1), toY(thermalProfile[i + 1]));
+      ctx.stroke();
+    }
 
-    // Ambient reference
+    // Ambient reference line
     const ambY = toY(293.15);
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.setLineDash([4, 3]);
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(ml, ambY); ctx.lineTo(ml + gW, ambY); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(255,255,255,0.3)";
-    ctx.font = "7px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("T_ambient", ml + 4, ambY - 4);
+    if (ambY >= mt && ambY <= mt + gH) {
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ml, ambY); ctx.lineTo(ml + gW, ambY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.3)";
+      ctx.font = "7px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("T_ambient = 293 K", ml + 4, ambY - 4);
+    }
+
+    // Target temperature line
+    const tgt = thermalProfile[0];
+    const tgtY = toY(tgt);
+    if (tgtY >= mt && tgtY <= mt + gH) {
+      ctx.strokeStyle = "rgba(249,115,22,0.4)";
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ml, tgtY); ctx.lineTo(ml + gW, tgtY); ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     drawAxes(ctx, ml, mt, gW, gH, W, H, 0, 1, yMin, yMax,
       "Position x/L₀", "Temperature T (K)", 4, v => v.toFixed(0),
