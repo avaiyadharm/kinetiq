@@ -18,7 +18,8 @@ type PlotType =
   | "curvature_vs_temp"
   | "damage_vs_cycle"
   | "shock_gradient"
-  | "multi_material";
+  | "multi_material"
+  | "energy_conservation";
 
 interface PlotConfig {
   title: string;
@@ -36,6 +37,7 @@ const PLOT_CONFIGS: Record<PlotType, PlotConfig> = {
   damage_vs_cycle:   { title: "Fatigue Damage vs Cycle Count",  xLabel: "Cycles",    yLabel: "Damage D",      color: "#f43f5e" },
   shock_gradient:    { title: "Spatial Temperature (Shock)",    xLabel: "x/L₀",      yLabel: "T (K)",         color: "#fb923c" },
   multi_material:    { title: "Multi-Material Expansion",       xLabel: "T (K)",     yLabel: "ε_th (%)",      color: "#ffffff" },
+  energy_conservation: { title: "Thermodynamic Energy Balance", xLabel: "Time (s)", yLabel: "Energy (J)",      color: "#10b981" },
 };
 
 // Default graph per experiment mode
@@ -140,6 +142,7 @@ export const ThermalExpansionGraphs: React.FC = () => {
       case "damage_vs_cycle":   drawDamageVsCycle(ctx, ml, mt, gW, gH, W, H); break;
       case "shock_gradient":    drawSpatialTemp(ctx, ml, mt, gW, gH, W, H); break;
       case "multi_material":    drawMultiMaterial(ctx, ml, mt, gW, gH, W, H); break;
+      case "energy_conservation": drawEnergyConservation(ctx, ml, mt, gW, gH, W, H); break;
     }
 
     ctx.restore();
@@ -570,6 +573,89 @@ export const ThermalExpansionGraphs: React.FC = () => {
       "Temperature T (K)", "Thermal Strain ε_th", 4, v => (v * 100).toFixed(2) + "%");
   };
 
+  // ── PLOT: Energy Conservation ──────────────────────────────
+  const drawEnergyConservation = (
+    ctx: CanvasRenderingContext2D,
+    ml: number, mt: number, gW: number, gH: number, W: number, H: number
+  ) => {
+    if (history.length < 2) { drawNoData(ctx, ml, mt, gW, gH); return; }
+
+    const allTime = history.map(p => p.time);
+    const allInternal = history.map(p => p.energy);
+    const allNet = history.map(p => p.energyInput - p.energyLoss);
+    const allResidual = history.map(p => p.energy - (p.energyInput - p.energyLoss));
+
+    const xMin = Math.min(...allTime);
+    const xMax = Math.max(...allTime);
+    
+    const minVal = Math.min(...allInternal, ...allNet, ...allResidual, 0);
+    const maxVal = Math.max(...allInternal, ...allNet, ...allResidual, 10);
+    const yRange = Math.max(10, maxVal - minVal);
+    const yMin = minVal - yRange * 0.1;
+    const yMax = maxVal + yRange * 0.1;
+
+    const toX = (t: number) => ml + ((t - xMin) / (xMax - xMin)) * gW;
+    const toY = (e: number) => mt + gH - ((e - yMin) / (yMax - yMin)) * gH;
+
+    // 1. Net Input Energy (Q_in - Q_lost) - Blue dotted
+    ctx.beginPath();
+    ctx.strokeStyle = "#3b82f6";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    history.forEach((p, i) => {
+      const px = toX(p.time), py = toY(p.energyInput - p.energyLoss);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 2. Internal Thermal Energy (E_thermal) - Green solid
+    ctx.beginPath();
+    ctx.strokeStyle = "#10b981";
+    ctx.lineWidth = 2.5;
+    history.forEach((p, i) => {
+      const px = toX(p.time), py = toY(p.energy);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    // 3. Energy Residual - Cyan thin
+    ctx.beginPath();
+    ctx.strokeStyle = "#06b6d4";
+    ctx.lineWidth = 1;
+    history.forEach((p, i) => {
+      const px = toX(p.time), py = toY(p.energy - (p.energyInput - p.energyLoss));
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    const last = history.at(-1)!;
+    drawLiveDot(ctx, toX(last.time), toY(last.energy), "#10b981");
+    drawLiveDot(ctx, toX(last.time), toY(last.energyInput - last.energyLoss), "#3b82f6");
+    drawLiveDot(ctx, toX(last.time), toY(last.energy - (last.energyInput - last.energyLoss)), "#06b6d4");
+
+    ctx.font = "7.5px monospace";
+    ctx.textAlign = "left";
+    
+    ctx.fillStyle = "#10b981";
+    ctx.fillRect(ml + 15, mt + 12, 10, 6);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillText(`Internal Energy E_th = ${last.energy.toFixed(0)} J`, ml + 30, mt + 17);
+
+    ctx.fillStyle = "#3b82f6";
+    ctx.fillRect(ml + 15, mt + 24, 10, 6);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillText(`Net Heat Supplied Q_net = ${(last.energyInput - last.energyLoss).toFixed(0)} J`, ml + 30, mt + 29);
+
+    ctx.fillStyle = "#06b6d4";
+    ctx.fillRect(ml + 15, mt + 36, 10, 6);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillText(`First Law Residual = ${(last.energy - (last.energyInput - last.energyLoss)).toExponential(1)} J`, ml + 30, mt + 41);
+
+    drawAxes(ctx, ml, mt, gW, gH, W, H, xMin, xMax, yMin, yMax,
+      "Time (s)", "Energy (J)", 4, v => v.toFixed(0));
+  };
+
   // ── HELPERS ────────────────────────────────────────────────
   const drawLiveDot = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     if (!isFinite(x) || !isFinite(y)) return;
@@ -686,6 +772,7 @@ export const ThermalExpansionGraphs: React.FC = () => {
               <option value="curvature_vs_temp">Curvature vs Temp</option>
               <option value="damage_vs_cycle">Fatigue Damage</option>
               <option value="multi_material">Multi-Material ε</option>
+              <option value="energy_conservation">Energy Balance</option>
             </select>
             <ChevronDown className="absolute right-1.5 top-2 w-3 h-3 text-white/40 pointer-events-none" />
           </div>

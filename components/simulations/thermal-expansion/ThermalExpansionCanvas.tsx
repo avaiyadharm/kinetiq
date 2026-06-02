@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect } from "react";
 import { useThermalExpansionStore } from "@/store/thermalExpansionStore";
 import { MATERIAL_DB, PhysicsEngine } from "@/lib/physics/thermalExpansion";
 
@@ -12,34 +12,28 @@ import { MATERIAL_DB, PhysicsEngine } from "@/lib/physics/thermalExpansion";
 // Cold (≈77K) = deep blue, Ambient (293K) = neutral grey-blue,
 // Warm (600K) = orange, Hot (1000K) = red-white
 function thermalColor(T: number, alpha = 1): string {
-  // Normalize 0–1 across 77K–1500K
   const t = Math.max(0, Math.min(1, (T - 77) / (1500 - 77)));
   let r = 0, g = 0, b = 0;
   if (t < 0.15) {
-    // Cryogenic: dark navy → blue
     r = 0;
     g = Math.floor(t / 0.15 * 30);
     b = Math.floor(80 + t / 0.15 * 175);
   } else if (t < 0.35) {
-    // Ambient: blue → grey-blue
     const x = (t - 0.15) / 0.20;
     r = Math.floor(x * 60);
     g = Math.floor(30 + x * 80);
     b = Math.floor(255 - x * 90);
   } else if (t < 0.55) {
-    // Warm: grey-blue → amber
     const x = (t - 0.35) / 0.20;
     r = Math.floor(60 + x * 195);
     g = Math.floor(110 + x * 80);
     b = Math.floor(165 - x * 165);
   } else if (t < 0.75) {
-    // Hot: amber → orange-red
     const x = (t - 0.55) / 0.20;
     r = 255;
     g = Math.floor(190 - x * 140);
     b = 0;
   } else {
-    // Incandescent: red → white
     const x = (t - 0.75) / 0.25;
     r = 255;
     g = Math.floor(50 + x * 205);
@@ -48,15 +42,13 @@ function thermalColor(T: number, alpha = 1): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// Stress color: blue (compressive) → grey (zero) → red (tension/yield)
+// Stress color: blue (compressive) → grey (zero) → red (tensile/yield)
 function stressColor(stress: number, yieldStrength: number, alpha = 0.5): string {
   const ratio = Math.max(-1, Math.min(1, stress / Math.max(yieldStrength, 1)));
   if (ratio < 0) {
-    // Compressive → blue gradient
     const x = -ratio;
     return `rgba(${Math.floor(20 + x * 20)}, ${Math.floor(60 + x * 30)}, ${Math.floor(150 + x * 105)}, ${alpha})`;
   } else {
-    // Tensile → red gradient
     return `rgba(${Math.floor(150 + ratio * 105)}, ${Math.floor(60 - ratio * 50)}, ${Math.floor(20 - ratio * 10)}, ${alpha})`;
   }
 }
@@ -83,18 +75,30 @@ export const ThermalExpansionCanvas: React.FC = () => {
     isFailed,
     crackLocations,
     willBuckle,
+    bucklingLoad,
+    bucklingCriticalLoad,
     bimetallicCurvature,
     bimetallicDeflection,
     L0,
+    thickness,
+    diameter,
+    crossSectionalArea,
     vizSettings,
     spatialStressProfile,
     nodeDisplacementProfile,
     time,
+    
+    // 2D fields
+    thermalProfile2D,
+    nodeDisplacement2D,
+    elementStress2D,
+    nodePositions2D,
+    elementNodeIds2D,
   } = useThermalExpansionStore();
 
   const mat = MATERIAL_DB[materialId];
 
-  // Canvas resize observer
+  // Resize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -114,7 +118,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     return () => obs.disconnect();
   }, []);
 
-  // Main render
+  // Main rendering loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -133,43 +137,48 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx.fillStyle = "#0a0a0c";
     ctx.fillRect(0, 0, W, H);
 
-    // Subtle engineering grid
+    // Grid lines
     ctx.strokeStyle = "rgba(6,182,212,0.025)";
     ctx.lineWidth = 1;
     const gs = 30;
     for (let x = 0; x < W; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
 
-    // Route to the correct drawer
-    switch (objectType) {
-      case "rod":        drawRod(ctx, W, H); break;
-      case "bridge":     drawBridge(ctx, W, H); break;
-      case "railway":    drawRailway(ctx, W, H); break;
-      case "bimetallic": drawBimetallic(ctx, W, H); break;
-      case "plate":      drawPlate(ctx, W, H); break;
-      case "ring":       drawRing(ctx, W, H); break;
-      default:           drawRod(ctx, W, H);
+    const is2DDataAvailable = nodePositions2D && nodePositions2D.length > 0 && nodeDisplacement2D && nodeDisplacement2D.length > 0;
+
+    // Draw correct shape based on objectType
+    if (objectType === "plate" && is2DDataAvailable) {
+      drawPlate2D(ctx, W, H);
+    } else if (objectType === "bimetallic" && is2DDataAvailable) {
+      drawBimetallic2D(ctx, W, H);
+    } else {
+      switch (objectType) {
+        case "rod":        drawRod(ctx, W, H); break;
+        case "bridge":     drawBridge(ctx, W, H); break;
+        case "railway":    drawRailway(ctx, W, H); break;
+        case "ring":       drawRing(ctx, W, H); break;
+        default:           drawRod(ctx, W, H);
+      }
     }
 
-    // Atomic lattice overlay (bottom-right)
+    // Atomic lattice overlay
     if (vizSettings.showAtomicLattice) {
       drawAtomicLattice(ctx, W, H);
     }
 
-    // Failure overlay
+    // Structural failure overlay
     if (isFailed) drawFailureOverlay(ctx, W, H);
 
     ctx.restore();
   }, [
     avgTemperature, thermalProfile, materialId, objectType, constraint, gapSize,
     realDeltaL, stressAtConstraint, isYielding, isFailed, crackLocations,
-    willBuckle, bimetallicCurvature, bimetallicDeflection,
-    vizSettings, spatialStressProfile, nodeDisplacementProfile, time
+    willBuckle, bucklingLoad, bucklingCriticalLoad, bimetallicCurvature, bimetallicDeflection,
+    vizSettings, spatialStressProfile, nodeDisplacementProfile, time,
+    thermalProfile2D, nodeDisplacement2D, elementStress2D, nodePositions2D
   ]);
 
-  // ── DRAW: ROD ──────────────────────────────────────────────
-  // Section-by-section: each node is positioned by its real cumulative
-  // thermal displacement u(x), so heat-front expansion is physically correct.
+  // ── DRAW: 1D ROD ──────────────────────────────────────────
   const drawRod = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     const mag = vizSettings.magnification;
     const centerY = H * 0.36;
@@ -178,12 +187,9 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const baseW = W * 0.50;
     const rodY = centerY - rodH / 2;
 
-    // Pixels-per-meter conversion for visual displacement
     const ppm = baseW / L0;
     const N = thermalProfile.length;
 
-    // Physical node positions: u[i] is real cumulative displacement (m)
-    // Multiplied by mag and ppm for screen pixels
     const nodeX: number[] = nodeDisplacementProfile.map((u, i) =>
       rodX + (i / (N - 1)) * baseW + u * ppm * mag
     );
@@ -192,7 +198,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const rodRight = Math.max(nodeX[N - 1], rodLeft + 4);
     const visualW = rodRight - rodLeft;
 
-    // ── High-temperature glow ───────────────────────────────
+    // Thermal glow
     if (avgTemperature > 700) {
       const glowIntensity = Math.min(1, (avgTemperature - 700) / 800);
       ctx.save();
@@ -203,14 +209,14 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.restore();
     }
 
-    // ── Cryogenic frost ─────────────────────────────────────
+    // Cryo frost
     if (avgTemperature < 200) {
       const frostAlpha = Math.min(0.35, (200 - avgTemperature) / 200 * 0.35);
       ctx.fillStyle = `rgba(147, 210, 255, ${frostAlpha})`;
       ctx.fillRect(rodLeft, rodY - 2, visualW, rodH + 4);
     }
 
-    // ── Draw each element segment using physical node positions ──
+    // Segment coloring
     for (let i = 0; i < N - 1; i++) {
       const x0 = nodeX[i];
       const x1 = nodeX[i + 1];
@@ -234,13 +240,12 @@ export const ThermalExpansionCanvas: React.FC = () => {
       }
     }
 
-    // Base fill if gradient is off
     if (!vizSettings.showThermalGradient) {
       ctx.fillStyle = "#222228";
       ctx.fillRect(rodLeft, rodY, visualW, rodH);
     }
 
-    // ── Incandescent white-core at extreme temperatures ─────
+    // White core glow for extreme heat
     if (avgTemperature > 1200) {
       const whiteAlpha = Math.min(0.5, (avgTemperature - 1200) / 1000);
       const ig = ctx.createLinearGradient(rodLeft, rodY, rodLeft, rodY + rodH);
@@ -251,28 +256,22 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.fillRect(rodLeft, rodY, visualW, rodH);
     }
 
-    // Rod border
     ctx.strokeStyle = isFailed ? "rgba(239,68,68,0.8)" : "rgba(255,255,255,0.18)";
     ctx.lineWidth = isFailed ? 2.5 : 1.5;
     ctx.strokeRect(rodLeft, rodY, visualW, rodH);
 
-    // Constraint anchors
-    drawRodAnchors(ctx, rodLeft, rodY, visualW, rodH, baseW, W, H);
+    drawRodAnchors(ctx, rodLeft, rodY, visualW, rodH, baseW);
 
-    // Cracks
     if (isFailed && crackLocations.length > 0) {
       drawCracks(ctx, rodLeft, rodY, visualW, rodH);
     }
 
-    // Dimension arrows (expansion or contraction)
-    drawDimensionArrows(ctx, rodLeft, rodY, baseW, visualW, rodH, W);
+    drawDimensionArrows(ctx, rodLeft, rodY, baseW, visualW, rodH);
 
-    // Heat front indicator
     if (vizSettings.showHeatFront && constraint !== "fixed") {
       drawHeatFront(ctx, rodLeft, rodY, visualW, rodH);
     }
 
-    // Visual magnification label
     if (mag > 1) {
       ctx.fillStyle = "rgba(255,180,0,0.45)";
       ctx.font = "bold 7.5px monospace";
@@ -281,28 +280,33 @@ export const ThermalExpansionCanvas: React.FC = () => {
     }
   };
 
-  // ── DRAW: BRIDGE ───────────────────────────────────────────
+  // ── DRAW: 1D BRIDGE ────────────────────────────────────────
   const drawBridge = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     const mag = vizSettings.magnification;
-    const visualDeltaL_frac = (realDeltaL * mag) / L0;
     const deckH = 20;
     const deckY = H * 0.36;
     const deckX = W * 0.1;
     const baseW = W * 0.78;
-    const deckW = baseW * (1 + visualDeltaL_frac);
     const N = thermalProfile.length;
 
-    // Pillars
-    const pillarH = 55;
-    ctx.fillStyle = "#27272a";
-    ctx.fillRect(deckX - 12, deckY + deckH, 24, pillarH);
+    const ppm = baseW / L0;
+    
+    // Nodal displacement integration (physical expansion gap contact)
+    const nodeX: number[] = nodeDisplacementProfile.map((u, i) =>
+      deckX + (i / (N - 1)) * baseW + u * ppm * mag
+    );
+    const deckW = nodeX[N - 1] - nodeX[0];
 
-    // Roller support on right
+    // Left pillar (fixed)
+    ctx.fillStyle = "#27272a";
+    ctx.fillRect(deckX - 12, deckY + deckH, 24, 55);
+
+    // Right pillar (sliding roller support)
     const rightPillarX = deckX + baseW;
     ctx.fillStyle = "#27272a";
-    ctx.fillRect(rightPillarX - 12, deckY + deckH, 24, pillarH);
+    ctx.fillRect(rightPillarX - 12, deckY + deckH, 24, 55);
 
-    // Roller wheels (symbolize expansion joint)
+    // Roller wheels
     ctx.fillStyle = "#52525b";
     [-8, 0, 8].forEach(ox => {
       ctx.beginPath();
@@ -310,8 +314,8 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.fill();
     });
 
-    // Gap indicator
-    const gapPxSize = Math.max(6, gapSize * 2000);
+    // Gap limit line
+    const gapPxSize = gapSize * ppm;
     ctx.strokeStyle = "rgba(6,182,212,0.5)";
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 3]);
@@ -323,12 +327,13 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx.textAlign = "center";
     ctx.fillText(`GAP ${(gapSize * 1000).toFixed(1)}mm`, gapX, deckY - 20);
 
-    // Bridge deck with thermal gradient
+    // Draw elements
     for (let i = 0; i < N - 1; i++) {
-      const x0 = deckX + (i / (N - 1)) * deckW;
-      const x1 = deckX + ((i + 1) / (N - 1)) * deckW;
+      const x0 = nodeX[i];
+      const x1 = nodeX[i + 1];
       const T_seg = (thermalProfile[i] + thermalProfile[i + 1]) / 2;
       const σ_y = PhysicsEngine.yieldStrength(mat, T_seg);
+      
       const gradFill = ctx.createLinearGradient(x0, 0, x1, 0);
       gradFill.addColorStop(0, thermalColor(thermalProfile[i], 0.7));
       gradFill.addColorStop(1, thermalColor(thermalProfile[i + 1], 0.7));
@@ -343,30 +348,34 @@ export const ThermalExpansionCanvas: React.FC = () => {
 
     ctx.strokeStyle = isFailed ? "rgba(239,68,68,0.8)" : "rgba(255,255,255,0.2)";
     ctx.lineWidth = 2;
-    ctx.strokeRect(deckX, deckY, deckW, deckH);
+    ctx.strokeRect(nodeX[0], deckY, deckW, deckH);
 
-    // Expansion exceeded gap
-    if (deckW > baseW + gapPxSize) {
-      ctx.fillStyle = "rgba(239,68,68,0.2)";
-      ctx.fillRect(deckX + baseW + gapPxSize, deckY - 5, deckW - (baseW + gapPxSize), deckH + 10);
+    // Visual bridge crush overlay if displacement exceeds gap
+    if (nodeX[N - 1] > gapX) {
+      ctx.fillStyle = "rgba(239,68,68,0.25)";
+      ctx.fillRect(gapX, deckY - 3, nodeX[N - 1] - gapX, deckH + 6);
     }
   };
 
-  // ── DRAW: RAILWAY ──────────────────────────────────────────
+  // ── DRAW: 1D RAILWAY BUCKLING ──────────────────────────────
   const drawRailway = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     const railY = H * 0.36;
     const railX = W * 0.07;
     const railLen = W * 0.86;
     const trackSep = 22;
 
-    // Physically driven buckle: proportional to excess thermal strain beyond P_cr
-    // Exaggerated for visibility but driven by real ΔL/L0 ratio
-    const thermalStrain = Math.abs(realDeltaL / Math.max(L0, 0.001));
-    const buckleAmp = willBuckle
-      ? Math.min(55, 30 * Math.min(1, thermalStrain * vizSettings.magnification) * vizSettings.deformationExaggeration + 8)
+    const E_avg = PhysicsEngine.youngsModulus(mat, avgTemperature);
+    const compressiveLoad = Math.max(0, -stressAtConstraint * crossSectionalArea);
+    const bucklingStrain = bucklingLoad > bucklingCriticalLoad
+      ? (compressiveLoad - bucklingCriticalLoad) / (E_avg * crossSectionalArea)
+      : 0;
+    
+    // Buckling amplitude based on post-buckling compressive deformation
+    const buckleAmp = bucklingLoad > bucklingCriticalLoad
+      ? Math.min(55, 30 * Math.sqrt(Math.max(0, bucklingStrain)) * vizSettings.magnification * vizSettings.deformationExaggeration + 8)
       : 0;
 
-    // Sleepers
+    // Ties
     ctx.fillStyle = "#3f3f46";
     const sleeperCount = 22;
     for (let i = 0; i <= sleeperCount; i++) {
@@ -375,7 +384,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.fillRect(sx - 4, railY - 12 + buckle, 8, trackSep + 22);
     }
 
-    // Thermal gradient on rails
+    // Rails
     const N = thermalProfile.length;
     for (let j = 0; j < 2; j++) {
       const yOffset = j === 0 ? 0 : trackSep;
@@ -394,16 +403,14 @@ export const ThermalExpansionCanvas: React.FC = () => {
       }
     }
 
-    // Buckling label
     if (willBuckle) {
       ctx.fillStyle = "rgba(239,68,68,0.9)";
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
-      ctx.fillText("EULER BUCKLING INSTABILITY", W / 2, railY - 20);
+      ctx.fillText("⚠ BUCKLING ONSET: P_th > P_cr", W / 2, railY - 20);
     }
   };
 
-  // Sine buckle profile
   const getBuckleY = (x: number, railX: number, railLen: number, amp: number): number => {
     if (amp === 0) return 0;
     const rel = (x - railX) / railLen;
@@ -413,127 +420,182 @@ export const ThermalExpansionCanvas: React.FC = () => {
     return 0;
   };
 
-  // ── DRAW: BIMETALLIC ───────────────────────────────────────
-  const drawBimetallic = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
-    const mat1 = MATERIAL_DB[bimetallicMat1];
-    const mat2 = MATERIAL_DB[bimetallicMat2];
-    if (!mat1 || !mat2) return;
+  // ── DRAW: 2D PLATE ─────────────────────────────────────────
+  const drawPlate2D = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
+    const mag = vizSettings.magnification;
+    const baseW = W * 0.44;
+    const ppm = baseW / L0;
+    const cx = W / 2 - 20;
+    const cy = H / 2;
+    
+    // Center of the physical coordinates: L0/2, height/2
+    const physicsH = L0 * 0.6;
+    const offsetX = cx - (L0 / 2) * ppm;
+    const offsetY = cy - (physicsH / 2) * ppm;
 
-    const stripX = W * 0.12;
-    const stripLen = W * 0.65;
-    const layerH = 14;
-    const anchorY = H * 0.38;
-    const steps = 80;
-
-    const κ = bimetallicCurvature * 0.5 * vizSettings.deformationExaggeration;
-
-    // Draw two layers
-    [[mat1, bimetallicMat1, -layerH / 2], [mat2, bimetallicMat2, layerH / 2]].forEach(
-      ([m, id, yOff]: any, layerIdx) => {
-        const color = MATERIAL_DB[id as string]?.color ?? "#888";
-        ctx.beginPath();
-        ctx.lineWidth = layerH;
-        ctx.strokeStyle = color;
-
-        for (let i = 0; i <= steps; i++) {
-          const rel = i / steps;
-          const s = rel * stripLen;
-          const x = stripX + s * Math.cos(0);
-          // y offset from curvature: y = κ s² / 2  (arc approximation)
-          const y = anchorY + (yOff as number) + κ * s * s * 0.5;
-
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-
-        // Thermal glow
-        if (vizSettings.showThermalGradient) {
-          ctx.save();
-          ctx.shadowColor = thermalColor(avgTemperature, 0.6);
-          ctx.shadowBlur = 8;
-          ctx.beginPath();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = thermalColor(avgTemperature, 0.5);
-          for (let i = 0; i <= steps; i++) {
-            const rel = i / steps;
-            const s = rel * stripLen;
-            const x = stripX + s;
-            const y = anchorY + (yOff as number) + κ * s * s * 0.5;
-            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-          ctx.restore();
-        }
+    // Render deformed elements as discrete polygons
+    const numElems = elementStress2D.length;
+    const nx = 12; // defined in setupMesh
+    const ny = 8;
+    
+    for (let e = 0; e < numElems; e++) {
+      const nodeIds = elementNodeIds2D[e];
+      if (!nodeIds) continue;
+      const elStress = elementStress2D[e];
+      const elNodes = nodeIds.map((id: number) => {
+        const orig = nodePositions2D[id];
+        const disp = nodeDisplacement2D[id];
+        return {
+          x: offsetX + ((orig?.x || 0) + (disp?.ux || 0) * mag) * ppm,
+          y: offsetY + ((orig?.y || 0) + (disp?.uy || 0) * mag) * ppm
+        };
+      });
+      
+      ctx.beginPath();
+      ctx.moveTo(elNodes[0].x, elNodes[0].y);
+      ctx.lineTo(elNodes[1].x, elNodes[1].y);
+      ctx.lineTo(elNodes[2].x, elNodes[2].y);
+      ctx.lineTo(elNodes[3].x, elNodes[3].y);
+      ctx.closePath();
+      
+      // Node average temperature
+      const elT = nodeIds.reduce((sum: number, id: number) => sum + thermalProfile2D[id], 0) / 4;
+      
+      let fill = "#333";
+      if (vizSettings.showThermalGradient) {
+        fill = thermalColor(elT, 0.82);
+      } else {
+        fill = mat?.color || "#52525b";
       }
-    );
+      ctx.fillStyle = fill;
+      ctx.fill();
+      
+      if (vizSettings.showStressColors && elStress) {
+        const σ_y = PhysicsEngine.yieldStrength(mat, elT);
+        ctx.fillStyle = stressColor(elStress.xx, σ_y, 0.35);
+        ctx.fill();
+      }
+      
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+    
+    // Draw boundary supports indicators
+    ctx.strokeStyle = "rgba(6,182,212,0.8)";
+    ctx.fillStyle = "rgba(6,182,212,0.8)";
+    ctx.lineWidth = 1.5;
+    
+    if (constraint === "fixed") {
+      // Draw hashed wall clamp lines on left and right
+      const leftX = offsetX + (nodeDisplacement2D[0].ux * mag) * ppm;
+      const rightX = offsetX + (L0 + nodeDisplacement2D[nx].ux * mag) * ppm;
+      
+      ctx.beginPath();
+      ctx.moveTo(leftX, offsetY - 5); ctx.lineTo(leftX, offsetY + physicsH * ppm + 5);
+      ctx.moveTo(rightX, offsetY - 5); ctx.lineTo(rightX, offsetY + physicsH * ppm + 5);
+      ctx.stroke();
+    } else if (constraint === "free") {
+      // Draw triangular pin symbol bottom-left, roller circle bottom-right
+      const blX = offsetX + (nodeDisplacement2D[0].ux * mag) * ppm;
+      const blY = offsetY + (nodeDisplacement2D[0].uy * mag) * ppm;
+      ctx.beginPath();
+      ctx.moveTo(blX, blY);
+      ctx.lineTo(blX - 6, blY + 8);
+      ctx.lineTo(blX + 6, blY + 8);
+      ctx.closePath();
+      ctx.stroke();
+      
+      const brX = offsetX + (L0 + nodeDisplacement2D[nx].ux * mag) * ppm;
+      const brY = offsetY + (nodeDisplacement2D[nx].uy * mag) * ppm;
+      ctx.beginPath();
+      ctx.arc(brX, brY + 4, 3.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  };
 
-    // Fixed anchor
+  // ── DRAW: 2D BIMETALLIC STRIP BENDING ──────────────────────
+  const drawBimetallic2D = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
+    const mag = vizSettings.magnification;
+    const stripLen = W * 0.65;
+    const ppm = stripLen / L0;
+    const offsetX = W * 0.12;
+    const offsetY = H * 0.38 - (thickness / 2) * ppm;
+
+    const nx = 30; // defined in setupMesh
+    const numElems = elementStress2D.length;
+    
+    // Draw Q4 bimetallic elements
+    for (let e = 0; e < numElems; e++) {
+      const nodeIds = elementNodeIds2D[e];
+      if (!nodeIds) continue;
+      const elStress = elementStress2D[e];
+      
+      const elNodes = nodeIds.map((id: number) => {
+        const orig = nodePositions2D[id];
+        const disp = nodeDisplacement2D[id];
+        return {
+          // Bending displacement is exaggerated vertically by vizSettings.deformationExaggeration
+          x: offsetX + ((orig?.x || 0) + (disp?.ux || 0) * mag) * ppm,
+          y: offsetY + ((orig?.y || 0) + (disp?.uy || 0) * mag * vizSettings.deformationExaggeration) * ppm
+        };
+      });
+      
+      ctx.beginPath();
+      ctx.moveTo(elNodes[0].x, elNodes[0].y);
+      ctx.lineTo(elNodes[1].x, elNodes[1].y);
+      ctx.lineTo(elNodes[2].x, elNodes[2].y);
+      ctx.lineTo(elNodes[3].x, elNodes[3].y);
+      ctx.closePath();
+      
+      const elT = nodeIds.reduce((sum: number, id: number) => sum + thermalProfile2D[id], 0) / 4;
+      const row = Math.floor(e / nx);
+      const isTop = row >= 2;
+      
+      let fill = "#333";
+      if (vizSettings.showThermalGradient) {
+        fill = thermalColor(elT, 0.82);
+      } else {
+        fill = isTop
+          ? (MATERIAL_DB[bimetallicMat1]?.color || "#ca8a04")
+          : (MATERIAL_DB[bimetallicMat2]?.color || "#0891b2");
+      }
+      ctx.fillStyle = fill;
+      ctx.fill();
+      
+      if (vizSettings.showStressColors && elStress) {
+        const m = isTop ? MATERIAL_DB[bimetallicMat1] : MATERIAL_DB[bimetallicMat2];
+        const σ_y = PhysicsEngine.yieldStrength(m, elT);
+        ctx.fillStyle = stressColor(elStress.xx, σ_y, 0.35);
+        ctx.fill();
+      }
+      
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+    
+    // Draw solid cantilever wall on left
     ctx.fillStyle = "#27272a";
-    ctx.fillRect(stripX - 18, anchorY - layerH - 4, 18, layerH * 2 + 8);
-
-    // Deflection label
-    const tipY = anchorY + κ * stripLen * stripLen * 0.5;
+    ctx.fillRect(offsetX - 18, offsetY - 8, 18, (thickness * ppm) + 16);
+    
+    // Realtip deflection calculation
+    const tipX = offsetX + (L0 + nodeDisplacement2D[nx].ux * mag) * ppm;
+    const tipY = offsetY + (thickness / 2 + bimetallicDeflection * mag * vizSettings.deformationExaggeration) * ppm;
     const deflMM = Math.abs(bimetallicDeflection * 1000);
+    
     ctx.fillStyle = "rgba(6,182,212,0.8)";
     ctx.font = "bold 9px monospace";
     ctx.textAlign = "left";
-    ctx.fillText(`δ = ${deflMM.toFixed(2)} mm`, stripX + stripLen + 10, tipY + 3);
-
-    // Curvature radius label
+    ctx.fillText(`δ = ${deflMM.toFixed(2)} mm`, tipX + 10, tipY + 3);
+    
     const radiusMm = bimetallicCurvature !== 0 ? (1 / Math.abs(bimetallicCurvature) * 1000).toFixed(0) : "∞";
     ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.font = "7px monospace";
-    ctx.fillText(`R = ${radiusMm} mm`, stripX + stripLen + 10, tipY + 15);
-
-    // Material labels
-    ctx.textAlign = "center";
-    ctx.font = "bold 8px monospace";
-    ctx.fillStyle = MATERIAL_DB[bimetallicMat1]?.color ?? "#fff";
-    ctx.fillText(mat1.name.split(" ")[0], stripX + 40, anchorY - layerH - 2);
-    ctx.fillStyle = MATERIAL_DB[bimetallicMat2]?.color ?? "#fff";
-    ctx.fillText(mat2.name.split(" ")[0], stripX + 40, anchorY + layerH + 10);
+    ctx.fillText(`R = ${radiusMm} mm`, tipX + 10, tipY + 15);
   };
 
-  // ── DRAW: PLATE ────────────────────────────────────────────
-  const drawPlate = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
-    const mag = vizSettings.magnification;
-    const frac = (realDeltaL * mag) / L0;
-    const baseW = W * 0.44;
-    const baseHt = H * 0.42;
-    const pW = baseW * (1 + frac);
-    const pH = baseHt * (1 + frac);
-    const px = (W - pW) / 2 - 20;
-    const py = (H - pH) / 2;
-
-    // Thermal gradient fill
-    const grad = ctx.createRadialGradient(px + pW / 2, py + pH / 2, 0, px + pW / 2, py + pH / 2, Math.max(pW, pH) / 2);
-    grad.addColorStop(0, thermalColor(avgTemperature, 0.9));
-    grad.addColorStop(1, thermalColor(avgTemperature * 0.6 + 293.15 * 0.4, 0.3));
-    ctx.fillStyle = grad;
-    ctx.fillRect(px, py, pW, pH);
-
-    // Grid lines
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 6; i++) {
-      ctx.beginPath(); ctx.moveTo(px + (i / 6) * pW, py); ctx.lineTo(px + (i / 6) * pW, py + pH); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px, py + (i / 6) * pH); ctx.lineTo(px + pW, py + (i / 6) * pH); ctx.stroke();
-    }
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(px, py, pW, pH);
-
-    // Area label
-    const A0 = (L0 * 1) ** 2;
-    const A = PhysicsEngine.volumetricExpansion(mat, avgTemperature, A0);
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.font = "8px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText(`A = ${A.toFixed(2)} m²  (β ΔT = ${(2 * mat.alpha0 * (avgTemperature - 293.15) * 100).toFixed(4)}%)`, W / 2 - 20, py + pH + 18);
-  };
-
-  // ── DRAW: RING ─────────────────────────────────────────────
+  // ── DRAW: 1D RING ──────────────────────────────────────────
   const drawRing = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     const mag = vizSettings.magnification;
     const frac = (realDeltaL * mag) / L0;
@@ -541,7 +603,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const rOuter0 = H * 0.27;
     const rInner0 = H * 0.13;
     const rOuter = rOuter0 * (1 + frac);
-    const rInner = rInner0 * (1 + frac); // Hole also expands — counterintuitive!
+    const rInner = rInner0 * (1 + frac);
 
     ctx.beginPath();
     ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
@@ -557,18 +619,17 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Note: hole expands!
     ctx.fillStyle = "rgba(6,182,212,0.6)";
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.fillText("Hole also expands (r_inner = r₀(1+αΔT))", cx, cy + rOuter + 16);
   };
 
-  // ── DRAW: ANCHORS ──────────────────────────────────────────
+  // ── DRAW: ANCHORS (1D ROD) ──────────────────────────────────
   const drawRodAnchors = (
     ctx: CanvasRenderingContext2D,
     rx: number, ry: number, rw: number, rh: number,
-    baseW: number, W: number, H: number
+    baseW: number
   ) => {
     const hashPattern = (x: number) => {
       ctx.save();
@@ -585,14 +646,12 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.restore();
     };
 
-    // Always draw left anchor
     hashPattern(rx - 16);
 
     if (constraint === "fixed") {
       hashPattern(rx + rw);
     } else if (constraint === "partial") {
-      // Draw gap and wall
-      const gapPx = Math.max(8, gapSize * 1500);
+      const gapPx = gapSize * (baseW / L0);
       const wallX = rx + baseW + gapPx;
       ctx.strokeStyle = "rgba(6,182,212,0.35)";
       ctx.setLineDash([4, 4]);
@@ -600,13 +659,11 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.strokeRect(rx, ry - 8, baseW, rh + 16);
       ctx.setLineDash([]);
       hashPattern(wallX);
-      // Gap label
       ctx.fillStyle = "rgba(6,182,212,0.55)";
       ctx.font = "7px monospace";
       ctx.textAlign = "center";
       ctx.fillText(`${(gapSize * 1000).toFixed(1)} mm`, wallX - gapPx / 2, ry - 16);
     } else if (constraint === "spring") {
-      // Spring symbol
       const sx = rx + rw;
       ctx.strokeStyle = "#71717a";
       ctx.lineWidth = 2;
@@ -628,14 +685,12 @@ export const ThermalExpansionCanvas: React.FC = () => {
   // ── DRAW: DIMENSION ARROWS ────────────────────────────────
   const drawDimensionArrows = (
     ctx: CanvasRenderingContext2D,
-    rodX: number, rodY: number, baseW: number, visualW: number, rodH: number,
-    W: number
+    rodX: number, rodY: number, baseW: number, visualW: number, rodH: number
   ) => {
     if (Math.abs(realDeltaL) < 1e-12) return;
     const arrowY = rodY + rodH + 22;
     const mag = vizSettings.magnification;
 
-    // Draw original length bracket
     ctx.strokeStyle = "rgba(255,255,255,0.15)";
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
@@ -647,7 +702,6 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Original length arrow
     ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -664,7 +718,6 @@ export const ThermalExpansionCanvas: React.FC = () => {
     const mmStr = absRealMM >= 1 ? absRealMM.toFixed(2) + " mm" : (Math.abs(realDeltaL) * 1000).toFixed(3) + " mm";
 
     if (realDeltaL > 0 && visualW > baseW) {
-      // ── Expansion arrow →
       ctx.strokeStyle = "rgba(6,182,212,0.6)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -674,20 +727,14 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.fillStyle = "rgba(6,182,212,0.85)";
       ctx.font = "bold 7.5px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(
-        `+ΔL = ${mmStr}  ×${mag} mag`,
-        rodX + baseW + (visualW - baseW) / 2,
-        arrowY + 24
-      );
+      ctx.fillText(`+ΔL = ${mmStr}  ×${mag} mag`, rodX + baseW + (visualW - baseW) / 2, arrowY + 24);
     } else if (realDeltaL < 0 && visualW < baseW) {
-      // ── Contraction arrow ←
       ctx.strokeStyle = "rgba(96,165,250,0.7)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(rodX + visualW, arrowY + 12);
       ctx.lineTo(rodX + baseW, arrowY + 12);
       ctx.stroke();
-      // Arrowhead pointing left
       ctx.beginPath();
       ctx.moveTo(rodX + visualW, arrowY + 12);
       ctx.lineTo(rodX + visualW + 6, arrowY + 8);
@@ -698,11 +745,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
       ctx.fillStyle = "rgba(96,165,250,0.9)";
       ctx.font = "bold 7.5px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(
-        `← contraction  −ΔL = ${mmStr}  ×${mag} mag`,
-        rodX + baseW / 2,
-        arrowY + 24
-      );
+      ctx.fillText(`← contraction  −ΔL = ${mmStr}  ×${mag} mag`, rodX + baseW / 2, arrowY + 24);
     }
   };
 
@@ -711,7 +754,6 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx: CanvasRenderingContext2D,
     rodX: number, rodY: number, rodW: number, rodH: number
   ) => {
-    // Find transition region between hot and cold
     const N = thermalProfile.length;
     const ambT = 293.15;
     let frontIdx = N - 1;
@@ -761,19 +803,15 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx.restore();
   };
 
-  // ── DRAW: ATOMIC LATTICE ───────────────────────────────────
-  // Physically correct: amplitude ∝ sqrt(T) from equipartition theorem.
-  // Anharmonic asymmetry: atoms spend more time displaced outward at high T.
+  // ── DRAW: ATOMIC LATTICE (STOCHASTIC MAXWELL-BOLTZMANN) ──────
   const drawAtomicLattice = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
     const cx = W - 75;
     const cy = H - 75;
     const radius = 65;
 
-    // Background circle — glow border tied to temperature
     ctx.fillStyle = "#0c0c10";
     ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
 
-    // High-temp glow on border
     if (avgTemperature > 600) {
       ctx.save();
       ctx.shadowColor = thermalColor(avgTemperature, 1);
@@ -791,55 +829,68 @@ export const ThermalExpansionCanvas: React.FC = () => {
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, radius - 2, 0, Math.PI * 2); ctx.clip();
 
-    // ── Equipartition-based vibration amplitude ────────────
-    // From U = ½kA² = ½k_BT → A = sqrt(k_BT / k_bond)
-    // k_bond scales with Young's modulus (stiffer material = smaller vibration)
-    // We use a dimensionless version scaled to pixels:
-    //   ampPx ∝ sqrt(T / E) — physically correct scaling
-    const T_norm = Math.max(1, avgTemperature) / 293.15;  // normalized to ambient
-    const E_norm = Math.max(1e9, mat.youngsModulus) / 200e9; // normalized to steel
-    // sqrt(T) from equipartition, divided by sqrt(E) for bond stiffness
-    const ampPx = Math.min(7, Math.max(0.3, 2.5 * Math.sqrt(T_norm / E_norm)));
+    // ── Quantum zero-point vibration & thermal amplitude ──
+    const T_norm = Math.max(1, avgTemperature) / 293.15;
+    const E_norm = mat ? Math.max(1e9, mat.youngsModulus) / 200e9 : 1.0;
+    
+    // Quantum physical constants for zero point limit
+    const hbar = 1.054571817e-34;
+    const k_bond = mat ? mat.youngsModulus * 1e-10 : 200e9 * 1e-10;
+    const m_atom = mat ? mat.density * 1e-30 : 7850 * 1e-30;
+    const ampZeroPoint = Math.sqrt(hbar / (2 * Math.sqrt(m_atom * k_bond))) * 1e10; // Å
+    
+    const ampThermal = 2.5 * Math.sqrt(T_norm / E_norm);
+    const ampZP_px = Math.min(1.5, ampZeroPoint * 15); // convert to pixel scale
+    const ampPx = Math.min(8, Math.max(ampZP_px, Math.sqrt(ampThermal * ampThermal + ampZP_px * ampZP_px)));
 
-    // Anharmonic mean position shift (lattice expansion) — bounded
-    const rawShift = PhysicsEngine.anharmonicShift(avgTemperature, mat.alpha0) * 3000;
-    const shift = Math.min(8, Math.max(-4, rawShift)); // clamp to avoid overflow
+    // Anharmonic lattice spacing growth shift
+    const rawShift = mat ? PhysicsEngine.anharmonicShift(avgTemperature, mat.alpha0) * 3000 : 0;
+    const shift = Math.min(8, Math.max(-4, rawShift));
     const spacing = Math.max(14, Math.min(30, 22 + shift));
 
     const cols = 5, rows = 4;
     const startX = cx - (cols - 1) * spacing / 2;
     const startY = cy - (rows - 1) * spacing / 2;
 
-    // Phase for time-based vibration — faster at higher T
-    const vibFreq = 6 + Math.min(12, (avgTemperature - 100) / 100); // 6–18 Hz equivalent
+    const vibFreq = 6 + Math.min(12, (avgTemperature - 100) / 100);
     const phase = time * vibFreq;
 
-    // Draw interatomic bonds first
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1;
 
+    // Stochastic vibration (sum of incommensurate frequencies)
     const atomPos: { x: number; y: number }[][] = [];
+    const f1 = 1.0, f2 = Math.SQRT2, f3 = Math.PI; // Incommensurate frequencies
+
     for (let r = 0; r < rows; r++) {
       atomPos[r] = [];
       for (let c = 0; c < cols; c++) {
         const phaseShift = r * 1.9 + c * 2.7;
-        // ── Morse Potential Anharmonicity ─────────────
-        // A particle in a Morse potential V(r) = D_e(1 - e^{-a(r-r_0)})^2
-        // has a perturbed trajectory: x(t) ≈ A sin(ωt) + (a A² / 4)(1 - cos(2ωt))
-        const dx_harmonic = ampPx * Math.sin(phase + phaseShift);
-        const morseA = 0.8; // Effective Morse asymmetry parameter
-        const asymmetry = morseA * (ampPx * ampPx * 0.15) * (1 - Math.cos(2 * (phase + phaseShift)));
-        const dx = dx_harmonic + asymmetry;
+        
+        // Sum of three sine waves creates smooth pseudo-random thermal motion (Maxwell-Boltzmann like)
+        const dx_stochastic = ampPx * (
+          0.5 * Math.sin(phase * f1 + phaseShift) +
+          0.3 * Math.sin(phase * f2 + phaseShift * 1.5) +
+          0.2 * Math.sin(phase * f3 + phaseShift * 2.2)
+        );
+        const dy_stochastic = ampPx * (
+          0.5 * Math.cos(phase * f1 * 1.1 + phaseShift) +
+          0.3 * Math.cos(phase * f2 * 0.95 + phaseShift * 1.8) +
+          0.2 * Math.cos(phase * f3 * 1.05 + phaseShift * 2.4)
+        );
 
-        const dy = ampPx * Math.cos(phase * 1.1 + phaseShift);
+        // Morse potential anharmonicity (statistically shifts average spacing outwards)
+        const morseA = 0.8;
+        const asymmetry = morseA * (ampPx * ampPx * 0.08) * (1.0 + 0.3 * Math.sin(phase * 0.5 + phaseShift));
+        
         atomPos[r][c] = {
-          x: startX + c * spacing + dx + asymmetry + shift * 0.15 * c,
-          y: startY + r * spacing + dy
+          x: startX + c * spacing + dx_stochastic + asymmetry + shift * 0.15 * c,
+          y: startY + r * spacing + dy_stochastic
         };
       }
     }
 
-    // Bonds
+    // Draw bonds
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const pos = atomPos[r][c];
@@ -854,12 +905,11 @@ export const ThermalExpansionCanvas: React.FC = () => {
       }
     }
 
-    // Atoms with vibrational envelope ellipses
+    // Draw atoms
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const pos = atomPos[r][c];
 
-        // Vibration envelope — wider on the positive (anharmonic) side
         ctx.save();
         ctx.globalAlpha = 0.12;
         ctx.fillStyle = thermalColor(avgTemperature, 1);
@@ -868,7 +918,6 @@ export const ThermalExpansionCanvas: React.FC = () => {
         ctx.fill();
         ctx.restore();
 
-        // Core atom sphere — glow at high temperature
         const atomR = 4.5;
         if (avgTemperature > 700) {
           ctx.save();
@@ -893,20 +942,21 @@ export const ThermalExpansionCanvas: React.FC = () => {
 
     ctx.restore();
 
-    // Label
+    // Stats box
     ctx.fillStyle = "rgba(0,0,0,0.75)";
     ctx.fillRect(cx - 44, cy + radius - 16, 88, 14);
     ctx.fillStyle = thermalColor(avgTemperature, 0.9);
     ctx.font = "bold 6.5px monospace";
     ctx.textAlign = "center";
-    // ampPx represents relative amplitude — show it normalized to Å scale
-    const ampAngstrom = ampPx * 0.04; // rough Å scale for display
+    const ampAngstrom = ampPx * 0.04;
     ctx.fillText(`LATTICE  A ≈ ${ampAngstrom.toFixed(2)} Å  (∝ √T)`, cx, cy + radius - 5);
 
-    // Physics note
+    // Physics annotation
     ctx.fillStyle = "rgba(255,255,255,0.3)";
     ctx.font = "5.5px monospace";
-    const noteText = avgTemperature < 150 ? "near 0K: quantum zero-point motion" : "Morse Potential: ⟨r⟩ > r₀ as T↑";
+    const noteText = avgTemperature < 100
+      ? "Cryo: quantum zero-point motion active"
+      : "Morse Potential: ⟨r⟩ > r₀ as T↑";
     ctx.fillText(noteText, cx, cy - radius + 12);
   };
 

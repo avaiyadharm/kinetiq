@@ -50,6 +50,10 @@ export const ThermalExpansionAnalytics: React.FC = () => {
     history,
     thermalProfile,
     vizSettings,
+    energyInputTotal,
+    energyLossTotal,
+    energyBalanceResidual,
+    solverTelemetry,
   } = useThermalExpansionStore();
 
   const mat = MATERIAL_DB[materialId];
@@ -292,27 +296,28 @@ export const ThermalExpansionAnalytics: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat
               label="Thermal Solver"
-              value="Implicit Euler"
+              value={objectType === "plate" || objectType === "bimetallic" ? "2D Implicit Euler" : "1D Implicit Euler"}
               color="text-emerald-400"
-              sub={`Iters: ${useThermalExpansionStore.getState().solverTelemetry.thermalIters}`}
-            />
-            <Stat
-              label="Thermal Residual"
-              value={useThermalExpansionStore.getState().solverTelemetry.thermalError.toExponential(2)}
-              color={useThermalExpansionStore.getState().solverTelemetry.thermalError > 1e-4 ? "text-amber-400" : "text-cyan-400"}
-              sub="||R|| / ||T||"
+              sub={`Iters: ${solverTelemetry.thermalIters} | Err: ${solverTelemetry.thermalError.toExponential(1)}`}
             />
             <Stat
               label="Mechanical Solver"
-              value="1D Static FEA"
+              value={objectType === "plate" || objectType === "bimetallic" ? "2D Plane Stress FEM" : "1D Truss Static FEA"}
               color="text-emerald-400"
-              sub={`Iters: ${useThermalExpansionStore.getState().solverTelemetry.mechIters}`}
+              sub={`Iters: ${solverTelemetry.mechIters} | Err: ${solverTelemetry.mechError.toExponential(1)}`}
             />
             <Stat
-              label="Mech Residual"
-              value={useThermalExpansionStore.getState().solverTelemetry.mechError.toExponential(2)}
-              color={useThermalExpansionStore.getState().solverTelemetry.mechError > 1e-4 ? "text-amber-400" : "text-cyan-400"}
-              sub="||Ku - F||"
+              label="Energy Balance Residual"
+              value={energyBalanceResidual.toExponential(2)}
+              unit="J"
+              color={Math.abs(energyBalanceResidual) > 1e1 ? "text-amber-400" : "text-cyan-400"}
+              sub={`In: ${energyInputTotal.toFixed(0)} J | Lost: ${energyLossTotal.toFixed(0)} J`}
+            />
+            <Stat
+              label="Analytical Validation"
+              value={solverTelemetry.validationError === 0 ? "N/A" : `${solverTelemetry.validationError.toFixed(3)}%`}
+              color={solverTelemetry.validationError > 1.0 ? "text-red-400" : "text-emerald-400"}
+              sub="Diff from textbook equation"
             />
           </div>
         </section>

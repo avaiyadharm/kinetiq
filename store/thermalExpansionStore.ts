@@ -18,23 +18,96 @@ export type { ExperimentMode, ConstraintType, ShapeType, HeatingMode };
 // Global Mesh Instance
 let currentMesh: Mesh | null = null;
 
-function setupMesh(L0: number, materialId: string, constraint: ConstraintType, T0: number, gapSize: number) {
-  currentMesh = Mesh.generate1DBar(L0, 40, materialId, T0);
-  const N = currentMesh.nodes.length;
-  if (constraint === "fixed") {
-    currentMesh.nodes[0].fixedX = true;
-    currentMesh.nodes[N - 1].fixedX = true;
-  } else if (constraint === "free") {
-    currentMesh.nodes[0].fixedX = true; // Pin left to prevent rigid body motion
-  } else if (constraint === "partial") {
-    currentMesh.nodes[0].fixedX = true;
-    currentMesh.nodes[N - 1].gapLimit = gapSize;
-  } else if (constraint === "spring") {
-    currentMesh.nodes[0].fixedX = true;
-    currentMesh.nodes[N - 1].springK = 1e7; // 10 MN/m spring
+function setupMesh(
+  L0: number,
+  materialId: string,
+  constraint: ConstraintType,
+  T0: number,
+  gapSize: number,
+  objectType: ShapeType,
+  bimetallicMat1 = "copper",
+  bimetallicMat2 = "invar",
+  thickness = 0.05
+) {
+  if (objectType === "plate" || objectType === "bimetallic") {
+    const nx = objectType === "bimetallic" ? 30 : 12;
+    const ny = objectType === "bimetallic" ? 4 : 8;
+    const width = L0;
+    const height = objectType === "bimetallic" ? thickness : L0 * 0.6;
+    
+    currentMesh = Mesh.generate2DQuadGrid(width, height, nx, ny, materialId, T0);
+    
+    if (objectType === "bimetallic") {
+      // Split element materials: bottom half = mat2, top half = mat1
+      for (const el of currentMesh.elements) {
+        const row = Math.floor(el.id / nx);
+        el.materialId = row < ny / 2 ? bimetallicMat2 : bimetallicMat1;
+      }
+      
+      // Cantilever boundary conditions on the left edge (x === 0)
+      for (const node of currentMesh.nodes) {
+        if (Math.abs(node.x) < 1e-6) {
+          node.fixedX = true;
+          node.fixedY = true;
+        }
+      }
+    } else {
+      // Plate boundary conditions
+      const maxX = width;
+      for (const node of currentMesh.nodes) {
+        const isLeft = Math.abs(node.x) < 1e-6;
+        const isRight = Math.abs(node.x - maxX) < 1e-6;
+        const isBottom = Math.abs(node.y) < 1e-6;
+        
+        if (constraint === "fixed") {
+          if (isLeft || isRight) {
+            node.fixedX = true;
+            node.fixedY = true;
+          }
+        } else if (constraint === "free") {
+          // Pinned-roller to prevent rigid-body rotation/translation without generating stresses
+          if (isLeft && isBottom) {
+            node.fixedX = true;
+            node.fixedY = true; // Pin
+          } else if (isRight && isBottom) {
+            node.fixedY = true; // Roller
+          }
+        } else if (constraint === "partial") {
+          if (isLeft) {
+            node.fixedX = true;
+            node.fixedY = true;
+          } else if (isRight) {
+            node.gapLimit = gapSize;
+          }
+        } else if (constraint === "spring") {
+          if (isLeft) {
+            node.fixedX = true;
+            node.fixedY = true;
+          } else if (isRight) {
+            node.springK = 1e7 / (ny + 1); // Distribute spring stiffness across right boundary nodes
+          }
+        }
+      }
+    }
+  } else {
+    // 1D Bar elements for rod, bridge, railway, cube, ring
+    currentMesh = Mesh.generate1DBar(L0, 40, materialId, T0);
+    const N = currentMesh.nodes.length;
+    
+    if (constraint === "fixed") {
+      currentMesh.nodes[0].fixedX = true;
+      currentMesh.nodes[N - 1].fixedX = true;
+    } else if (constraint === "free") {
+      currentMesh.nodes[0].fixedX = true; // Pin left
+    } else if (constraint === "partial") {
+      currentMesh.nodes[0].fixedX = true;
+      currentMesh.nodes[N - 1].gapLimit = gapSize;
+    } else if (constraint === "spring") {
+      currentMesh.nodes[0].fixedX = true;
+      currentMesh.nodes[N - 1].springK = 1e7; // 10 MN/m spring
+    }
   }
 }
-
 
 // ============================================================
 // Data Types
@@ -53,6 +126,8 @@ export interface HistoryPoint {
   cycleCount: number;
   heatFlux: number;       // W/m² — average |q| across rod
   expansionVelocity: number; // m/s — d(ΔL)/dt
+  energyInput: number;    // J
+  energyLoss: number;     // J
 }
 
 export interface LogEntry {
@@ -136,12 +211,25 @@ interface ThermalExpansionState {
   nodeDisplacementProfile: number[]; // m, cumulative u(x) per node
   expansionVelocity: number;        // m/s, d(ΔL)/dt
 
+  // 2D Fields for Visualization
+  thermalProfile2D: number[];         // T at each node
+  nodeDisplacement2D: { ux: number; uy: number }[]; // displacement at each node
+  elementStress2D: { xx: number; yy: number; xy: number; vm: number }[]; // stresses at elements
+  nodePositions2D: { x: number; y: number }[]; // original coordinates
+  elementNodeIds2D: number[][];       // node indices for 2D elements
+
+  // Energy Conservation Telemetry
+  energyInputTotal: number;         // J
+  energyLossTotal: number;          // J
+  energyBalanceResidual: number;    // J
+
   // Solver Telemetry
   solverTelemetry: {
     thermalIters: number;
     mechIters: number;
     thermalError: number;
     mechError: number;
+    validationError: number;        // % difference from analytical textbook solutions
   };
 
   // History
@@ -255,11 +343,22 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
     nodeDisplacementProfile: new Array(N).fill(0),
     expansionVelocity: 0,
 
+    thermalProfile2D: [],
+    nodeDisplacement2D: [],
+    elementStress2D: [],
+    nodePositions2D: [],
+    elementNodeIds2D: [],
+
+    energyInputTotal: 0,
+    energyLossTotal: 0,
+    energyBalanceResidual: 0,
+
     solverTelemetry: {
       thermalIters: 0,
       mechIters: 0,
       thermalError: 0,
       mechError: 0,
+      validationError: 0,
     },
 
     history: [],
@@ -291,8 +390,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       if (!mat) return;
       get().addLog(`Material → ${mat.name} | α = ${(mat.alpha0 * 1e6).toFixed(2)} ×10⁻⁶ /K | E = ${(mat.youngsModulus / 1e9).toFixed(0)} GPa`, "info");
       
-      // Calculate a stable magnification based on maximum expected expansion
-      const maxDT = 1200; // typical max temperature rise
+      const maxDT = 1200;
       const maxDeltaL = Math.max(1e-9, Math.abs(mat.alpha0 * maxDT * get().L0));
       const stableMag = PhysicsEngine.recommendedMagnification(maxDeltaL, get().L0);
 
@@ -302,21 +400,24 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         isFailed: false,
         isYielding: false,
         crackLocations: [],
+        energyInputTotal: 0,
+        energyLossTotal: 0,
         vizSettings: s.vizSettings.autoMagnification
           ? { ...s.vizSettings, magnification: stableMag }
           : s.vizSettings
       }));
+      setupMesh(get().L0, id, get().constraint, get().ambientTemperature, get().gapSize, get().objectType, get().bimetallicMat1, get().bimetallicMat2, get().thickness);
     },
 
     setObjectType: (type) => {
-      set({ objectType: type, plasticStrain: 0, isFailed: false, crackLocations: [] });
-      setupMesh(get().L0, get().materialId, get().constraint, get().ambientTemperature, get().gapSize);
+      set({ objectType: type, plasticStrain: 0, isFailed: false, crackLocations: [], energyInputTotal: 0, energyLossTotal: 0 });
+      setupMesh(get().L0, get().materialId, get().constraint, get().ambientTemperature, get().gapSize, type, get().bimetallicMat1, get().bimetallicMat2, get().thickness);
     },
 
     setConstraint: (c) => {
       get().addLog(`Boundary condition → ${c.toUpperCase()}`, "info");
-      set({ constraint: c, plasticStrain: 0, isFailed: false, isYielding: false, crackLocations: [] });
-      setupMesh(get().L0, get().materialId, c, get().ambientTemperature, get().gapSize);
+      set({ constraint: c, plasticStrain: 0, isFailed: false, isYielding: false, crackLocations: [], energyInputTotal: 0, energyLossTotal: 0 });
+      setupMesh(get().L0, get().materialId, c, get().ambientTemperature, get().gapSize, get().objectType, get().bimetallicMat1, get().bimetallicMat2, get().thickness);
     },
 
     setExperimentMode: (mode) => {
@@ -345,10 +446,14 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         fatigueAccumulated: 0,
         cycleCount: 0,
         crackLocations: [],
+        energyInputTotal: 0,
+        energyLossTotal: 0,
         vizSettings: s.vizSettings.autoMagnification
           ? { ...s.vizSettings, magnification: stableMag }
           : s.vizSettings
       }));
+      const currentPreset = { ...get(), ...preset };
+      setupMesh(currentPreset.L0, currentPreset.materialId, currentPreset.constraint, AMBIENT, currentPreset.gapSize, currentPreset.objectType, currentPreset.bimetallicMat1, currentPreset.bimetallicMat2, currentPreset.thickness);
     },
 
     setTargetTemperature: (T) => {
@@ -361,7 +466,12 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
 
     setConfig: (key, value) => set(s => {
       const nextState = { ...s, [key]: value };
-      // Recalculate stable magnification if L0 or materialId changes
+      if (key === "L0" || key === "materialId" || key === "objectType" || key === "constraint" || key === "bimetallicMat1" || key === "bimetallicMat2" || key === "thickness") {
+        setupMesh(nextState.L0, nextState.materialId, nextState.constraint, nextState.ambientTemperature, nextState.gapSize, nextState.objectType, nextState.bimetallicMat1, nextState.bimetallicMat2, nextState.thickness);
+        nextState.energyInputTotal = 0;
+        nextState.energyLossTotal = 0;
+      }
+      
       if (key === "L0" || key === "materialId") {
         const mat = MATERIAL_DB[nextState.materialId];
         if (mat) {
@@ -377,7 +487,6 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
     }),
     setVizSetting: (key, value) => set(s => {
       const nextVizSettings = { ...s.vizSettings, [key]: value };
-      // If autoMagnification was just enabled, calculate the stable magnification
       if (key === "autoMagnification" && value === true) {
         const mat = MATERIAL_DB[s.materialId];
         if (mat) {
@@ -407,7 +516,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         `THERMAL SHOCK: ΔT=${Math.abs(T_new - s.avgTemperature).toFixed(0)} K | K_I = ${(K_I / 1e6).toFixed(2)} MPa√m | K_Ic = ${(K_Ic / 1e6).toFixed(2)} MPa√m`,
         shockFactor > 1 ? "error" : "warning"
       );
-      // Instant temperature jump at surface
+      
       const newProfile = [...s.thermalProfile];
       newProfile[0] = T_new;
       newProfile[1] = T_new * 0.8 + s.thermalProfile[1] * 0.2;
@@ -440,7 +549,6 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         const period = 6.0;
         const phase = (s.time % period) / period;
         targetT = 373 + 275 * Math.sin(2 * Math.PI * phase);
-        // Count cycles
         const prevPhase = ((s.time - scaledDt) % period) / period;
         if (prevPhase > 0.9 && phase < 0.1) newCycleCount += 1;
         set({ targetTemperature: targetT, cycleCount: newCycleCount });
@@ -451,7 +559,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         set({ targetTemperature: targetT });
       }
 
-      // ── 2. Heat diffusion (with heating rate ramping) ──
+      // ── 2. Heating rate boundary ramping ──
       let activeTargetT = targetT;
       if (s.experimentMode !== "fatigue" && s.experimentMode !== "spacecraft") {
         const currentRefT = s.heatingMode === "uniform" ? s.avgTemperature : s.thermalProfile[0];
@@ -462,86 +570,184 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      // ── 3. EVOLVE THERMAL PROFILE via heat diffusion ──────
+      // ── 3. Evolve mesh ──────
       if (!currentMesh) {
-         setupMesh(s.L0, s.materialId, s.constraint, s.ambientTemperature, s.gapSize);
+         setupMesh(s.L0, s.materialId, s.constraint, s.ambientTemperature, s.gapSize, s.objectType, s.bimetallicMat1, s.bimetallicMat2, s.thickness);
       }
       
-      // Update thermal boundary conditions
       const numNodes = currentMesh!.nodes.length;
-      if (s.heatingMode === "left") {
-         currentMesh!.nodes[0].fixedT = true;
-         currentMesh!.nodes[0].T = activeTargetT;
-      } else if (s.heatingMode === "both") {
-         currentMesh!.nodes[0].fixedT = true;
-         currentMesh!.nodes[0].T = activeTargetT;
-         currentMesh!.nodes[numNodes - 1].fixedT = true;
-         currentMesh!.nodes[numNodes - 1].T = activeTargetT;
-      } else {
-         // Uniform heating: volumetric source proportional to temperature diff
+      const is2D = s.objectType === "plate" || s.objectType === "bimetallic";
+
+      // ── 4. Apply Thermal Boundary Conditions ──────
+      if (is2D) {
+         let maxX = 0;
          for (const n of currentMesh!.nodes) {
-           n.q = (activeTargetT - n.T) * 20.0; 
+           if (n.x > maxX) maxX = n.x;
+         }
+         for (const n of currentMesh!.nodes) {
+           const isLeft = Math.abs(n.x) < 1e-6;
+           const isRight = Math.abs(n.x - maxX) < 1e-6;
+           if (s.heatingMode === "left") {
+             if (isLeft) {
+               n.fixedT = true;
+               n.T = activeTargetT;
+             } else {
+               n.fixedT = false;
+             }
+           } else if (s.heatingMode === "both") {
+             if (isLeft || isRight) {
+               n.fixedT = true;
+               n.T = activeTargetT;
+             } else {
+               n.fixedT = false;
+             }
+           } else {
+             // Uniform heating: volumetric source proportional to temperature diff
+             n.fixedT = false;
+             n.q = (activeTargetT - n.T) * 20.0; 
+           }
+         }
+      } else {
+         if (s.heatingMode === "left") {
+            currentMesh!.nodes[0].fixedT = true;
+            currentMesh!.nodes[0].T = activeTargetT;
+         } else if (s.heatingMode === "both") {
+            currentMesh!.nodes[0].fixedT = true;
+            currentMesh!.nodes[0].T = activeTargetT;
+            currentMesh!.nodes[numNodes - 1].fixedT = true;
+            currentMesh!.nodes[numNodes - 1].T = activeTargetT;
+         } else {
+            for (const n of currentMesh!.nodes) {
+              n.q = (activeTargetT - n.T) * 20.0; 
+            }
          }
       }
       
-      const thermalTelemetry = ThermalSolver.step1DImplicit(currentMesh!, scaledDt);
-      const mechTelemetry = MechanicalSolver.solve1DStatic(currentMesh!, s.crossSectionalArea);
+      // ── 5. Run numerical PDE solvers ──────
+      let thermalTelemetry;
+      let mechTelemetry;
       
-      // ── 4. Extract Derived spatial properties from FEA mesh ──
-      const newProfile = currentMesh!.nodes.map(n => n.T);
-      const avgTemp = newProfile.reduce((a, b) => a + b, 0) / numNodes;
+      if (is2D) {
+         thermalTelemetry = ThermalSolver.step2DImplicit(currentMesh!, scaledDt, s.thickness, 15.0, s.ambientTemperature);
+         mechTelemetry = MechanicalSolver.solve2DStatic(currentMesh!, s.thickness);
+      } else {
+         thermalTelemetry = ThermalSolver.step1DImplicit(currentMesh!, scaledDt, s.diameter, 15.0, s.ambientTemperature);
+         mechTelemetry = MechanicalSolver.solve1DStatic(currentMesh!, s.crossSectionalArea);
+      }
       
-      const nodeDisp = currentMesh!.nodes.map(n => n.ux);
-      const totalDeltaL = currentMesh!.nodes[numNodes-1].ux - currentMesh!.nodes[0].ux;
-      
-      const spatialStress = new Array(numNodes).fill(0);
-      const deltaLPerNode = new Array(numNodes).fill(0);
-      let totalYielded = false;
+      // ── 6. Extract Derived profiles and average states ──
+      let newProfile: number[];
+      let avgTemp: number;
+      let nodeDisp: number[];
+      let totalDeltaL: number;
+      let spatialStress: number[] = [];
+      let deltaLPerNode: number[] = [];
       let maxStress = 0;
+      let totalYielded = false;
       
-      for (let i = 0; i < numNodes; i++) {
-        let str = 0, count = 0;
-        if (i > 0) { 
-           str += currentMesh!.elements[i - 1].stressTensor![0]; 
-           deltaLPerNode[i] = currentMesh!.nodes[i].ux - currentMesh!.nodes[i-1].ux;
-           if (currentMesh!.elements[i - 1].yielded) totalYielded = true;
-           count++; 
-        }
-        if (i < numNodes - 1) { 
-           str += currentMesh!.elements[i].stressTensor![0]; 
-           count++; 
-        }
-        spatialStress[i] = str / count;
-        if (Math.abs(spatialStress[i]) > Math.abs(maxStress)) maxStress = spatialStress[i];
+      if (is2D) {
+         const uniqueX = Array.from(new Set(currentMesh!.nodes.map(n => Math.round(n.x * 1000) / 1000))).sort((a,b) => a-b);
+         const numCols = uniqueX.length;
+         
+         newProfile = new Array(numCols).fill(0);
+         nodeDisp = new Array(numCols).fill(0);
+         spatialStress = new Array(numCols).fill(0);
+         deltaLPerNode = new Array(numCols).fill(0);
+         
+         for (let col = 0; col < numCols; col++) {
+           const xc = uniqueX[col];
+           const colNodes = currentMesh!.nodes.filter(n => Math.abs(n.x - xc) < 1e-3);
+           const sumT = colNodes.reduce((sum, n) => sum + n.T, 0);
+           const sumUx = colNodes.reduce((sum, n) => sum + n.ux, 0);
+           newProfile[col] = sumT / colNodes.length;
+           nodeDisp[col] = sumUx / colNodes.length;
+           
+           if (col > 0) {
+             deltaLPerNode[col] = nodeDisp[col] - nodeDisp[col - 1];
+           }
+         }
+         
+         avgTemp = newProfile.reduce((a, b) => a + b, 0) / numCols;
+         totalDeltaL = nodeDisp[numCols - 1] - nodeDisp[0];
+         
+         const numElemCols = numCols - 1;
+         for (let col = 0; col < numElemCols; col++) {
+           const x_left = uniqueX[col];
+           const x_right = uniqueX[col + 1];
+           const midX = (x_left + x_right) / 2;
+           
+           const colElems = currentMesh!.elements.filter(el => {
+             const elNodes = el.nodeIds.map(id => currentMesh!.nodes[id]);
+             const elCentroidX = elNodes.reduce((sum, n) => sum + n.x, 0) / 4;
+             return Math.abs(elCentroidX - midX) < 1e-2;
+           });
+           
+           if (colElems.length > 0) {
+             const sumStress = colElems.reduce((sum, el) => sum + (el.stressTensor ? el.stressTensor[0] : 0), 0);
+             spatialStress[col] = sumStress / colElems.length;
+             
+             for (const el of colElems) {
+               if (el.yielded) totalYielded = true;
+               if (el.stressTensor) {
+                 const sig_xx = el.stressTensor[0];
+                 const sig_yy = el.stressTensor[1];
+                 const tau_xy = el.stressTensor[2];
+                 const sig_vm = Math.sqrt(sig_xx * sig_xx - sig_xx * sig_yy + sig_yy * sig_yy + 3 * tau_xy * tau_xy);
+                 if (Math.abs(sig_vm) > Math.abs(maxStress)) maxStress = sig_vm;
+               }
+             }
+           }
+         }
+         spatialStress[numCols - 1] = spatialStress[numCols - 2] || 0;
+         
+      } else {
+         newProfile = currentMesh!.nodes.map(n => n.T);
+         avgTemp = newProfile.reduce((a, b) => a + b, 0) / numNodes;
+         nodeDisp = currentMesh!.nodes.map(n => n.ux);
+         totalDeltaL = currentMesh!.nodes[numNodes-1].ux - currentMesh!.nodes[0].ux;
+         
+         for (let i = 0; i < numNodes; i++) {
+           let str = 0, count = 0;
+           if (i > 0) { 
+              str += currentMesh!.elements[i - 1].stressTensor![0]; 
+              deltaLPerNode[i] = currentMesh!.nodes[i].ux - currentMesh!.nodes[i-1].ux;
+              if (currentMesh!.elements[i - 1].yielded) totalYielded = true;
+              count++; 
+           }
+           if (i < numNodes - 1) { 
+              str += currentMesh!.elements[i].stressTensor![0]; 
+              count++; 
+           }
+           spatialStress[i] = str / count;
+           if (Math.abs(spatialStress[i]) > Math.abs(maxStress)) maxStress = spatialStress[i];
+         }
       }
 
       const heatFlux = PhysicsEngine.heatFluxProfile(newProfile, mat, s.L0);
       const avgHeatFlux = heatFlux.reduce((a, b) => a + Math.abs(b), 0) / heatFlux.length;
 
-      // Expansion velocity from last two history points
       const lastPtForVel = s.history[s.history.length - 1];
       const expVelocity = lastPtForVel
         ? PhysicsEngine.expansionVelocity(lastPtForVel.deltaL, totalDeltaL, scaledDt)
         : 0;
 
-      // ── 5. Constraint mechanics at average temperature ─
-      // Get the actual constraint stress from the boundary element
+      // Extract boundary stresses
       const constraintStress = currentMesh!.elements[0].stressTensor![0];
       const mechanicalStrain = currentMesh!.elements[0].strainTensor![0] - currentMesh!.elements[0].thermalStrain![0];
       const σ_y = PhysicsEngine.yieldStrength(mat, avgTemp);
-      const ultimateStrength = 100e6; // Approximation for ultimate
+      const ultimateStrength = mat.ultimateStrength * Math.max(0.05, σ_y / mat.yieldStrength);
 
-      // ── 6. Plastic strain accumulation ─────────────────
+      // Plastic strain accumulation
       let newPlasticStrain = s.plasticStrain;
       if (totalYielded && !s.isFailed) {
          const excess = Math.abs(maxStress) - σ_y;
          newPlasticStrain += (excess / (mat.youngsModulus * 1e-6)) * scaledDt;
       }
 
-      // ── 7. Fatigue damage accumulation ─────────────────
+      // Fatigue damage
       let newFatigue = s.fatigueAccumulated;
       if (s.experimentMode === "fatigue" && newCycleCount > s.cycleCount) {
-        const { damagePerCycle } = PhysicsEngine.fatigueDamagePerCycle(mat, 373 - 275, 373 + 275);
+        const { damagePerCycle } = PhysicsEngine.fatigueDamagePerCycle(mat, 98, 648);
         newFatigue = Math.min(1.0, s.fatigueAccumulated + damagePerCycle);
         if (newFatigue >= 1.0) {
           get().addLog(`FATIGUE FAILURE: ${mat.name} reached critical damage after ${newCycleCount} cycles.`, "error");
@@ -555,7 +761,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      // ── 8. Buckling check ───────────────────────────────
+      // Buckling critical load
       const bucklingResult = PhysicsEngine.bucklingCriticalLoad(
         mat, avgTemp, s.L0, s.crossSectionalArea, s.constraint, s.gapSize, "circular", s.diameter
       );
@@ -566,20 +772,83 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         );
       }
 
-      // ── 9. Bimetallic calculations ─────────────────────
+      // Bimetallic emergent bending deflection and curvature
       let biCurvature = 0;
       let biDeflection = 0;
       if (s.objectType === "bimetallic" || s.experimentMode === "bimetallic" || s.experimentMode === "spacecraft") {
-        const mat1 = MATERIAL_DB[s.bimetallicMat1];
-        const mat2 = MATERIAL_DB[s.bimetallicMat2];
-        if (mat1 && mat2) {
-          const biResult = PhysicsEngine.bimetallicCurvature(mat1, mat2, avgTemp, s.thickness);
-          biCurvature = biResult.curvature;
-          biDeflection = biResult.deflection(s.L0);
+        const rightNodes = currentMesh!.nodes.filter(n => Math.abs(n.x - s.L0) < 1e-3);
+        if (rightNodes.length > 0) {
+          biDeflection = rightNodes.reduce((sum, n) => sum + n.uy, 0) / rightNodes.length;
+          biCurvature = (2 * biDeflection) / (s.L0 * s.L0);
         }
       }
 
-      // ── 10. High-temperature warnings (debounced: once per 2 seconds) ──
+      // Energy Conservation updates
+      const nextEnergyInputTotal = s.energyInputTotal + thermalTelemetry.heatInputRate * scaledDt;
+      const nextEnergyLossTotal = s.energyLossTotal + thermalTelemetry.heatLossRate * scaledDt;
+      
+      // Calculate total physical thermal energy in the system E = \int \rho cp (T - Tamb) dV
+      let thermalEnergy = 0;
+      if (is2D) {
+         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+         for (const n of currentMesh!.nodes) {
+           if (n.x < minX) minX = n.x;
+           if (n.x > maxX) maxX = n.x;
+           if (n.y < minY) minY = n.y;
+           if (n.y > maxY) maxY = n.y;
+         }
+         const nx_grid = new Set(currentMesh!.nodes.map(n => Math.round(n.x * 1000) / 1000)).size - 1;
+         const ny_grid = new Set(currentMesh!.nodes.map(n => Math.round(n.y * 1000) / 1000)).size - 1;
+         const dx_el = (maxX - minX) / Math.max(1, nx_grid);
+         const dy_el = (maxY - minY) / Math.max(1, ny_grid);
+         
+         for (const node of currentMesh!.nodes) {
+           const isLeft = Math.abs(node.x - minX) < 1e-6;
+           const isRight = Math.abs(node.x - maxX) < 1e-6;
+           const isBottom = Math.abs(node.y - minY) < 1e-6;
+           const isTop = Math.abs(node.y - maxY) < 1e-6;
+           
+           let nodeVol = dx_el * dy_el * s.thickness;
+           if ((isLeft || isRight) && (isBottom || isTop)) {
+             nodeVol = (dx_el * dy_el * s.thickness) / 4;
+           } else if (isLeft || isRight || isBottom || isTop) {
+             nodeVol = (dx_el * dy_el * s.thickness) / 2;
+           }
+           thermalEnergy += mat.density * mat.specificHeat * nodeVol * (node.T - s.ambientTemperature);
+         }
+      } else {
+         const dx_el = s.L0 / (numNodes - 1);
+         for (let i = 0; i < numNodes; i++) {
+           const node = currentMesh!.nodes[i];
+           let nodeVol = s.crossSectionalArea * dx_el;
+           if (i === 0 || i === numNodes - 1) nodeVol = s.crossSectionalArea * (dx_el / 2);
+           thermalEnergy += mat.density * mat.specificHeat * nodeVol * (node.T - s.ambientTemperature);
+         }
+      }
+      
+      const energyBalanceResidual = thermalEnergy - (nextEnergyInputTotal - nextEnergyLossTotal);
+
+      // ── 7. Analytical validation checks (physics validation layer) ──
+      let valError = 0;
+      if (s.experimentMode === "free_expansion") {
+        const deltaL_anal = mat.alpha0 * (avgTemp - s.ambientTemperature) * s.L0;
+        valError = Math.min(100, Math.abs(totalDeltaL - deltaL_anal) / Math.max(1e-9, Math.abs(deltaL_anal)) * 100);
+      } else if (s.experimentMode === "fixed_constraint") {
+        const stress_anal = -mat.youngsModulus * mat.alpha0 * (avgTemp - s.ambientTemperature);
+        valError = Math.min(100, Math.abs(constraintStress - stress_anal) / Math.max(1e6, Math.abs(stress_anal)) * 100);
+      } else if (s.experimentMode === "bimetallic" && (s.objectType === "bimetallic" || s.experimentMode === "bimetallic")) {
+        const mat1 = MATERIAL_DB[s.bimetallicMat1];
+        const mat2 = MATERIAL_DB[s.bimetallicMat2];
+        if (mat1 && mat2) {
+          const timoResult = PhysicsEngine.bimetallicCurvature(mat1, mat2, avgTemp, s.thickness);
+          valError = Math.min(100, Math.abs(biCurvature - timoResult.curvature) / Math.max(1e-3, Math.abs(timoResult.curvature)) * 100);
+        }
+      } else if (s.experimentMode === "railway_buckling") {
+        const bucklingAnal = PhysicsEngine.bucklingCriticalLoad(mat, avgTemp, s.L0, s.crossSectionalArea, "fixed", 0, "circular", s.diameter);
+        valError = Math.min(100, Math.abs(bucklingResult.Pcr - bucklingAnal.Pcr) / Math.max(1.0, bucklingAnal.Pcr) * 100);
+      }
+
+      // High-temperature warnings
       const warnings = PhysicsEngine.highTempWarnings(mat, avgTemp);
       if (warnings.length > 0) {
         const nextTime = s.time + scaledDt;
@@ -589,7 +858,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         }
       }
 
-      // ── 11. Failure check ──────────────────────────────
+      // Failure checks
       let failed: boolean = s.isFailed;
       if (Math.abs(maxStress) > ultimateStrength && !failed) {
         get().addLog(
@@ -605,7 +874,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         set({ isFailed: true, crackLocations: cracks });
       }
 
-      // ── 12. History recording ──────────────────────────
+      // History recording
       const nextTime = s.time + scaledDt;
       const lastPt = s.history[s.history.length - 1];
 
@@ -628,32 +897,48 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
 
       let newHistory = s.history;
       if (needsRecord) {
-        const mass = mat.density * s.L0 * s.crossSectionalArea;
-        const energy = mass * mat.specificHeat * (avgTemp - s.ambientTemperature);
         const pt: HistoryPoint = {
           time: nextTime,
           avgTemp,
           deltaL: totalDeltaL,
           stress: constraintStress,
           strain: mechanicalStrain,
-          energy,
+          energy: thermalEnergy,
           deflection: biDeflection,
           curvature: biCurvature,
           damage: newFatigue,
           cycleCount: newCycleCount,
           heatFlux: avgHeatFlux,
           expansionVelocity: expVelocity,
+          energyInput: nextEnergyInputTotal,
+          energyLoss: nextEnergyLossTotal,
         };
         newHistory = [...s.history, pt].slice(-1500);
       }
 
-      // ── 13. Yield warning log ──────────────────────────
+      // Yield warning log
       if (totalYielded && !s.isYielding) {
         get().addLog(
           `YIELD: σ = ${(maxStress / 1e6).toFixed(0)} MPa > σ_y = ${(σ_y / 1e6).toFixed(0)} MPa at T = ${avgTemp.toFixed(0)} K`,
           "warning"
         );
       }
+
+      // Serialize 2D arrays for visualization
+      const serialThermal2D = currentMesh!.nodes.map(n => n.T);
+      const serialDisplacement2D = currentMesh!.nodes.map(n => ({ ux: n.ux, uy: n.uy }));
+      const serialStress2D = currentMesh!.elements.map(el => {
+        if (el.stressTensor) {
+          const sig_xx = el.stressTensor[0];
+          const sig_yy = el.stressTensor[1];
+          const tau_xy = el.stressTensor[2];
+          const sig_vm = Math.sqrt(sig_xx * sig_xx - sig_xx * sig_yy + sig_yy * sig_yy + 3 * tau_xy * tau_xy);
+          return { xx: sig_xx, yy: sig_yy, xy: tau_xy, vm: sig_vm };
+        }
+        return { xx: 0, yy: 0, xy: 0, vm: 0 };
+      });
+      const serialPositions2D = currentMesh!.nodes.map(n => ({ x: n.x, y: n.y }));
+      const serialElementNodeIds2D = currentMesh!.elements.map(el => el.nodeIds);
 
       set({
         thermalProfile: newProfile,
@@ -676,11 +961,23 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         heatFluxProfile: heatFlux,
         nodeDisplacementProfile: nodeDisp,
         expansionVelocity: expVelocity,
+
+        thermalProfile2D: serialThermal2D,
+        nodeDisplacement2D: serialDisplacement2D,
+        elementStress2D: serialStress2D,
+        nodePositions2D: serialPositions2D,
+        elementNodeIds2D: serialElementNodeIds2D,
+
+        energyInputTotal: nextEnergyInputTotal,
+        energyLossTotal: nextEnergyLossTotal,
+        energyBalanceResidual: energyBalanceResidual,
+
         solverTelemetry: {
           thermalIters: thermalTelemetry.iterations,
           mechIters: mechTelemetry.iterations,
           thermalError: thermalTelemetry.error,
           mechError: mechTelemetry.error,
+          validationError: valError,
         },
         history: newHistory,
         time: nextTime,
@@ -714,14 +1011,23 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         heatFluxProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         nodeDisplacementProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         spatialExpansionProfile: new Array(PhysicsEngine.N_NODES).fill(0),
-        solverTelemetry: { thermalIters: 0, mechIters: 0, thermalError: 0, mechError: 0 }
+        
+        thermalProfile2D: [],
+        nodeDisplacement2D: [],
+        elementStress2D: [],
+        nodePositions2D: [],
+        elementNodeIds2D: [],
+        energyInputTotal: 0,
+        energyLossTotal: 0,
+        energyBalanceResidual: 0,
+        
+        solverTelemetry: { thermalIters: 0, mechIters: 0, thermalError: 0, mechError: 0, validationError: 0 }
       });
-      setupMesh(get().L0, preset.materialId ?? get().materialId, preset.constraint ?? get().constraint, AMBIENT, preset.gapSize ?? get().gapSize);
+      const nextPreset = { ...get(), ...preset };
+      setupMesh(nextPreset.L0, nextPreset.materialId ?? get().materialId, nextPreset.constraint ?? get().constraint, AMBIENT, nextPreset.gapSize ?? get().gapSize, nextPreset.objectType, nextPreset.bimetallicMat1, nextPreset.bimetallicMat2, nextPreset.thickness);
     },
   };
 });
 
-// Removed physicsWorker integration to run real FEM synchronously
-
-// Backwards-compatibility alias for components that import MATERIAL_DATABASE
+// Backwards-compatibility alias
 export { MATERIAL_DB as MATERIAL_DATABASE };
