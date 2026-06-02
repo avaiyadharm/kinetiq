@@ -286,6 +286,37 @@ export const ThermalExpansionAnalytics: React.FC = () => {
           </div>
         </section>
 
+        {/* Solver Telemetry */}
+        <section>
+          <h3 className="text-base font-bold text-white/80 mb-3 font-display">FEA Solver Telemetry</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat
+              label="Thermal Solver"
+              value="Implicit Euler"
+              color="text-emerald-400"
+              sub={`Iters: ${useThermalExpansionStore.getState().solverTelemetry.thermalIters}`}
+            />
+            <Stat
+              label="Thermal Residual"
+              value={useThermalExpansionStore.getState().solverTelemetry.thermalError.toExponential(2)}
+              color={useThermalExpansionStore.getState().solverTelemetry.thermalError > 1e-4 ? "text-amber-400" : "text-cyan-400"}
+              sub="||R|| / ||T||"
+            />
+            <Stat
+              label="Mechanical Solver"
+              value="1D Static FEA"
+              color="text-emerald-400"
+              sub={`Iters: ${useThermalExpansionStore.getState().solverTelemetry.mechIters}`}
+            />
+            <Stat
+              label="Mech Residual"
+              value={useThermalExpansionStore.getState().solverTelemetry.mechError.toExponential(2)}
+              color={useThermalExpansionStore.getState().solverTelemetry.mechError > 1e-4 ? "text-amber-400" : "text-cyan-400"}
+              sub="||Ku - F||"
+            />
+          </div>
+        </section>
+
         {/* Bimetallic */}
         {(objectType === "bimetallic" || experimentMode === "bimetallic" || experimentMode === "spacecraft") && mat1 && mat2 && (
           <section>

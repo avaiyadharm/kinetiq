@@ -8,13 +8,32 @@ import {
   ShapeType,
   HeatingMode
 } from "@/lib/physics/thermalExpansion";
-import { PhysicsWorkerManager } from "@/lib/physics/engine/WorkerManager";
+import { Mesh } from "@/lib/physics/engine/mesh/MeshGenerator";
+import { ThermalSolver } from "@/lib/physics/engine/solvers/ThermalSolver";
+import { MechanicalSolver } from "@/lib/physics/engine/solvers/MechanicalSolver";
 
 // Re-export types for components
 export type { ExperimentMode, ConstraintType, ShapeType, HeatingMode };
 
-// Global Worker Instance
-const physicsWorker = typeof window !== 'undefined' ? new PhysicsWorkerManager() : null;
+// Global Mesh Instance
+let currentMesh: Mesh | null = null;
+
+function setupMesh(L0: number, materialId: string, constraint: ConstraintType, T0: number, gapSize: number) {
+  currentMesh = Mesh.generate1DBar(L0, 40, materialId, T0);
+  const N = currentMesh.nodes.length;
+  if (constraint === "fixed") {
+    currentMesh.nodes[0].fixedX = true;
+    currentMesh.nodes[N - 1].fixedX = true;
+  } else if (constraint === "free") {
+    currentMesh.nodes[0].fixedX = true; // Pin left to prevent rigid body motion
+  } else if (constraint === "partial") {
+    currentMesh.nodes[0].fixedX = true;
+    currentMesh.nodes[N - 1].gapLimit = gapSize;
+  } else if (constraint === "spring") {
+    currentMesh.nodes[0].fixedX = true;
+    currentMesh.nodes[N - 1].springK = 1e7; // 10 MN/m spring
+  }
+}
 
 
 // ============================================================
@@ -116,6 +135,14 @@ interface ThermalExpansionState {
   heatFluxProfile: number[];        // W/m², q(x) at each node
   nodeDisplacementProfile: number[]; // m, cumulative u(x) per node
   expansionVelocity: number;        // m/s, d(ΔL)/dt
+
+  // Solver Telemetry
+  solverTelemetry: {
+    thermalIters: number;
+    mechIters: number;
+    thermalError: number;
+    mechError: number;
+  };
 
   // History
   history: HistoryPoint[];
@@ -228,6 +255,13 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
     nodeDisplacementProfile: new Array(N).fill(0),
     expansionVelocity: 0,
 
+    solverTelemetry: {
+      thermalIters: 0,
+      mechIters: 0,
+      thermalError: 0,
+      mechError: 0,
+    },
+
     history: [],
     logs: [{ timestamp: Date.now(), message: "Thermal Expansion Laboratory initialized. Physics engine ready.", type: "info" as const }],
     crackLocations: [],
@@ -276,13 +310,13 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
 
     setObjectType: (type) => {
       set({ objectType: type, plasticStrain: 0, isFailed: false, crackLocations: [] });
-      physicsWorker?.send({ type: "INIT", payload: { L0: get().L0, materialId: get().materialId, constraint: get().constraint } });
+      setupMesh(get().L0, get().materialId, get().constraint, get().ambientTemperature, get().gapSize);
     },
 
     setConstraint: (c) => {
       get().addLog(`Boundary condition → ${c.toUpperCase()}`, "info");
       set({ constraint: c, plasticStrain: 0, isFailed: false, isYielding: false, crackLocations: [] });
-      physicsWorker?.send({ type: "INIT", payload: { L0: get().L0, materialId: get().materialId, constraint: c } });
+      setupMesh(get().L0, get().materialId, c, get().ambientTemperature, get().gapSize);
     },
 
     setExperimentMode: (mode) => {
@@ -366,11 +400,11 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
     triggerThermalShock: (T_new) => {
       const s = get();
       const mat = MATERIAL_DB[s.materialId];
-      const { shockStress, shockFactor } = PhysicsEngine.thermalShockStress(
+      const { shockStress, shockFactor, K_I, K_Ic } = PhysicsEngine.thermalShockStress(
         mat, T_new, s.avgTemperature, s.thickness
       );
       get().addLog(
-        `THERMAL SHOCK: ΔT=${Math.abs(T_new - s.avgTemperature).toFixed(0)} K | σ_shock = ${(shockStress / 1e6).toFixed(0)} MPa | Factor = ${shockFactor.toFixed(2)}`,
+        `THERMAL SHOCK: ΔT=${Math.abs(T_new - s.avgTemperature).toFixed(0)} K | K_I = ${(K_I / 1e6).toFixed(2)} MPa√m | K_Ic = ${(K_Ic / 1e6).toFixed(2)} MPa√m`,
         shockFactor > 1 ? "error" : "warning"
       );
       // Instant temperature jump at surface
@@ -386,7 +420,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
           size: 15 + Math.random() * 20
         }));
         set({ isFailed: true, crackLocations: cracks });
-        get().addLog(`FRACTURE: Thermal shock stress (${(shockStress / 1e6).toFixed(0)} MPa) exceeds tensile strength of ${mat.name}.`, "error");
+        get().addLog(`FRACTURE (Griffith Criterion): Stress intensity K_I (${(K_I / 1e6).toFixed(2)}) exceeds fracture toughness K_Ic (${(K_Ic / 1e6).toFixed(2)}).`, "error");
       }
     },
 
@@ -429,21 +463,59 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       }
 
       // ── 3. EVOLVE THERMAL PROFILE via heat diffusion ──────
-      const newProfile = PhysicsEngine.heatDiffusionMultiStep(
-        s.thermalProfile,
-        mat,
-        s.L0,
-        activeTargetT,
-        s.ambientTemperature,
-        scaledDt,
-        s.heatingMode
-      );
+      if (!currentMesh) {
+         setupMesh(s.L0, s.materialId, s.constraint, s.ambientTemperature, s.gapSize);
+      }
+      
+      // Update thermal boundary conditions
+      const numNodes = currentMesh!.nodes.length;
+      if (s.heatingMode === "left") {
+         currentMesh!.nodes[0].fixedT = true;
+         currentMesh!.nodes[0].T = activeTargetT;
+      } else if (s.heatingMode === "both") {
+         currentMesh!.nodes[0].fixedT = true;
+         currentMesh!.nodes[0].T = activeTargetT;
+         currentMesh!.nodes[numNodes - 1].fixedT = true;
+         currentMesh!.nodes[numNodes - 1].T = activeTargetT;
+      } else {
+         // Uniform heating: volumetric source proportional to temperature diff
+         for (const n of currentMesh!.nodes) {
+           n.q = (activeTargetT - n.T) * 20.0; 
+         }
+      }
+      
+      const thermalTelemetry = ThermalSolver.step1DImplicit(currentMesh!, scaledDt);
+      const mechTelemetry = MechanicalSolver.solve1DStatic(currentMesh!, s.crossSectionalArea);
+      
+      // ── 4. Extract Derived spatial properties from FEA mesh ──
+      const newProfile = currentMesh!.nodes.map(n => n.T);
+      const avgTemp = newProfile.reduce((a, b) => a + b, 0) / numNodes;
+      
+      const nodeDisp = currentMesh!.nodes.map(n => n.ux);
+      const totalDeltaL = currentMesh!.nodes[numNodes-1].ux - currentMesh!.nodes[0].ux;
+      
+      const spatialStress = new Array(numNodes).fill(0);
+      const deltaLPerNode = new Array(numNodes).fill(0);
+      let totalYielded = false;
+      let maxStress = 0;
+      
+      for (let i = 0; i < numNodes; i++) {
+        let str = 0, count = 0;
+        if (i > 0) { 
+           str += currentMesh!.elements[i - 1].stressTensor![0]; 
+           deltaLPerNode[i] = currentMesh!.nodes[i].ux - currentMesh!.nodes[i-1].ux;
+           if (currentMesh!.elements[i - 1].yielded) totalYielded = true;
+           count++; 
+        }
+        if (i < numNodes - 1) { 
+           str += currentMesh!.elements[i].stressTensor![0]; 
+           count++; 
+        }
+        spatialStress[i] = str / count;
+        if (Math.abs(spatialStress[i]) > Math.abs(maxStress)) maxStress = spatialStress[i];
+      }
 
-      // ── 4. Derived spatial properties from EVOLVED profile ──
-      const { totalDeltaL, avgTemp, deltaLPerNode } = PhysicsEngine.spatialExpansion(mat, newProfile, s.L0);
-      const spatialStress = PhysicsEngine.spatialStress(mat, newProfile, s.constraint);
       const heatFlux = PhysicsEngine.heatFluxProfile(newProfile, mat, s.L0);
-      const nodeDisp = PhysicsEngine.nodeDisplacementProfile(newProfile, mat, s.L0, s.constraint);
       const avgHeatFlux = heatFlux.reduce((a, b) => a + Math.abs(b), 0) / heatFlux.length;
 
       // Expansion velocity from last two history points
@@ -453,16 +525,17 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         : 0;
 
       // ── 5. Constraint mechanics at average temperature ─
-      const constraintResult = PhysicsEngine.constraintState(
-        mat, s.L0, avgTemp, s.constraint, s.gapSize, 100e6, s.plasticStrain
-      );
+      // Get the actual constraint stress from the boundary element
+      const constraintStress = currentMesh!.elements[0].stressTensor![0];
+      const mechanicalStrain = currentMesh!.elements[0].strainTensor![0] - currentMesh!.elements[0].thermalStrain![0];
+      const σ_y = PhysicsEngine.yieldStrength(mat, avgTemp);
+      const ultimateStrength = 100e6; // Approximation for ultimate
 
       // ── 6. Plastic strain accumulation ─────────────────
       let newPlasticStrain = s.plasticStrain;
-      const σ_y = PhysicsEngine.yieldStrength(mat, avgTemp);
-      if (constraintResult.isYielding && !s.isFailed) {
-        const excess = Math.abs(constraintResult.stress) - σ_y;
-        newPlasticStrain += (excess / (mat.youngsModulus * 1e-6)) * scaledDt;
+      if (totalYielded && !s.isFailed) {
+         const excess = Math.abs(maxStress) - σ_y;
+         newPlasticStrain += (excess / (mat.youngsModulus * 1e-6)) * scaledDt;
       }
 
       // ── 7. Fatigue damage accumulation ─────────────────
@@ -518,9 +591,9 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
 
       // ── 11. Failure check ──────────────────────────────
       let failed: boolean = s.isFailed;
-      if (constraintResult.isFailed && !failed) {
+      if (Math.abs(maxStress) > ultimateStrength && !failed) {
         get().addLog(
-          `FAILURE: σ = ${(constraintResult.stress / 1e6).toFixed(0)} MPa exceeds ultimate strength of ${mat.name} at T = ${avgTemp.toFixed(0)} K`,
+          `FAILURE: σ = ${(maxStress / 1e6).toFixed(0)} MPa exceeds ultimate strength of ${mat.name} at T = ${avgTemp.toFixed(0)} K`,
           "error"
         );
         failed = true;
@@ -542,7 +615,7 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       } else {
         const timeElapsed = nextTime - lastPt.time;
         const tempChanged = Math.abs(avgTemp - lastPt.avgTemp) > 0.15;
-        const stressChanged = Math.abs(constraintResult.stress - lastPt.stress) > 1e5;
+        const stressChanged = Math.abs(constraintStress - lastPt.stress) > 1e5;
         const cycleChanged = newCycleCount !== lastPt.cycleCount;
         const curvatureChanged = Math.abs(biCurvature - lastPt.curvature) > 1e-6;
 
@@ -561,8 +634,8 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
           time: nextTime,
           avgTemp,
           deltaL: totalDeltaL,
-          stress: constraintResult.stress,
-          strain: constraintResult.mechanicalStrain,
+          stress: constraintStress,
+          strain: mechanicalStrain,
           energy,
           deflection: biDeflection,
           curvature: biCurvature,
@@ -575,9 +648,9 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
       }
 
       // ── 13. Yield warning log ──────────────────────────
-      if (constraintResult.isYielding && !s.isYielding) {
+      if (totalYielded && !s.isYielding) {
         get().addLog(
-          `YIELD: σ = ${(constraintResult.stress / 1e6).toFixed(0)} MPa > σ_y = ${(σ_y / 1e6).toFixed(0)} MPa at T = ${avgTemp.toFixed(0)} K`,
+          `YIELD: σ = ${(maxStress / 1e6).toFixed(0)} MPa > σ_y = ${(σ_y / 1e6).toFixed(0)} MPa at T = ${avgTemp.toFixed(0)} K`,
           "warning"
         );
       }
@@ -586,10 +659,10 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         thermalProfile: newProfile,
         avgTemperature: avgTemp,
         realDeltaL: totalDeltaL,
-        stressAtConstraint: constraintResult.stress,
-        mechanicalStrain: constraintResult.mechanicalStrain,
-        isYielding: constraintResult.isYielding,
-        factorOfSafety: constraintResult.factorOfSafety,
+        stressAtConstraint: constraintStress,
+        mechanicalStrain: mechanicalStrain,
+        isYielding: totalYielded,
+        factorOfSafety: ultimateStrength / (Math.abs(maxStress) || 1),
         bucklingLoad: bucklingResult.thermalLoad,
         bucklingCriticalLoad: bucklingResult.Pcr,
         willBuckle: bucklingResult.willBuckle,
@@ -603,6 +676,12 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         heatFluxProfile: heatFlux,
         nodeDisplacementProfile: nodeDisp,
         expansionVelocity: expVelocity,
+        solverTelemetry: {
+          thermalIters: thermalTelemetry.iterations,
+          mechIters: mechTelemetry.iterations,
+          thermalError: thermalTelemetry.error,
+          mechError: mechTelemetry.error,
+        },
         history: newHistory,
         time: nextTime,
       });
@@ -634,36 +713,15 @@ export const useThermalExpansionStore = create<ThermalExpansionState>((set, get)
         expansionVelocity: 0,
         heatFluxProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         nodeDisplacementProfile: new Array(PhysicsEngine.N_NODES).fill(0),
-        spatialStressProfile: new Array(PhysicsEngine.N_NODES).fill(0),
         spatialExpansionProfile: new Array(PhysicsEngine.N_NODES).fill(0),
+        solverTelemetry: { thermalIters: 0, mechIters: 0, thermalError: 0, mechError: 0 }
       });
-      physicsWorker?.send({ type: "INIT", payload: { L0: get().L0, materialId: preset.materialId ?? get().materialId, constraint: preset.constraint ?? get().constraint } });
+      setupMesh(get().L0, preset.materialId ?? get().materialId, preset.constraint ?? get().constraint, AMBIENT, preset.gapSize ?? get().gapSize);
     },
   };
 });
 
-// Attach store setter to physics worker for direct state injection
-if (physicsWorker) {
-  physicsWorker.send({ type: "INIT", payload: { L0: useThermalExpansionStore.getState().L0, materialId: useThermalExpansionStore.getState().materialId, constraint: useThermalExpansionStore.getState().constraint } });
-  
-  physicsWorker.setCallbacks(
-    (payload) => {
-      // In a real FEA pipeline we decouple the simulation loop completely.
-      // We merge worker results directly into the zustand store to trigger React renders.
-      useThermalExpansionStore.setState({
-        thermalProfile: payload.thermalProfile,
-        spatialExpansionProfile: payload.displacementProfile,
-        spatialStressProfile: payload.stressProfile,
-        avgTemperature: payload.avgTemperature,
-        realDeltaL: payload.realDeltaL,
-        stressAtConstraint: payload.stressAtConstraint
-      });
-    },
-    (msg, level) => {
-      useThermalExpansionStore.getState().addLog(msg, level as any);
-    }
-  );
-}
+// Removed physicsWorker integration to run real FEM synchronously
 
 // Backwards-compatibility alias for components that import MATERIAL_DATABASE
 export { MATERIAL_DB as MATERIAL_DATABASE };

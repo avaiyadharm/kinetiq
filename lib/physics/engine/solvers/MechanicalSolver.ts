@@ -11,7 +11,7 @@ export class MechanicalSolver {
   
   // Solves 1D mechanical equilibrium
   // [K]{u} = {F_th} + {F_ext}
-  static solve1DStatic(mesh: Mesh, crossSectionArea: number): void {
+  static solve1DStatic(mesh: Mesh, crossSectionArea: number): { iterations: number, error: number } {
     const N = mesh.nodes.length;
     const builder = new MatrixBuilder(N);
     const rhs = new Float64Array(N);
@@ -65,11 +65,32 @@ export class MechanicalSolver {
       } else if (node.fx !== 0) {
         rhs[node.id] += node.fx;
       }
+      
+      if (node.springK !== undefined) {
+        builder.add(node.id, node.id, node.springK);
+      }
     }
     
-    // Solve for displacements
-    const K_csr = builder.toCSR();
-    const result = SparseSolver.solveCG(K_csr, rhs, new Float64Array(N));
+    // First solve (predictor)
+    let K_csr = builder.toCSR();
+    let result = SparseSolver.solveCG(K_csr, rhs, new Float64Array(N));
+    
+    // Check contact (gap)
+    let contactOccurred = false;
+    for (const node of mesh.nodes) {
+      if (node.gapLimit !== undefined && result.x[node.id] > node.gapLimit) {
+        // Enforce displacement = gapLimit
+        builder.add(node.id, node.id, penalty);
+        rhs[node.id] += penalty * node.gapLimit;
+        contactOccurred = true;
+      }
+    }
+    
+    // Solve again if contact occurred
+    if (contactOccurred) {
+      K_csr = builder.toCSR();
+      result = SparseSolver.solveCG(K_csr, rhs, new Float64Array(N));
+    }
     
     // Update mesh displacements
     for (let i = 0; i < N; i++) {
@@ -112,5 +133,7 @@ export class MechanicalSolver {
       const sigma_y = PhysicsEngine.yieldStrength(mat, T_el);
       el.yielded = Math.abs(sigma) > sigma_y;
     }
+    
+    return { iterations: result.iterations, error: result.error };
   }
 }

@@ -32,6 +32,7 @@ export interface MaterialProperties {
   yieldStrength: number;        // σ_y  Pa
   ultimateStrength: number;     // σ_u  Pa
   fatigueLimit: number;         // σ_f  Pa (endurance limit)
+  fractureToughness?: number;   // K_Ic Pa√m (Griffith criterion)
 
   // Failure
   meltingPoint: number;         // K
@@ -839,16 +840,31 @@ export class PhysicsEngine {
     T_surface: number,
     T_initial: number,
     thickness: number
-  ): { shockStress: number; shockFactor: number; thermalGradient: number } {
+  ): { shockStress: number; shockFactor: number; thermalGradient: number; K_I: number; K_Ic: number } {
     const dT = Math.abs(T_surface - T_initial);
     const T_avg = (T_surface + T_initial) / 2;
     const E = this.youngsModulus(mat, T_avg);
     const alpha_val = this.alpha(mat, T_avg);
+    // Biaxial thermal stress at surface
     const shockStress = (E * alpha_val * dT) / (1 - mat.poissonsRatio);
     const thermalGradient = dT / thickness;
-    const σ_y = this.yieldStrength(mat, T_surface);
-    const shockFactor = shockStress / σ_y;
-    return { shockStress, shockFactor, thermalGradient };
+    
+    // Griffith Criterion for Fracture Mechanics
+    // K_I = Y * σ * sqrt(π * a)
+    const a = 0.001; // Assume 1mm initial surface micro-crack
+    const Y = 1.12;  // Geometry factor for edge crack
+    const K_I = Y * shockStress * Math.sqrt(Math.PI * a);
+    
+    // Estimate fracture toughness if not explicitly provided
+    let K_Ic = mat.fractureToughness;
+    if (!K_Ic) {
+      if (mat.category === "ceramic") K_Ic = 1.5e6; // ~1.5 MPa√m for ceramics
+      else if (mat.category === "composite") K_Ic = 20e6; // ~20 MPa√m
+      else K_Ic = 50e6; // ~50 MPa√m for typical metals
+    }
+    
+    const shockFactor = K_I / K_Ic;
+    return { shockStress, shockFactor, thermalGradient, K_I, K_Ic };
   }
 
   // ----------------------------------------------------------

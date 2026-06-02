@@ -22,6 +22,10 @@ export interface Node {
   fx: number;
   fy: number;
   q: number;        // Heat source
+  
+  // Advanced Constraints
+  springK?: number;
+  gapLimit?: number;
 }
 
 export interface Element {

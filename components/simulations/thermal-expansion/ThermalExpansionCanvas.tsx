@@ -823,10 +823,14 @@ export const ThermalExpansionCanvas: React.FC = () => {
       atomPos[r] = [];
       for (let c = 0; c < cols; c++) {
         const phaseShift = r * 1.9 + c * 2.7;
-        // Anharmonic: atom displacement has a positive bias (asymmetric potential)
-        const dx = ampPx * Math.sin(phase + phaseShift);
-        // Second harmonic adds anharmonic asymmetry (spend more time at r > r₀)
-        const asymmetry = ampPx * 0.28 * Math.sin(2 * (phase + phaseShift));
+        // ── Morse Potential Anharmonicity ─────────────
+        // A particle in a Morse potential V(r) = D_e(1 - e^{-a(r-r_0)})^2
+        // has a perturbed trajectory: x(t) ≈ A sin(ωt) + (a A² / 4)(1 - cos(2ωt))
+        const dx_harmonic = ampPx * Math.sin(phase + phaseShift);
+        const morseA = 0.8; // Effective Morse asymmetry parameter
+        const asymmetry = morseA * (ampPx * ampPx * 0.15) * (1 - Math.cos(2 * (phase + phaseShift)));
+        const dx = dx_harmonic + asymmetry;
+
         const dy = ampPx * Math.cos(phase * 1.1 + phaseShift);
         atomPos[r][c] = {
           x: startX + c * spacing + dx + asymmetry + shift * 0.15 * c,
@@ -902,7 +906,7 @@ export const ThermalExpansionCanvas: React.FC = () => {
     // Physics note
     ctx.fillStyle = "rgba(255,255,255,0.3)";
     ctx.font = "5.5px monospace";
-    const noteText = avgTemperature < 150 ? "near 0K: quantum zero-point motion" : "anharmonic: ⟨r⟩ > r₀ as T↑";
+    const noteText = avgTemperature < 150 ? "near 0K: quantum zero-point motion" : "Morse Potential: ⟨r⟩ > r₀ as T↑";
     ctx.fillText(noteText, cx, cy - radius + 12);
   };
 

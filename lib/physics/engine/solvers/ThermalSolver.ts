@@ -12,7 +12,7 @@ export class ThermalSolver {
   // Solves 1D heat diffusion using Finite Elements (Linear Bar Elements)
   // [C]{T_dot} + [K]{T} = {F}
   // Implicit Euler: (C + dt*K) T_new = C*T_old + dt*F
-  static step1DImplicit(mesh: Mesh, dt: number): void {
+  static step1DImplicit(mesh: Mesh, dt: number): { iterations: number, error: number } {
     const N = mesh.nodes.length;
     const builder = new MatrixBuilder(N);
     const rhs = new Float64Array(N);
@@ -87,5 +87,7 @@ export class ThermalSolver {
     for (let i = 0; i < N; i++) {
       mesh.nodes[i].T = result.x[i];
     }
+    
+    return { iterations: result.iterations, error: result.error };
   }
 }
