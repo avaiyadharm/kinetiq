@@ -56,7 +56,6 @@ function GalleryContent() {
     { id: "gas-laws", title: "Gas Laws", description: "PV=nRT with interactive volume and temperature controls.", category: "Thermodynamics", difficulty: "Easy", views: "18.2k", image: "/images/simulations/gas-laws.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
     { id: "carnot-engine", title: "Carnot Engine", description: "Efficiency and cycles of an ideal heat engine.", category: "Thermodynamics", difficulty: "Advanced", views: "6.3k", image: "/images/simulations/carnot-engine.png", color: "text-rose-400", dotColor: "bg-rose-400" },
     { id: "thermal-expansion", title: "Thermal Expansion", description: "Linear and volumetric expansion of solids and liquids.", category: "Thermodynamics", difficulty: "Easy", views: "8.1k", image: "/images/simulations/thermal-expansion.png", color: "text-emerald-400", dotColor: "bg-emerald-400" },
-    { id: "kinetic-theory", title: "Kinetic Theory", description: "Microscopic motion of particles and its relation to temperature.", category: "Thermodynamics", difficulty: "Intermediate", views: "12.7k", image: "/images/simulations/kinetic-theory.png", color: "text-amber-400", dotColor: "bg-amber-400" },
 
     // Electricity and Magnetism
     { id: "circuits-lab", title: "Circuits", description: "Build and test complex DC circuits with resistors and bulbs.", category: "Electricity and Magnetism", difficulty: "Intermediate", views: "21.3k", image: "/images/simulations/circuits-lab.png", color: "text-amber-400", dotColor: "bg-amber-400" },

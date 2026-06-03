@@ -1,451 +1,253 @@
 "use client";
+import React, { useEffect, useRef } from "react";
+import { useKEStore } from "@/store/kineticEnergyStore";
+import { HistoryPoint } from "@/lib/physics/kineticEnergy";
 
-import React from "react";
-
-interface KineticEnergyAnalyticsProps {
-  subMode: string;
-  
-  // Translational
-  transMass: number;
-  transVelocity: number;
-
-  // Rotational
-  rotShape: "ring" | "disk" | "sphere" | "rod";
-  rotMass: number;
-  rotRadius: number;
-  rotOmega: number;
-
-  // Relativistic
-  relMass: number;
-  relBeta: number;
-
-  // Thermal
-  thermalTemp: number;
-  thermalGas: "He" | "Ar" | "Xe";
-
-  // Quantum
-  quantumN: number;
-  wellWidth: number;
-  quantumParticle: "electron" | "proton";
+// ─── SVG mini-chart ───────────────────────────────────────────────────────────
+interface ChartProps {
+  data: number[];
+  color: string;
+  label: string;
+  unit: string;
+  yMin?: number;
+  yMax?: number;
+  dotColor?: string;
 }
 
-export const KineticEnergyAnalytics: React.FC<Readonly<KineticEnergyAnalyticsProps>> = ({
-  subMode,
-  transMass,
-  transVelocity,
-  rotShape,
-  rotMass,
-  rotRadius,
-  rotOmega,
-  relMass,
-  relBeta,
-  thermalTemp,
-  thermalGas,
-  quantumN,
-  wellWidth,
-  quantumParticle,
-}) => {
-  // 1. Translational: Parabolic KE vs Velocity
-  const renderTranslationalChart = () => {
-    const width = 500;
-    const height = 240;
-    const padding = 40;
+function MiniChart({ data, color, label, unit, yMin, dotColor }: ChartProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const W = 300, H = 80;
+  const PAD = { l: 8, r: 8, t: 6, b: 6 };
 
-    const points: string[] = [];
-    const maxV = 35.0;
-    const currentKE = 0.5 * transMass * transVelocity * transVelocity;
-    const maxKE = 0.5 * transMass * maxV * maxV;
-
-    // Draw curve
-    for (let v = 0; v <= maxV; v += 1) {
-      const ke = 0.5 * transMass * v * v;
-      const x = padding + (v / maxV) * (width - padding * 2);
-      const y = height - padding - (ke / maxKE) * (height - padding * 2);
-      points.push(`${x},${y}`);
-    }
-
-    // Current point coordinates
-    const curX = padding + (Math.abs(transVelocity) / maxV) * (width - padding * 2);
-    const curY = height - padding - (currentKE / maxKE) * (height - padding * 2);
-
+  if (data.length < 2) {
     return (
-      <div className="bg-[#121214] p-6 rounded-2xl border border-white/5 space-y-4">
-        <div>
-          <h4 className="text-sm font-bold text-white font-display uppercase">Energy Profile: KE vs Velocity</h4>
-          <p className="text-xs text-white/40">Shows quadratic scaling relationship: $KE \propto v^2$.</p>
-        </div>
-        <div className="flex justify-center">
-          <svg width={width} height={height} className="overflow-visible font-mono text-[9px] fill-zinc-400">
-            {/* Grid Lines */}
-            <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
-            <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
-            
-            {/* Parabolic path */}
-            <polyline points={points.join(" ")} fill="none" stroke="#06b6d4" strokeWidth={3} strokeLinecap="round" />
-            
-            {/* Current point indicator */}
-            {curX >= padding && curX <= width - padding && (
-              <>
-                <line x1={curX} y1={height - padding} x2={curX} y2={curY} stroke="rgba(16,185,129,0.3)" strokeDasharray="3,3" />
-                <line x1={padding} y1={curY} x2={curX} y2={curY} stroke="rgba(16,185,129,0.3)" strokeDasharray="3,3" />
-                <circle cx={curX} cy={curY} r={6} fill="#10b981" className="animate-pulse" />
-                <circle cx={curX} cy={curY} r={3} fill="#fff" />
-              </>
-            )}
-
-            {/* Labels */}
-            <text x={width / 2} y={height - 8} textAnchor="middle">Velocity (m/s)</text>
-            <text x={10} y={height / 2} transform={`rotate(-90 10 ${height / 2})`} textAnchor="middle">Kinetic Energy (J)</text>
-
-            <text x={padding} y={height - padding + 15} textAnchor="middle">0</text>
-            <text x={width - padding} y={height - padding + 15} textAnchor="middle">{maxV}</text>
-            <text x={padding - 10} y={height - padding} textAnchor="end">0 J</text>
-            <text x={padding - 10} y={padding + 5} textAnchor="end">{maxKE.toFixed(0)} J</text>
-
-            {/* Floating label */}
-            <text x={curX + 10} y={curY - 10} className="fill-emerald-400 font-bold">
-              {currentKE.toFixed(1)} J
-            </text>
-          </svg>
-        </div>
+      <div className="h-[80px] flex items-center justify-center">
+        <span className="text-[10px] text-white/20 font-mono">Waiting for data…</span>
       </div>
     );
-  };
+  }
 
-  // 2. Rotational: Moment of Inertia Coefficient Comparison
-  const renderRotationalChart = () => {
-    const shapes = [
-      { name: "Ring", coef: 1.0, color: "#f43f5e" },
-      { name: "Disk", coef: 0.5, color: "#3b82f6" },
-      { name: "Sphere", coef: 0.4, color: "#10b981" },
-      { name: "Rod", coef: 0.083, color: "#eab308" }
-    ];
+  const minV = yMin !== undefined ? yMin : Math.min(...data);
+  const maxV = Math.max(...data);
+  const range = maxV - minV || 1;
 
-    const currentI = (() => {
-      switch (rotShape) {
-        case "ring": return rotMass * rotRadius * rotRadius;
-        case "disk": return 0.5 * rotMass * rotRadius * rotRadius;
-        case "sphere": return 0.4 * rotMass * rotRadius * rotRadius;
-        case "rod": return (1/12) * rotMass * rotRadius * rotRadius;
-      }
-    })();
+  const xs = data.map((_, i) => PAD.l + (i / (data.length - 1)) * (W - PAD.l - PAD.r));
+  const ys = data.map(v => H - PAD.b - ((v - minV) / range) * (H - PAD.t - PAD.b));
 
-    const currentKE = 0.5 * currentI * rotOmega * rotOmega;
+  const path = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  const fill = `${path} L${xs[xs.length - 1].toFixed(1)},${H - PAD.b} L${xs[0].toFixed(1)},${H - PAD.b} Z`;
 
-    return (
-      <div className="bg-[#121214] p-6 rounded-2xl border border-white/5 space-y-4">
-        <div>
-          <h4 className="text-sm font-bold text-white font-display uppercase">Moment of Inertia Coefficients ($I/MR^2$)</h4>
-          <p className="text-xs text-white/40">Compares rotational resistance factor based on shape geometry.</p>
-        </div>
-        
-        <div className="space-y-4">
-          {shapes.map((s) => {
-            const isCurrent = rotShape === s.name.toLowerCase();
-            const shapeI = s.coef * rotMass * rotRadius * rotRadius;
-            const shapeKE = 0.5 * shapeI * rotOmega * rotOmega;
-
-            return (
-              <div key={s.name} className="space-y-1">
-                <div className="flex justify-between text-xs font-mono">
-                  <span className={isCurrent ? "font-bold text-cyan-400" : "text-white/60"}>
-                    {s.name} {isCurrent && "← Selected"}
-                  </span>
-                  <span className="text-white/30">
-                    Coeff: {s.coef.toFixed(3)} | I: {shapeI.toFixed(2)} kg·m²
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 bg-white/5 h-2.5 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-500" 
-                      style={{ 
-                        width: `${s.coef * 100}%`,
-                        backgroundColor: s.color,
-                        opacity: isCurrent ? 1 : 0.4
-                      }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-400 font-mono w-16 text-right">
-                    {shapeKE.toFixed(1)} J
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="p-3 bg-zinc-950/60 rounded-xl border border-white/5 text-[10px] text-zinc-400 font-mono">
-          <strong>Selected Rotor Status:</strong> Total Inertia = <span className="text-cyan-400 font-bold">{currentI.toFixed(3)} kg·m²</span> at speed <span className="text-cyan-400 font-bold">{rotOmega.toFixed(1)} rad/s</span> yielding energy <span className="text-emerald-400 font-bold">{currentKE.toFixed(1)} Joules</span>.
-        </div>
-      </div>
-    );
-  };
-
-  // 3. Relativistic: Divergence curves Classical vs Relativistic
-  const renderRelativisticChart = () => {
-    const width = 500;
-    const height = 240;
-    const padding = 45;
-
-    // We plot Beta v/c on X-axis from 0 to 0.99
-    // Y-axis is Kinetic Energy in units of rest mass energy m*c^2
-    // Classical: KE = 0.5 * mc^2 * beta^2
-    // Relativistic: KE = (gamma - 1) * mc^2
-    const maxBeta = 0.95;
-    const maxKEVal = 2.5; // in units of rest energy
-
-    const classPoints: string[] = [];
-    const relPoints: string[] = [];
-
-    for (let b = 0; b <= maxBeta; b += 0.02) {
-      const gamma = 1 / Math.sqrt(1 - b * b);
-      const keRel = gamma - 1;
-      const keClass = 0.5 * b * b;
-
-      const x = padding + (b / maxBeta) * (width - padding * 2);
-      const classY = height - padding - (keClass / maxKEVal) * (height - padding * 2);
-      // Clamp Y to prevent drawing off canvas top
-      const relY = Math.max(padding - 10, height - padding - (keRel / maxKEVal) * (height - padding * 2));
-
-      classPoints.push(`${x},${classY}`);
-      relPoints.push(`${x},${relY}`);
-    }
-
-    // Current pointer
-    const curX = padding + (relBeta / maxBeta) * (width - padding * 2);
-    const curGamma = 1 / Math.sqrt(1 - relBeta * relBeta);
-    const curRelKE = curGamma - 1;
-    const curClassKE = 0.5 * relBeta * relBeta;
-
-    const curRelY = height - padding - (curRelKE / maxKEVal) * (height - padding * 2);
-    const curClassY = height - padding - (curClassKE / maxKEVal) * (height - padding * 2);
-
-    return (
-      <div className="bg-[#121214] p-6 rounded-2xl border border-white/5 space-y-4">
-        <div>
-          <h4 className="text-sm font-bold text-white font-display uppercase">Relativistic Divergence</h4>
-          <p className="text-xs text-white/40">Compares Classical Newtonian energy (dashed) to Einstein&apos;s Relativistic integration (solid).</p>
-        </div>
-        <div className="flex justify-center">
-          <svg width={width} height={height} className="overflow-visible font-mono text-[9px] fill-zinc-400">
-            {/* Axis Lines */}
-            <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.15)" />
-            <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.15)" />
-
-            {/* Classical curve (parabolic dashed) */}
-            <polyline points={classPoints.join(" ")} fill="none" stroke="#f43f5e" strokeWidth={2} strokeDasharray="3,3" />
-
-            {/* Relativistic curve (asymptotic solid cyan) */}
-            <polyline points={relPoints.join(" ")} fill="none" stroke="#06b6d4" strokeWidth={3} />
-
-            {/* RelBeta Marker */}
-            {curX >= padding && curX <= width - padding && (
-              <>
-                <line x1={curX} y1={height - padding} x2={curX} y2={Math.min(curRelY, curClassY)} stroke="rgba(255,255,255,0.2)" strokeDasharray="2,2" />
-                {/* Relativistic point indicator */}
-                {curRelY >= padding && (
-                  <circle cx={curX} cy={curRelY} r={5} fill="#06b6d4" />
-                )}
-                {/* Classical point indicator */}
-                <circle cx={curX} cy={curClassY} r={5} fill="#f43f5e" />
-              </>
-            )}
-
-            {/* Labels */}
-            <text x={width / 2} y={height - 8} textAnchor="middle">Velocity (v/c)</text>
-            <text x={12} y={height / 2} transform={`rotate(-90 12 ${height / 2})`} textAnchor="middle">Kinetic Energy (E_k / m_0 c²)</text>
-
-            <text x={padding} y={height - padding + 15} textAnchor="middle">0</text>
-            <text x={width - padding} y={height - padding + 15} textAnchor="middle">{maxBeta}c</text>
-            <text x={padding - 10} y={height - padding} textAnchor="end">0</text>
-            <text x={padding - 10} y={padding + 5} textAnchor="end">{maxKEVal} E₀</text>
-
-            {/* Floating legend text */}
-            <text x={width - padding - 80} y={height - padding - 75} className="fill-cyan-400 font-bold">Relativistic</text>
-            <text x={width - padding - 80} y={height - padding - 20} className="fill-rose-500 font-bold">Newtonian</text>
-            
-            <text x={curX} y={Math.max(padding + 10, curRelY - 12)} textAnchor="middle" className="fill-cyan-400 font-bold">
-              v={relBeta.toFixed(3)}c | γ={curGamma.toFixed(2)}
-            </text>
-          </svg>
-        </div>
-      </div>
-    );
-  };
-
-  // 4. Thermal: Maxwell-Boltzmann speed distribution curve
-  const renderThermalChart = () => {
-    const width = 500;
-    const height = 240;
-    const padding = 45;
-
-    // Molecular mass factor ( Helium = 4u, Argon = 40u, Xenon = 131u )
-    const molarMass = thermalGas === "He" ? 4.0 : thermalGas === "Ar" ? 40.0 : 131.0;
-    
-    // Scale speed bounds
-    const maxSpeed = thermalGas === "He" ? 3500 : thermalGas === "Ar" ? 1200 : 600;
-
-    // 2D Maxwell-Boltzmann distribution probability:
-    // P(v) = (m / (k_B * T)) * v * exp(-m * v^2 / (2 * k_B * T))
-    // Let's calculate standard curves
-    const points: string[] = [];
-    const step = maxSpeed / 50;
-
-    // Calculate scaling constant based on temperature and mass
-    const scaleFactor = molarMass / thermalTemp;
-    let maxP = 0;
-
-    // Find peak height to normalize Y
-    for (let v = 0; v <= maxSpeed; v += step) {
-      const arg = (molarMass * v * v) / (2 * thermalTemp * 100); // scaled argument
-      const p = scaleFactor * v * Math.exp(-arg);
-      if (p > maxP) maxP = p;
-    }
-
-    for (let v = 0; v <= maxSpeed; v += step) {
-      const arg = (molarMass * v * v) / (2 * thermalTemp * 100);
-      const p = scaleFactor * v * Math.exp(-arg);
-      const x = padding + (v / maxSpeed) * (width - padding * 2);
-      const y = height - padding - (p / maxP) * (height - padding * 2);
-      points.push(`${x},${y}`);
-    }
-
-    // RMS Speed indicator
-    // vRms = sqrt(3 R T / M_m). Scaled to match chart:
-    const kB = 1.3806e-23;
-    const NA = 6.022e23;
-    const mKg = (molarMass * 1e-3) / NA;
-    const vRms = Math.sqrt((3 * kB * thermalTemp) / mKg);
-    
-    // Visual coordinates for RMS line
-    // Estimate standard visual RMS:
-    const vRmsVisual = Math.sqrt((2 * thermalTemp * 100) / molarMass);
-    const rmsX = padding + (vRmsVisual / maxSpeed) * (width - padding * 2);
-
-    return (
-      <div className="bg-[#121214] p-6 rounded-2xl border border-white/5 space-y-4">
-        <div>
-          <h4 className="text-sm font-bold text-white font-display uppercase">Maxwell-Boltzmann Distribution ({thermalGas})</h4>
-          <p className="text-xs text-white/40">Probability density of molecular velocities. Peak shifts with temperature.</p>
-        </div>
-        <div className="flex justify-center">
-          <svg width={width} height={height} className="overflow-visible font-mono text-[9px] fill-zinc-400">
-            {/* Axes */}
-            <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="rgba(255,255,255,0.15)" />
-            <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="rgba(255,255,255,0.15)" />
-
-            {/* Distribution Curve */}
-            <path d={`M ${points.join(" L ")}`} fill="rgba(6,182,212,0.1)" stroke="#06b6d4" strokeWidth={2.5} />
-
-            {/* RMS velocity marker line */}
-            {rmsX >= padding && rmsX <= width - padding && (
-              <>
-                <line x1={rmsX} y1={padding} x2={rmsX} y2={height - padding} stroke="#10b981" strokeWidth={1.5} strokeDasharray="4,4" />
-                <circle cx={rmsX} cy={padding + 10} r={4} fill="#10b981" />
-                <text x={rmsX + 6} y={padding + 14} className="fill-emerald-400 font-bold">
-                  v_rms = {vRms.toFixed(0)} m/s
-                </text>
-              </>
-            )}
-
-            {/* Labels */}
-            <text x={width / 2} y={height - 8} textAnchor="middle">Molecular Velocity (v, m/s)</text>
-            <text x={12} y={height / 2} transform={`rotate(-90 12 ${height / 2})`} textAnchor="middle">Probability Density P(v)</text>
-
-            <text x={padding} y={height - padding + 15} textAnchor="middle">0</text>
-            <text x={width - padding} y={height - padding + 15} textAnchor="middle">{maxSpeed.toFixed(0)}</text>
-            <text x={padding - 10} y={height - padding} textAnchor="end">0</text>
-          </svg>
-        </div>
-      </div>
-    );
-  };
-
-  // 5. Quantum: Particle in a Box Energy Ladder E_n = n^2 * E_1
-  const renderQuantumChart = () => {
-    const width = 500;
-    const height = 240;
-    const padding = 45;
-
-    // Calculate energy factors
-    const h = 6.626e-34;
-    const m = quantumParticle === "electron" ? 9.109e-31 : 1.673e-27;
-    const L = wellWidth * 1e-9;
-    const E1_J = (h * h) / (8 * m * L * L);
-    const E1_eV = E1_J * 6.242e18;
-
-    // Render 5 ladder levels
-    const levels = [1, 2, 3, 4, 5];
-    const maxEnergy = 25 * E1_eV; // for n=5
-
-    return (
-      <div className="bg-[#121214] p-6 rounded-2xl border border-white/5 space-y-4">
-        <div>
-          <h4 className="text-sm font-bold text-white font-display uppercase">Quantum Energy Eigenvalues ($E_n \propto n^2$)</h4>
-          <p className="text-xs text-white/40">Discrete energy rungs for a {quantumParticle} confined in a {wellWidth.toFixed(1)} nm box.</p>
-        </div>
-        <div className="flex justify-center">
-          <svg width={width} height={height} className="overflow-visible font-mono text-[9px] fill-zinc-400">
-            {/* Axis */}
-            <line x1={padding} y1={height - padding} x2={padding} y2={padding} stroke="rgba(255,255,255,0.15)" />
-            <text x={12} y={height / 2} transform={`rotate(-90 12 ${height / 2})`} textAnchor="middle">Energy (eV)</text>
-
-            {/* Ladder levels */}
-            {levels.map((n) => {
-              const keVal = n * n * E1_eV;
-              // Map energy value to height
-              const y = height - padding - (keVal / maxEnergy) * (height - padding * 2 - 20);
-              const isCurrent = quantumN === n;
-
-              return (
-                <g key={n} className="transition-all duration-300">
-                  <line 
-                    x1={padding} 
-                    y1={y} 
-                    x2={width - padding} 
-                    y2={y} 
-                    stroke={isCurrent ? "#06b6d4" : "rgba(255,255,255,0.15)"} 
-                    strokeWidth={isCurrent ? 3 : 1.5}
-                    strokeDasharray={isCurrent ? "none" : "4,4"}
-                  />
-                  <text 
-                    x={padding - 10} 
-                    y={y + 3} 
-                    textAnchor="end"
-                    className={isCurrent ? "fill-cyan-400 font-bold text-[10px]" : "fill-white/40"}
-                  >
-                    {keVal.toExponential(2)} eV
-                  </text>
-                  <text 
-                    x={width - padding + 10} 
-                    y={y + 3} 
-                    className={isCurrent ? "fill-cyan-400 font-bold text-[10px]" : "fill-white/40"}
-                  >
-                    n = {n} {isCurrent && "★"}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-      </div>
-    );
-  };
+  const lastX = xs[xs.length - 1], lastY = ys[ys.length - 1];
+  const lastVal = data[data.length - 1];
 
   return (
-    <div className="flex-1 bg-[#09090b] p-8 overflow-y-auto custom-scrollbar select-text selection:bg-cyan-500/30">
-      <div className="max-w-4xl mx-auto space-y-8 pb-24">
-        <div className="border-b border-zinc-800 pb-5">
-          <h2 className="text-xl font-bold text-white tracking-tight uppercase font-display">Data Analytics Telemetry</h2>
-          <p className="text-xs text-cyan-400 font-mono mt-1 uppercase tracking-wider">Dynamic mathematical plotting matching active states</p>
-        </div>
+    <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="overflow-visible">
+      {/* Fill */}
+      <path d={fill} fill={color + "18"} />
+      {/* Line */}
+      <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      {/* Y baseline */}
+      <line x1={PAD.l} y1={H - PAD.b} x2={W - PAD.r} y2={H - PAD.b} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+      {/* Live dot */}
+      <circle cx={lastX} cy={lastY} r="3" fill={dotColor || color} />
+      <circle cx={lastX} cy={lastY} r="6" fill={color + "33"} />
+      {/* Live value */}
+      <text x={lastX - 2} y={Math.max(PAD.t + 10, lastY - 8)} textAnchor="end"
+        fill={color} fontSize="9" fontFamily="'JetBrains Mono',monospace" fontWeight="bold">
+        {Math.abs(lastVal) >= 1e6 ? `${(lastVal / 1e6).toFixed(2)}M`
+          : Math.abs(lastVal) >= 1e3 ? `${(lastVal / 1e3).toFixed(2)}k`
+          : lastVal.toFixed(2)}{unit}
+      </text>
+    </svg>
+  );
+}
 
-        {subMode === "translational" && renderTranslationalChart()}
-        {subMode === "rotational" && renderRotationalChart()}
-        {subMode === "relativistic" && renderRelativisticChart()}
-        {subMode === "thermal" && renderThermalChart()}
-        {subMode === "quantum" && renderQuantumChart()}
+function ChartCard({
+  title, data, color, unit, subtitle = "", yMin, dotColor,
+}: {
+  title: string; data: number[]; color: string; unit: string;
+  subtitle?: string; yMin?: number; dotColor?: string;
+}) {
+  const last = data[data.length - 1];
+  const max = Math.max(...data, 0);
+  const fmtV = (v: number) =>
+    Math.abs(v) >= 1e9 ? `${(v / 1e9).toFixed(3)} G${unit}`
+    : Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(3)} M${unit}`
+    : Math.abs(v) >= 1e3 ? `${(v / 1e3).toFixed(3)} k${unit}`
+    : `${v.toFixed(4)} ${unit}`;
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-2 hover:border-white/12 transition-colors">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-wider text-white/40">{title}</div>
+          {subtitle && <div className="text-[10px] text-white/25 font-mono mt-0.5">{subtitle}</div>}
+        </div>
+        <div className="text-right">
+          <div className="text-[13px] font-black font-mono" style={{ color }}>{last !== undefined ? fmtV(last) : "—"}</div>
+          <div className="text-[9px] text-white/25 font-mono">max: {fmtV(max)}</div>
+        </div>
+      </div>
+      <MiniChart data={data} color={color} label={title} unit={unit} yMin={yMin} dotColor={dotColor} />
+    </div>
+  );
+}
+
+// ─── Energy Balance bar ───────────────────────────────────────────────────────
+function EnergyBalance({ history }: { history: HistoryPoint[] }) {
+  if (history.length === 0) return null;
+  const last = history[history.length - 1];
+  const total = Math.max(last.ke + last.pe + last.thermalLoss, 1);
+  const keW = (last.ke / total) * 100;
+  const peW = (last.pe / total) * 100;
+  const thW = (last.thermalLoss / total) * 100;
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-3">
+      <div className="text-[11px] font-black uppercase tracking-wider text-white/40">Energy Budget</div>
+      <div className="w-full h-5 rounded-full overflow-hidden flex" style={{ background: "rgba(39,39,42,0.6)" }}>
+        <div style={{ width: `${keW}%`, background: "linear-gradient(90deg, #3b82f6, #60a5fa)" }} className="h-full transition-all duration-100" />
+        <div style={{ width: `${peW}%`, background: "linear-gradient(90deg, #10b981, #34d399)" }} className="h-full transition-all duration-100" />
+        <div style={{ width: `${thW}%`, background: "linear-gradient(90deg, #f97316, #fb923c)" }} className="h-full transition-all duration-100" />
+      </div>
+      <div className="flex gap-4 text-[10px] font-mono">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-blue-500" />
+          <span className="text-white/50">KE <span className="text-blue-400 font-bold">{last.ke.toFixed(2)}J ({keW.toFixed(0)}%)</span></span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-white/50">PE <span className="text-emerald-400 font-bold">{last.pe.toFixed(2)}J ({peW.toFixed(0)}%)</span></span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-orange-500" />
+          <span className="text-white/50">Thermal <span className="text-orange-400 font-bold">{last.thermalLoss.toFixed(2)}J ({thW.toFixed(0)}%)</span></span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Statistics Panel ─────────────────────────────────────────────────────────
+function StatGrid({ history }: { history: HistoryPoint[] }) {
+  if (history.length === 0) return null;
+  const last = history[history.length - 1];
+  const keArr = history.map(h => h.ke);
+  const vArr = history.map(h => h.v);
+  const maxKE = Math.max(...keArr);
+  const avgKE = keArr.reduce((a, b) => a + b, 0) / keArr.length;
+  const maxV = Math.max(...vArr);
+
+  const stats = [
+    { label: "Current KE", value: `${last.ke.toFixed(4)} J`, color: "#3b82f6" },
+    { label: "Max KE", value: `${maxKE.toFixed(4)} J`, color: "#60a5fa" },
+    { label: "Avg KE", value: `${avgKE.toFixed(4)} J`, color: "#93c5fd" },
+    { label: "Current v", value: `${Math.abs(last.v).toFixed(4)} m/s`, color: "#f59e0b" },
+    { label: "Max v", value: `${maxV.toFixed(4)} m/s`, color: "#fcd34d" },
+    { label: "Momentum p", value: `${last.momentum.toFixed(4)} kg·m/s`, color: "#ec4899" },
+    { label: "Power P", value: `${last.power.toFixed(4)} W`, color: "#f97316" },
+    { label: "Total E", value: `${last.totalE.toFixed(4)} J`, color: "#a78bfa" },
+    { label: "Thermal Q", value: `${last.thermalLoss.toFixed(4)} J`, color: "#fb923c" },
+    { label: "Time t", value: `${last.t.toFixed(3)} s`, color: "#ffffff66" },
+    { label: "Data Points", value: `${history.length}`, color: "#ffffff44" },
+    { label: "Rate", value: `${(history.length / Math.max(last.t, 0.01)).toFixed(1)} Hz`, color: "#ffffff33" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
+      <div className="text-[11px] font-black uppercase tracking-wider text-white/40 mb-3">Live Statistics</div>
+      <div className="grid grid-cols-3 gap-2">
+        {stats.map(s => (
+          <div key={s.label} className="flex flex-col gap-0.5">
+            <div className="text-[9px] text-white/30 font-mono uppercase tracking-wider">{s.label}</div>
+            <div className="text-[11px] font-mono font-bold" style={{ color: s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Analytics Component ─────────────────────────────────────────────────
+export const KineticEnergyAnalytics: React.FC = () => {
+  const { history } = useKEStore();
+
+  const sample = history.length > 300
+    ? history.filter((_, i) => i % Math.ceil(history.length / 300) === 0)
+    : history;
+
+  const ke   = sample.map(h => h.ke);
+  const pe   = sample.map(h => h.pe);
+  const v    = sample.map(h => Math.abs(h.v));
+  const mom  = sample.map(h => h.momentum);
+  const pow  = sample.map(h => h.power);
+  const totE = sample.map(h => h.totalE);
+  const therm = sample.map(h => h.thermalLoss);
+
+  // KE vs v (parametric — x-axis = v sorted, y = ke)
+  const vKePairs = sample.map(h => ({ v: Math.abs(h.v), ke: h.ke })).sort((a, b) => a.v - b.v);
+  const vAxis = vKePairs.map(p => p.v);
+  const keByV = vKePairs.map(p => p.ke);
+
+  if (history.length < 3) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 gap-3">
+        <div className="text-3xl opacity-30">📈</div>
+        <div className="text-[13px] text-white/30 font-mono">
+          Start the simulation to see live analytics
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5 pb-8">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-black text-white tracking-tight">Real-Time Analytics</h2>
+        <p className="text-white/40 text-xs font-mono">{history.length} data points recorded — updating at simulation rate</p>
+      </div>
+
+      <EnergyBalance history={history} />
+      <StatGrid history={history} />
+
+      <div className="grid grid-cols-1 gap-4">
+        <ChartCard
+          title="KE vs Velocity (parametric)"
+          data={keByV} color="#3b82f6" unit="J" yMin={0}
+          subtitle="KE = ½mv² — parabolic relationship"
+        />
+        <ChartCard
+          title="Kinetic Energy vs Time"
+          data={ke} color="#3b82f6" unit="J" yMin={0}
+        />
+        <ChartCard
+          title="Potential Energy vs Time"
+          data={pe} color="#10b981" unit="J" yMin={0}
+        />
+        <ChartCard
+          title="Total Mechanical Energy"
+          data={totE} color="#a78bfa" unit="J" yMin={0}
+          subtitle="Should be constant (no friction) or decreasing"
+        />
+        <ChartCard
+          title="Speed vs Time"
+          data={v} color="#f59e0b" unit="m/s" yMin={0}
+        />
+        <ChartCard
+          title="Momentum vs Time"
+          data={mom} color="#ec4899" unit="kg·m/s"
+          subtitle="p = mv"
+        />
+        <ChartCard
+          title="Power vs Time"
+          data={pow} color="#f97316" unit="W"
+          subtitle="P = F·v = dKE/dt"
+        />
+        <ChartCard
+          title="Cumulative Thermal Loss"
+          data={therm} color="#6b7280" unit="J" yMin={0}
+          subtitle="Energy converted to heat by friction"
+        />
       </div>
     </div>
   );

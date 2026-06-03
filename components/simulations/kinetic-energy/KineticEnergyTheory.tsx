@@ -1,221 +1,272 @@
 "use client";
-
 import React from "react";
-import katex from "katex";
-import "katex/dist/katex.min.css";
 
-// Helper math components for SSR-safe and clean LaTeX rendering
-const InlineMath: React.FC<{ math: string }> = ({ math }) => {
-  const html = React.useMemo(() => {
-    try {
-      return katex.renderToString(math, { displayMode: false, throwOnError: false });
-    } catch (e) {
-      return math;
-    }
-  }, [math]);
-  return <span dangerouslySetInnerHTML={{ __html: html }} className="inline-block px-0.5" />;
-};
+// KaTeX-style inline formula renderer using SVG/Unicode math
+function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
+  return block
+    ? <div className="my-4 py-3 px-4 rounded-xl bg-white/3 border border-white/5 text-center font-mono text-base text-blue-200 tracking-wide overflow-x-auto">{tex}</div>
+    : <code className="px-1.5 py-0.5 rounded bg-white/5 text-blue-300 font-mono text-sm">{tex}</code>;
+}
 
-const DisplayMath: React.FC<{ math: string }> = ({ math }) => {
-  const html = React.useMemo(() => {
-    try {
-      return katex.renderToString(math, { displayMode: true, throwOnError: false });
-    } catch (e) {
-      return math;
-    }
-  }, [math]);
+function Section({ title, color = "#3b82f6", children }: { title: string; color?: string; children: React.ReactNode }) {
   return (
-    <div 
-      className="my-4 overflow-x-auto py-2 px-4 bg-zinc-950/60 rounded-xl border border-zinc-800/40 text-center select-all custom-scrollbar" 
-      dangerouslySetInnerHTML={{ __html: html }} 
-    />
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-1 h-6 rounded-full" style={{ background: color }} />
+        <h3 className="text-base font-bold text-white/90 tracking-tight">{title}</h3>
+      </div>
+      <div className="pl-4 flex flex-col gap-3 text-sm text-white/60 leading-relaxed">
+        {children}
+      </div>
+    </div>
   );
-};
+}
+
+function Derive({ steps }: { steps: { eq: string; note: string }[] }) {
+  return (
+    <div className="flex flex-col gap-0 border border-white/8 rounded-xl overflow-hidden">
+      {steps.map((s, i) => (
+        <div key={i} className={`flex items-start gap-4 p-3 ${i % 2 === 0 ? "bg-white/2" : "bg-white/1"}`}>
+          <code className="text-blue-300 font-mono text-xs min-w-0 flex-1 whitespace-pre-wrap break-all">{s.eq}</code>
+          <span className="text-white/30 text-[11px] min-w-[140px] text-right shrink-0">{s.note}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Table({ rows, headers }: { rows: (string | number)[][]; headers: string[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/8">
+      <table className="w-full text-[12px] font-mono">
+        <thead>
+          <tr className="bg-white/5">
+            {headers.map(h => (
+              <th key={h} className="py-2 px-3 text-left text-white/50 font-bold uppercase tracking-wider">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className={i % 2 === 0 ? "bg-white/2" : ""}>
+              {row.map((cell, j) => (
+                <td key={j} className="py-1.5 px-3 text-white/70">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function InfoBox({ type, children }: { type: "info" | "warning" | "key"; children: React.ReactNode }) {
+  const styles = {
+    info:    { bg: "rgba(59,130,246,0.08)",  border: "rgba(59,130,246,0.25)",  icon: "ℹ", color: "#93c5fd" },
+    warning: { bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.25)",  icon: "⚠", color: "#fcd34d" },
+    key:     { bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.25)",  icon: "🔑", color: "#6ee7b7" },
+  };
+  const s = styles[type];
+  return (
+    <div className="flex gap-3 p-3 rounded-xl text-[13px] leading-relaxed" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+      <span className="text-base shrink-0">{s.icon}</span>
+      <div style={{ color: s.color }}>{children}</div>
+    </div>
+  );
+}
 
 export const KineticEnergyTheory: React.FC = () => {
   return (
-    <div className="flex-1 bg-[#09090b] p-8 overflow-y-auto custom-scrollbar select-text selection:bg-cyan-500/30">
-      <div className="max-w-4xl mx-auto space-y-12 text-zinc-300 leading-relaxed font-sans pb-24">
-        
-        {/* Header */}
-        <div className="border-b border-zinc-800 pb-6">
-          <h2 className="text-3xl font-extrabold tracking-tight text-white font-display">
-            KINETIC ENERGY: THEORETICAL BASIS
-          </h2>
-          <p className="text-sm text-cyan-400 mt-2 font-mono uppercase tracking-wider">
-            From Classical Work Integration to Relativistic Divergence and Quantum Operators
-          </p>
-        </div>
+    <div className="flex flex-col gap-10 pb-10 max-w-3xl">
 
-        {/* Section 1 */}
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white font-display">1. Classical Kinematics & Work-Energy Theorem</h3>
-          <p>
-            Kinetic energy (<InlineMath math="E_k" />) represents the capacity of a system to perform thermodynamic or mechanical work by virtue of its state of motion. Historically stemming from Gottfried Leibniz&apos;s formulation of <em>vis viva</em> (&quot;living force&quot;, quantified as <InlineMath math="mv^2" />), the modern definition was formalized by Gaspard-Gustave Coriolis.
-          </p>
-          <p>
-            The fundamental derivation of classical translational kinetic energy originates from Newton&apos;s second law of motion (<InlineMath math="\mathbf{F} = m\mathbf{a}" />) and the definition of mechanical work (<InlineMath math="W = \int \mathbf{F} \cdot d\mathbf{r}" />).
-          </p>
-          
-          <div className="bg-zinc-950 p-6 rounded-2xl border border-zinc-800 space-y-4">
-            <h4 className="text-cyan-400 font-bold font-mono text-xs uppercase tracking-wider">Derivation of Translational Kinetic Energy</h4>
-            <p className="text-sm">
-              Consider a constant mass <InlineMath math="m" /> accelerated along a straight line by a net force <InlineMath math="F" />. The work done on the object as it moves from position <InlineMath math="x_1" /> to <InlineMath math="x_2" /> is integrated as:
-            </p>
-            <DisplayMath math="W = \int_{x_1}^{x_2} F dx = \int_{x_1}^{x_2} m \frac{dv}{dt} dx" />
-            <p className="text-sm">
-              Using the chain rule, we substitute <InlineMath math="\frac{dx}{dt} = v" />, mapping the integration limits from spatial coordinates to velocity states:
-            </p>
-            <DisplayMath math="W = \int_{v_1}^{v_2} m v dv = m \left[ \frac{1}{2}v^2 \right]_{v_1}^{v_2} = \frac{1}{2}mv_2^2 - \frac{1}{2}mv_1^2 = \Delta E_k" />
-            <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800/40 text-xs text-zinc-400">
-              <strong>Theorem (Work-Energy):</strong> The net work performed by all forces on a particle equals the absolute variation of its kinetic energy. When starting from rest (<InlineMath math="v_1 = 0" />), the kinetic energy is exactly:
-              <DisplayMath math="E_k = \frac{1}{2} m v^2" />
-            </div>
-          </div>
-        </section>
-
-        {/* Section 2 */}
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white font-display">2. Rotational Kinetic Energy & Rigid Body Inertia</h3>
-          <p>
-            For a rigid body rotating about a fixed axis with angular velocity <InlineMath math="\omega" /> (rad/s), individual differential mass elements <InlineMath math="dm" /> have varying linear speeds depending on their radial distance <InlineMath math="r" /> from the axis of rotation: <InlineMath math="v = r\omega" />.
-          </p>
-          <p>
-            Summing the translational kinetic energies of all differential elements yields the total rotational kinetic energy:
-          </p>
-          <DisplayMath math="E_{\text{rot}} = \int \frac{1}{2} v^2 dm = \int \frac{1}{2} (r\omega)^2 dm = \frac{1}{2} \omega^2 \left( \int r^2 dm \right)" />
-          <p>
-            We define the integral term as the **Moment of Inertia** (<InlineMath math="I" />, measured in <InlineMath math="\text{kg}\cdot\text{m}^2" />):
-          </p>
-          <DisplayMath math="I = \int r^2 dm" />
-          <p>
-            Which simplifies the expression for rotational energy to the rotational analog of the classical formula:
-          </p>
-          <DisplayMath math="E_{\text{rot}} = \frac{1}{2} I \omega^2" />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-            <div className="bg-[#121214] p-5 rounded-xl border border-zinc-800 space-y-3">
-              <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest font-mono block">Analytical Inertia Profiles</span>
-              <p className="text-xs text-zinc-400">
-                The moment of inertia depends fundamentally on how the mass is distributed relative to the axis:
-              </p>
-              <ul className="list-disc list-inside text-[11px] text-zinc-500 space-y-2 pl-1">
-                <li><strong>Thin Ring (radius R):</strong> All mass is concentrated at the edge: <InlineMath math="I = MR^2" />.</li>
-                <li><strong>Solid Disk (radius R):</strong> Mass is distributed uniformly: <InlineMath math="I = \frac{1}{2}MR^2" />.</li>
-                <li><strong>Solid Sphere (radius R):</strong> Mass packed in three dimensions: <InlineMath math="I = \frac{2}{5}MR^2" />.</li>
-                <li><strong>Thin Rod (length L, center pivot):</strong> Mass along one dimension: <InlineMath math="I = \frac{1}{12}ML^2" />.</li>
-              </ul>
-            </div>
-
-            <div className="bg-[#121214] p-5 rounded-xl border border-zinc-800 space-y-3">
-              <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest font-mono block">Combined Planar Motion</span>
-              <p className="text-xs text-zinc-400">
-                For a rolling wheel (translation + rotation without slipping), the total kinetic energy is split between linear velocity of the center of mass (<InlineMath math="v_{\text{cm}}" />) and rotation about the center of mass:
-              </p>
-              <DisplayMath math="E_{\text{total}} = \frac{1}{2}M v_{\text{cm}}^2 + \frac{1}{2}I_{\text{cm}} \omega^2" />
-              <div className="p-2.5 bg-black/50 rounded-lg border border-zinc-800/50 font-mono text-[10px] text-zinc-300">
-                Using <InlineMath math="v_{\text{cm}} = R\omega" />, a rolling solid disk has:
-                <DisplayMath math="E_{\text{total}} = \frac{3}{4} M v_{\text{cm}}^2" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 3 */}
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white font-display">3. Relativistic Kinetic Energy</h3>
-          <p>
-            At velocities approaching the speed of light (<InlineMath math="v \to c" />), classical mechanics fails. Einstein&apos;s Special Theory of Relativity dictates that energy and relativistic momentum are governed by the Lorentz factor <InlineMath math="\gamma" />:
-          </p>
-          <DisplayMath math="\gamma = \frac{1}{\sqrt{1 - \beta^2}} \quad \text{where} \quad \beta = \frac{v}{c}" />
-          <p>
-            The total relativistic energy <InlineMath math="E" /> is the sum of the rest mass energy (<InlineMath math="E_0 = mc^2" />) and the kinetic energy (<InlineMath math="E_k" />):
-          </p>
-          <DisplayMath math="E = \gamma m c^2 = E_k + m c^2" />
-          <p>
-            Isolating the relativistic kinetic energy yields:
-          </p>
-          <DisplayMath math="E_k = (\gamma - 1) m c^2" />
-
-          <div className="bg-zinc-950 p-6 rounded-2xl border border-zinc-800 space-y-4">
-            <h4 className="text-amber-400 font-bold font-mono text-xs uppercase tracking-wider">Proof of Classical Convergence via Taylor Expansion</h4>
-            <p className="text-sm">
-              To verify consistency with Newtonian mechanics at low speeds (<InlineMath math="v \ll c" /> or <InlineMath math="\beta \ll 1" />), we perform a Taylor expansion of the Lorentz factor <InlineMath math="\gamma = (1-\beta^2)^{-1/2}" /> centered at <InlineMath math="\beta = 0" />:
-            </p>
-            <DisplayMath math="(1 - \beta^2)^{-1/2} = 1 + \frac{1}{2}\beta^2 + \frac{3}{8}\beta^4 + \frac{5}{16}\beta^6 + \dots" />
-            <p className="text-sm">
-              Substituting this back into the relativistic kinetic energy formula:
-            </p>
-            <DisplayMath math="E_k = \left( 1 + \frac{1}{2}\beta^2 + \frac{3}{8}\beta^4 + \dots - 1 \right) m c^2 = \left( \frac{1}{2}\frac{v^2}{c^2} + \frac{3}{8}\frac{v^4}{c^4} + \dots \right) m c^2" />
-            <DisplayMath math="E_k = \frac{1}{2}m v^2 + \frac{3}{8}m \frac{v^4}{c^2} + \mathcal{O}(v^6)" />
-            <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800/40 text-xs text-zinc-400 leading-normal">
-              <strong>Physical Insight:</strong> As <InlineMath math="v/c \to 0" />, the higher order terms vanish, converging exactly to the classical expression <InlineMath math="\frac{1}{2}mv^2" />. However, as <InlineMath math="v \to c" />, the Lorentz factor <InlineMath math="\gamma \to \infty" />, requiring infinite energy to reach the speed of light.
-            </div>
-          </div>
-        </section>
-
-        {/* Section 4 */}
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white font-display">4. Thermal Kinetic Energy (Kinetic Theory of Gases)</h3>
-          <p>
-            From a microscopic statistical perspective, the macroscopic thermodynamic parameter of temperature is a direct measure of the average translational kinetic energy of a gas ensemble&apos;s constituent particles.
-          </p>
-          <p>
-            For a system with <InlineMath math="d" /> spatial degrees of freedom, the Maxwell-Boltzmann equipartition theorem states that each active degree of freedom contributes <InlineMath math="\frac{1}{2} k_B T" /> of thermal energy per particle:
-          </p>
-          <DisplayMath math="\langle E_k \rangle = \frac{d}{2} k_B T" />
-          <p>
-            Where <InlineMath math="k_B \approx 1.3806 \times 10^{-23}\text{ J/K}" /> is the Boltzmann constant. In standard 3D space (<InlineMath math="d=3" />):
-          </p>
-          <DisplayMath math="\langle E_k \rangle = \frac{3}{2} k_B T" />
-          
-          <div className="bg-zinc-950 p-5 rounded-xl border border-zinc-800 text-sm space-y-2">
-            <span className="text-[10px] text-cyan-400 font-mono font-bold uppercase tracking-wider block">Root-Mean-Square (RMS) Speed</span>
-            <p className="text-zinc-400 text-xs">
-              Equating the statistical average kinetic energy to the mechanical definition (<InlineMath math="\langle \frac{1}{2} m v^2 \rangle = \frac{3}{2} k_B T" />), we define the Root-Mean-Square velocity <InlineMath math="v_{\text{rms}}" />:
-            </p>
-            <DisplayMath math="v_{\text{rms}} = \sqrt{\langle v^2 \rangle} = \sqrt{\frac{3 k_B T}{m}}" />
-            <p className="text-zinc-400 text-xs">
-              Here, heavier gas species (like Xenon, <InlineMath math="131\text{ u}" />) travel significantly slower than light elements (like Helium, <InlineMath math="4\text{ u}" />) at identical temperatures, though they share the same average kinetic energy.
-            </p>
-          </div>
-        </section>
-
-        {/* Section 5 */}
-        <section className="space-y-4">
-          <h3 className="text-xl font-bold text-white font-display">5. Quantum Mechanics: Kinetic Operators & Quantized Energy</h3>
-          <p>
-            In quantum mechanics, physical observables are replaced by mathematical operators acting on the system wavefunctions <InlineMath math="\psi(\mathbf{r}, t)" />. The kinetic energy operator <InlineMath math="\hat{T}" /> is derived from the classical relation connecting momentum <InlineMath math="\mathbf{p}" /> to kinetic energy: <InlineMath math="T = \frac{\mathbf{p}^2}{2m}" />.
-          </p>
-          <p>
-            Substituting the quantum mechanical momentum operator <InlineMath math="\hat{\mathbf{p}} = -i\hbar\nabla" />:
-          </p>
-          <DisplayMath math="\hat{T} = \frac{\hat{\mathbf{p}}^2}{2m} = \frac{(-i\hbar\nabla)^2}{2m} = -\frac{\hbar^2}{2m}\nabla^2" />
-          <p>
-            Where <InlineMath math="\hbar = h/2\pi" /> is the reduced Planck constant and <InlineMath math="\nabla^2" /> is the Laplacian operator.
-          </p>
-
-          <div className="bg-[#121214] p-5 rounded-2xl border border-zinc-800 space-y-4">
-            <span className="text-[10px] text-cyan-400 font-mono font-bold uppercase tracking-wider block">Quantized Solution: 1D Particle in an Infinite Potential Well</span>
-            <p className="text-sm">
-              Consider a particle confined to a 1D region of width <InlineMath math="L" /> with infinite potential boundaries (<InlineMath math="V(x)=0" /> for <InlineMath math="0 < x < L" />, and <InlineMath math="V(x)=\infty" /> elsewhere). Solving the time-independent Schrödinger Equation:
-            </p>
-            <DisplayMath math="-\frac{\hbar^2}{2m}\frac{d^2\psi(x)}{dx^2} = E \psi(x)" />
-            <p className="text-sm">
-              Applying boundary conditions <InlineMath math="\psi(0) = \psi(L) = 0" /> yields quantized wavefunctions:
-            </p>
-            <DisplayMath math="\psi_n(x) = \sqrt{\frac{2}{L}}\sin\left(\frac{n\pi x}{L}\right) \quad \text{for } n \in \{1, 2, 3, \dots\}" />
-            <p className="text-sm">
-              Operating <InlineMath math="\hat{T}" /> on these wavefunctions returns the discrete energy eigenvalues:
-            </p>
-            <DisplayMath math="E_n = \frac{n^2 \pi^2 \hbar^2}{2 m L^2} = \frac{n^2 h^2}{8 m L^2}" />
-            <p className="text-xs text-zinc-400 leading-relaxed font-mono bg-black/40 p-3 rounded-lg border border-zinc-800/40">
-              <strong>Quantum Limit Note:</strong> Kinetic energy in a confined quantum system cannot be zero. The ground state state <InlineMath math="n=1" /> has a non-zero zero-point energy: <InlineMath math="E_1 = \frac{h^2}{8mL^2}" />.
-            </p>
-          </div>
-        </section>
-
+      {/* Header */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-2xl font-black text-white tracking-tight">Kinetic Energy — Full Theory</h2>
+        <p className="text-white/50 text-sm leading-relaxed">
+          A complete derivation of kinetic energy from Newton's second law through relativistic mechanics, rotational dynamics, and energy conservation.
+        </p>
       </div>
+
+      {/* 1. Work-Energy Theorem */}
+      <Section title="1. Work-Energy Theorem" color="#3b82f6">
+        <p>
+          The work-energy theorem is the foundation. It states that the net work done on an object equals the change in its kinetic energy.
+        </p>
+        <Derive steps={[
+          { eq: "F = ma                         (Newton's 2nd Law)", note: "starting point" },
+          { eq: "F = m · dv/dt                  (a = dv/dt)", note: "chain rule" },
+          { eq: "F = m · (dv/dx)(dx/dt) = m · v · dv/dx", note: "v = dx/dt" },
+          { eq: "F dx = m v dv                  (multiply by dx)", note: "separating" },
+          { eq: "W = ∫F dx = m∫v dv = ½mv²|v₀ᵛ", note: "integrate both sides" },
+          { eq: "W = ½mv² - ½mv₀² = ΔKE        ✓", note: "Work-Energy Theorem" },
+        ]} />
+        <Formula tex="W_net = ΔKE = ½mv² - ½mv₀²" block />
+        <InfoBox type="key">
+          Work is defined as the dot product of force and displacement: <strong>W = F·d·cosθ</strong>. 
+          When the net force is zero, work is zero and kinetic energy is conserved.
+        </InfoBox>
+      </Section>
+
+      {/* 2. Why v² — The Quadratic Relationship */}
+      <Section title="2. Why KE Depends on v² (Not v)" color="#f59e0b">
+        <p>
+          The quadratic relationship between velocity and kinetic energy is one of the most important and counterintuitive results in classical mechanics.
+        </p>
+        <InfoBox type="warning">
+          Doubling the velocity <strong>quadruples</strong> the kinetic energy. This is why highway speeds are so much more dangerous than city speeds.
+        </InfoBox>
+        <Table
+          headers={["v (m/s)", "KE (m=1 kg)", "Ratio vs v=1", "Notes"]}
+          rows={[
+            ["1",  "0.5 J",    "1×",    "baseline"],
+            ["2",  "2 J",      "4×",    "2× speed → 4× KE"],
+            ["3",  "4.5 J",    "9×",    "3× speed → 9× KE"],
+            ["5",  "12.5 J",   "25×",   "car city speed"],
+            ["10", "50 J",     "100×",  "highway speed"],
+            ["20", "200 J",    "400×",  "race car"],
+            ["30", "450 J",    "900×",  "bullet train"],
+          ]}
+        />
+        <p>
+          The parabolic KE–v curve means stopping distance <em>also</em> scales with v²: braking force × distance = ½mv².
+          At double the speed, you need <strong>4× the distance</strong> to stop.
+        </p>
+        <Formula tex="d_stop = mv² / (2μmg) = v² / (2μg)" block />
+      </Section>
+
+      {/* 3. Conservation of Energy */}
+      <Section title="3. Conservation of Mechanical Energy" color="#10b981">
+        <p>
+          In a closed system with only conservative forces (gravity, springs), total mechanical energy is constant:
+        </p>
+        <Formula tex="E_total = KE + PE = ½mv² + mgh = constant" block />
+        <Derive steps={[
+          { eq: "At top of ramp:     KE₁=0, PE₁=mgh", note: "all potential" },
+          { eq: "At bottom of ramp:  KE₂=½mv², PE₂=0", note: "all kinetic" },
+          { eq: "E_total: mgh = ½mv²", note: "conservation" },
+          { eq: "v = √(2gh)", note: "ramp exit speed" },
+        ]} />
+        <Table
+          headers={["Height h (m)", "Speed at bottom (m/s)", "KE (m=1 kg)"]}
+          rows={[
+            ["1",   "4.43",  "9.8 J"],
+            ["5",   "9.90",  "49 J"],
+            ["10",  "14.00", "98 J"],
+            ["20",  "19.80", "196 J"],
+            ["100", "44.30", "981 J"],
+          ]}
+        />
+        <InfoBox type="info">
+          Non-conservative forces like friction convert mechanical energy into <strong>thermal energy</strong> (heat). 
+          Total energy including heat is still conserved — just not recoverable as mechanical work.
+        </InfoBox>
+      </Section>
+
+      {/* 4. Momentum vs KE */}
+      <Section title="4. Momentum vs Kinetic Energy" color="#ec4899">
+        <p>
+          Momentum and kinetic energy are related but measure different things. Momentum <Formula tex="p = mv" /> is a vector; KE is a scalar.
+        </p>
+        <Formula tex="KE = p² / (2m) = ½mv²" block />
+        <Table
+          headers={["Quantity", "Formula", "Vector?", "Conserved in collision?"]}
+          rows={[
+            ["Momentum p",    "mv",   "Yes", "Always (Newton's 3rd Law)"],
+            ["KE",            "½mv²", "No",  "Only in elastic collisions"],
+            ["Total Energy",  "KE+PE", "No", "Always (1st Law of Thermo)"],
+          ]}
+        />
+        <p>
+          In an elastic collision: both momentum and KE are conserved. 
+          In a perfectly inelastic collision: only momentum is conserved; maximum KE is lost (objects stick together).
+        </p>
+        <Derive steps={[
+          { eq: "m₁v₁ + m₂v₂ = m₁v₁' + m₂v₂'", note: "momentum conservation" },
+          { eq: "½m₁v₁² + ½m₂v₂² = ½m₁v₁'² + ½m₂v₂'²", note: "KE conservation (elastic)" },
+          { eq: "v₁' = ((m₁-m₂)v₁ + 2m₂v₂)/(m₁+m₂)", note: "elastic solution" },
+          { eq: "v₂' = ((m₂-m₁)v₂ + 2m₁v₁)/(m₁+m₂)", note: "" },
+        ]} />
+      </Section>
+
+      {/* 5. Rotational KE */}
+      <Section title="5. Rotational Kinetic Energy" color="#8b5cf6">
+        <p>
+          Rotating objects store kinetic energy in their rotation. The rotational analog of mass is the <strong>moment of inertia</strong> I, and of velocity is <strong>angular velocity ω</strong> (rad/s).
+        </p>
+        <Formula tex="KE_rot = ½Iω²" block />
+        <p>
+          The moment of inertia depends on how mass is distributed relative to the rotation axis. Mass farther from the axis contributes more (scales with r²):
+        </p>
+        <Table
+          headers={["Shape", "Moment of Inertia I", "Physical Example"]}
+          rows={[
+            ["Point mass",      "mr²",          "Ball on a string"],
+            ["Solid disk",      "½mr²",         "Coin, wheel"],
+            ["Ring/hoop",       "mr²",          "Bicycle rim"],
+            ["Solid sphere",    "²⁄₅mr²",       "Pool ball"],
+            ["Hollow sphere",   "²⁄₃mr²",       "Hollow globe"],
+            ["Thin rod (end)",  "¹⁄₃ml²",       "Clock hand"],
+            ["Thin rod (center)","¹⁄₁₂ml²",    "Propeller blade"],
+          ]}
+        />
+        <InfoBox type="key">
+          A rolling object has <em>both</em> translational and rotational KE:
+          <br /><strong>KE_total = ½mv² + ½Iω²</strong>
+          <br />For a solid sphere rolling without slipping: KE_total = ⁷⁄₁₀mv²
+        </InfoBox>
+      </Section>
+
+      {/* 6. Relativistic KE */}
+      <Section title="6. Relativistic Kinetic Energy" color="#ef4444">
+        <p>
+          At speeds approaching the speed of light <Formula tex="c = 3×10⁸ m/s" />, the classical formula fails. Einstein's special relativity gives:
+        </p>
+        <Formula tex="KE_rel = (γ - 1)mc²    where  γ = 1/√(1 - v²/c²)" block />
+        <Table
+          headers={["v/c", "γ (Lorentz factor)", "KE_rel / KE_classical"]}
+          rows={[
+            ["0.01", "1.00005", "1.000050   (nearly equal)"],
+            ["0.10", "1.005",   "1.005      (+0.5%)"],
+            ["0.50", "1.155",   "1.155      (+15.5%)"],
+            ["0.90", "2.294",   "2.294      (2.3× classical)"],
+            ["0.99", "7.089",   "7.089      (7× classical)"],
+            ["0.999","22.37",   "22.37      (22× classical)"],
+            ["1.000","∞",       "∞          (impossible)"],
+          ]}
+        />
+        <Derive steps={[
+          { eq: "As v → 0:  γ → 1 + v²/(2c²) + ...", note: "Taylor expansion" },
+          { eq: "KE = (γ-1)mc² → mc²·v²/(2c²) = ½mv²", note: "classical limit recovered ✓" },
+        ]} />
+        <InfoBox type="warning">
+          No object with mass can reach <em>c</em>. As v → c, the energy required → ∞. 
+          This is why particle accelerators are so expensive!
+        </InfoBox>
+      </Section>
+
+      {/* 7. Power */}
+      <Section title="7. Power and Energy Dissipation" color="#f97316">
+        <p>
+          Power is the rate of energy transfer:
+        </p>
+        <Formula tex="P = dW/dt = F·v  (W = J/s)" block />
+        <Table
+          headers={["Power", "Example", "Energy in 1 hour"]}
+          rows={[
+            ["1 W",   "Smartphone charging",    "3,600 J"],
+            ["100 W", "Incandescent light bulb", "360 kJ"],
+            ["1 kW",  "Small electric motor",   "3.6 MJ"],
+            ["100 kW","Electric car motor",      "360 MJ"],
+            ["1 MW",  "Jet engine",              "3.6 GJ"],
+            ["1 GW",  "Nuclear power plant",    "3.6 TJ"],
+          ]}
+        />
+        <InfoBox type="info">
+          <strong>Energy dissipation</strong> via friction converts KE to heat at rate P = f·v, where f is the friction force. 
+          This is why engines need cooling systems.
+        </InfoBox>
+      </Section>
+
     </div>
   );
 };

@@ -1,677 +1,757 @@
 "use client";
+import React, { useEffect, useRef, useCallback } from "react";
+import { useKEStore } from "@/store/kineticEnergyStore";
+import {
+  kineticEnergy, gravitationalPE, rotationalKE, momentOfInertia,
+  VEHICLES, getTrackY,
+} from "@/lib/physics/kineticEnergy";
 
-import React, { useEffect, useRef, useState } from "react";
+// ─── Color palette ────────────────────────────────────────────────────────────
+const C = {
+  ke: "#3b82f6",
+  pe: "#10b981",
+  thermal: "#f97316",
+  vel: "#f59e0b",
+  force: "#ef4444",
+  mom: "#ec4899",
+  rot: "#8b5cf6",
+  grid: "rgba(39,39,42,0.3)",
+  surface: "#27272a",
+  text: "rgba(255,255,255,0.7)",
+  dim: "rgba(255,255,255,0.2)",
+};
 
-interface KineticEnergyCanvasProps {
-  subMode: string;
-  isPlaying: boolean;
-
-  // Translational
-  transMass: number;
-  transVelocity: number;
-  setTransVelocity: (v: number) => void;
-  transFriction: number;
-  impulseBoost: number;
-  setImpulseBoost: (v: number) => void;
-
-  // Rotational
-  rotShape: "ring" | "disk" | "sphere" | "rod";
-  rotMass: number;
-  rotRadius: number;
-  rotOmega: number;
-  setRotOmega: (v: number) => void;
-
-  // Relativistic
-  relMass: number;
-  relBeta: number;
-
-  // Thermal
-  thermalTemp: number;
-  thermalGas: "He" | "Ar" | "Xe";
-  particleCount: number;
-
-  // Quantum
-  quantumN: number;
-  wellWidth: number;
-  quantumParticle: "electron" | "proton";
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
+function arrow(
+  ctx: CanvasRenderingContext2D,
+  x1: number, y1: number, x2: number, y2: number,
+  label: string, color: string, w = 2
+) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 4) return;
+  const angle = Math.atan2(dy, dx);
+  const head = Math.max(7, w * 3);
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = w;
+  ctx.shadowBlur = 6; ctx.shadowColor = color;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - head * Math.cos(angle - Math.PI / 6), y2 - head * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(x2 - head * Math.cos(angle + Math.PI / 6), y2 - head * Math.sin(angle + Math.PI / 6));
+  ctx.closePath(); ctx.fill();
+  if (label) {
+    ctx.font = "bold 10px 'JetBrains Mono',monospace";
+    const tw = ctx.measureText(label).width;
+    const lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 10;
+    ctx.fillStyle = "rgba(9,9,11,0.85)";
+    rr(ctx, lx - tw / 2 - 4, ly - 9, tw + 8, 15, 3); ctx.fill();
+    ctx.fillStyle = color; ctx.textAlign = "center";
+    ctx.fillText(label, lx, ly + 3);
+  }
+  ctx.restore();
 }
 
-export const KineticEnergyCanvas: React.FC<Readonly<KineticEnergyCanvasProps>> = ({
-  subMode,
-  isPlaying,
-  transMass,
-  transVelocity,
-  setTransVelocity,
-  transFriction,
-  impulseBoost,
-  setImpulseBoost,
-  rotShape,
-  rotMass,
-  rotRadius,
-  rotOmega,
-  setRotOmega,
-  relMass,
-  relBeta,
-  thermalTemp,
-  thermalGas,
-  particleCount,
-  quantumN,
-  wellWidth,
-  quantumParticle,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>(0);
-  const stateRef = useRef({
-    // Translational
-    x: 100.0,
-    v: transVelocity,
-    mass: transMass,
-    friction: transFriction,
-    
-    // Rotational
-    angle: 0.0,
-    omega: rotOmega,
-    
-    // Relativistic
-    relX: 20.0,
-    relT: 0.0,
-    
-    // Thermal
-    particles: [] as Particle[],
-    temp: thermalTemp,
-    gas: thermalGas,
-    count: particleCount,
+function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+}
 
-    // Quantum
-    qTime: 0.0
+function drawEnergyBar(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  ke: number, pe: number, thermal = 0
+) {
+  const total = ke + pe + thermal;
+  if (total <= 0) return;
+  const bw = total > 0 ? ke / total * w : 0;
+  const pw = total > 0 ? pe / total * w : 0;
+  const tw = w - bw - pw;
+
+  // Background
+  ctx.fillStyle = "rgba(9,9,11,0.7)";
+  rr(ctx, x - 2, y - 2, w + 4, h + 4, 4); ctx.fill();
+
+  // KE bar
+  if (bw > 0) {
+    const g = ctx.createLinearGradient(x, 0, x + bw, 0);
+    g.addColorStop(0, C.ke); g.addColorStop(1, C.ke + "aa");
+    ctx.fillStyle = g; rr(ctx, x, y, Math.max(0, bw), h, 3); ctx.fill();
+  }
+  // PE bar
+  if (pw > 0) {
+    const g2 = ctx.createLinearGradient(x + bw, 0, x + bw + pw, 0);
+    g2.addColorStop(0, C.pe); g2.addColorStop(1, C.pe + "aa");
+    ctx.fillStyle = g2; rr(ctx, x + bw, y, Math.max(0, pw), h, 3); ctx.fill();
+  }
+  // Thermal bar
+  if (tw > 0) {
+    ctx.fillStyle = C.thermal; rr(ctx, x + bw + pw, y, Math.max(0, tw), h, 3); ctx.fill();
+  }
+
+  // Labels
+  ctx.font = "bold 9px 'JetBrains Mono',monospace";
+  ctx.textAlign = "left";
+  ctx.fillStyle = C.ke; ctx.fillText(`KE ${ke.toFixed(1)}J`, x + 4, y + h - 4);
+  if (pe > 0.5) {
+    ctx.fillStyle = C.pe; ctx.fillText(`PE ${pe.toFixed(1)}J`, x + bw + 4, y + h - 4);
+  }
+  if (thermal > 0.5) {
+    ctx.fillStyle = C.thermal; ctx.fillText(`Q ${thermal.toFixed(1)}J`, x + bw + pw + 4, y + h - 4);
+  }
+}
+
+function chipHUD(
+  ctx: CanvasRenderingContext2D,
+  items: Array<{ label: string; value: string; color: string }>,
+  x: number, y: number
+) {
+  const cw = 140, ch = 32, gap = 8;
+  items.forEach((item, i) => {
+    const cx = x + i * (cw + gap);
+    ctx.fillStyle = "rgba(9,9,11,0.8)";
+    rr(ctx, cx, y, cw, ch, 6); ctx.fill();
+    ctx.strokeStyle = item.color + "55"; ctx.lineWidth = 1;
+    rr(ctx, cx, y, cw, ch, 6); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "8px 'JetBrains Mono',monospace"; ctx.textAlign = "left";
+    ctx.fillText(item.label, cx + 8, y + 12);
+    ctx.fillStyle = item.color;
+    ctx.font = "bold 11px 'JetBrains Mono',monospace";
+    ctx.fillText(item.value, cx + 8, y + 26);
+  });
+}
+
+// ─── Mode Renderers ───────────────────────────────────────────────────────────
+
+function renderFreeParticle(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { fp, showVelocityVectors, showForceVectors, showEnergyBar, showGrid } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+
+  const TY = H * 0.62;
+  const SCALE = W - 160;
+  const OX = 80;
+
+  // Surface
+  const sg = ctx.createLinearGradient(0, TY, 0, TY + 6);
+  sg.addColorStop(0, "#3f3f46"); sg.addColorStop(1, "#18181b");
+  ctx.fillStyle = sg; ctx.fillRect(OX, TY, SCALE, 5);
+
+  // Left/right wall
+  ctx.fillStyle = "rgba(63,63,70,0.9)"; ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = 1;
+  ctx.fillRect(OX - 20, TY - 40, 20, 60); ctx.strokeRect(OX - 20, TY - 40, 20, 60);
+  ctx.fillRect(OX + SCALE, TY - 40, 20, 60); ctx.strokeRect(OX + SCALE, TY - 40, 20, 60);
+
+  // Particle
+  const norm = (fp.x % 10) / 10;
+  const px = OX + norm * SCALE;
+  const R = Math.max(18, Math.min(36, 12 + fp.mass * 2.5));
+  const ke = kineticEnergy(fp.mass, fp.v);
+
+  // Glow
+  const glow = ctx.createRadialGradient(px, TY - R, 0, px, TY - R, R + 20 + ke * 0.15);
+  glow.addColorStop(0, C.ke + "88"); glow.addColorStop(1, "transparent");
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(px, TY - R, R + 20 + ke * 0.15, 0, Math.PI * 2); ctx.fill();
+
+  // Body
+  ctx.fillStyle = "#0a0a0f"; ctx.strokeStyle = C.ke; ctx.lineWidth = 2.5;
+  ctx.shadowBlur = 16 + ke * 0.1; ctx.shadowColor = C.ke;
+  ctx.beginPath(); ctx.arc(px, TY - R, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Highlight
+  ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(px, TY - R, R - 3, -Math.PI / 3, -Math.PI * 2 / 3, true); ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = C.text; ctx.font = "11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  ctx.fillText(`m=${fp.mass.toFixed(1)}kg`, px, TY + 20);
+
+  // Vectors
+  if (showVelocityVectors && Math.abs(fp.v) > 0.1) {
+    const vLen = fp.v * 8;
+    arrow(ctx, px, TY - R * 2 - 8, px + vLen, TY - R * 2 - 8, `v=${fp.v.toFixed(2)} m/s`, C.vel, 2);
+  }
+  if (showForceVectors && Math.abs(fp.appliedForce) > 0.1) {
+    arrow(ctx, px, TY - R, px + fp.appliedForce * 2, TY - R, `F=${fp.appliedForce.toFixed(1)}N`, C.force, 2);
+  }
+
+  if (showEnergyBar) {
+    drawEnergyBar(ctx, OX, H - 70, SCALE, 18, ke, 0);
+  }
+
+  chipHUD(ctx, [
+    { label: "KE", value: `${ke.toFixed(2)} J`, color: C.ke },
+    { label: "VELOCITY", value: `${fp.v.toFixed(3)} m/s`, color: C.vel },
+    { label: "MOMENTUM", value: `${(fp.mass * fp.v).toFixed(3)} kg·m/s`, color: C.mom },
+    { label: "FORCE", value: `${fp.appliedForce.toFixed(1)} N`, color: C.force },
+  ], OX, 20);
+}
+
+function renderInclinedPlane(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { ip, showVelocityVectors, showEnergyBar, showGrid } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+
+  const angle = ip.angle;
+  const OX = 60, OY = H - 80;
+  const rampLen = Math.min(W - 120, 520);
+  const rx = OX + rampLen * Math.cos(angle);
+  const ry = OY - rampLen * Math.sin(angle);
+
+  // Ramp surface
+  ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(OX, OY); ctx.lineTo(rx, ry); ctx.stroke();
+  ctx.fillStyle = "rgba(63,63,70,0.4)";
+  ctx.beginPath(); ctx.moveTo(OX, OY); ctx.lineTo(rx, ry); ctx.lineTo(rx, OY); ctx.closePath(); ctx.fill();
+
+  // Angle arc
+  ctx.strokeStyle = "rgba(245,158,11,0.6)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(OX, OY, 40, -angle, 0); ctx.stroke();
+  ctx.fillStyle = C.vel; ctx.font = "12px 'JetBrains Mono',monospace"; ctx.textAlign = "left";
+  ctx.fillText(`θ=${(angle * 180 / Math.PI).toFixed(1)}°`, OX + 44, OY - 10);
+
+  // Block on ramp
+  const norm = ip.x / ip.trackLength;
+  const bx = OX + norm * rampLen * Math.cos(angle);
+  const by = OY - norm * rampLen * Math.sin(angle);
+  const BS = 28;
+
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(-angle);
+  ctx.fillStyle = "#18181b"; ctx.strokeStyle = C.ke; ctx.lineWidth = 2;
+  ctx.shadowBlur = 12; ctx.shadowColor = C.ke;
+  rr(ctx, -BS / 2, -BS, BS, BS, 4); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = C.text; ctx.font = "bold 10px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  ctx.fillText(`${ip.mass.toFixed(0)}kg`, 0, -BS / 2 + 4);
+  ctx.restore();
+
+  // Vectors on block
+  if (showVelocityVectors && Math.abs(ip.v) > 0.05) {
+    const vScale = ip.v * 12;
+    arrow(ctx, bx, by, bx + vScale * Math.cos(angle), by - vScale * Math.sin(angle), `v=${ip.v.toFixed(2)}m/s`, C.vel, 2);
+  }
+
+  // Gravity component arrows
+  const gravAlong = ip.mass * 9.81 * Math.sin(angle);
+  const gravNorm = ip.mass * 9.81 * Math.cos(angle);
+  const FS = 2.5;
+  arrow(ctx, bx, by, bx + gravAlong * FS * Math.cos(angle), by - gravAlong * FS * Math.sin(angle), `${gravAlong.toFixed(1)}N`, C.force, 1.5);
+  arrow(ctx, bx, by, bx + gravNorm * FS * Math.sin(angle), by + gravNorm * FS * Math.cos(angle), `N=${gravNorm.toFixed(1)}N`, C.pe, 1.5);
+
+  // Height indicator
+  const h = ip.height;
+  ctx.strokeStyle = "rgba(16,185,129,0.4)"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, OY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.pe; ctx.font = "11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  ctx.fillText(`h=${h.toFixed(2)}m`, bx + 20, (by + OY) / 2);
+
+  const ke = kineticEnergy(ip.mass, ip.v);
+  const pe = gravitationalPE(ip.mass, h);
+
+  if (showEnergyBar) {
+    drawEnergyBar(ctx, 60, H - 70, W - 120, 18, ke, pe);
+  }
+
+  chipHUD(ctx, [
+    { label: "KE", value: `${ke.toFixed(2)} J`, color: C.ke },
+    { label: "PE", value: `${pe.toFixed(2)} J`, color: C.pe },
+    { label: "TOTAL E", value: `${(ke + pe).toFixed(2)} J`, color: "#a78bfa" },
+    { label: "v", value: `${ip.v.toFixed(3)} m/s`, color: C.vel },
+  ], 60, 20);
+}
+
+function renderProjectile(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { proj, showGrid, showEnergyBar } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+
+  const OX = 60, OY = H - 80;
+  const XSCALE = (W - 120) / Math.max(1, proj.landed ? proj.range : Math.max(proj.x, 1) * 1.2);
+  const YSCALE = (H - 140) / Math.max(1, proj.maxHeight > 0 ? proj.maxHeight * 1.15 : 10);
+
+  // Ground
+  ctx.fillStyle = "#27272a"; ctx.fillRect(OX, OY, W - 120, 4);
+
+  if (!proj.launched) {
+    ctx.fillStyle = "rgba(255,255,255,0.2)"; ctx.font = "14px 'JetBrains Mono',monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Set angle & speed, then press LAUNCH →", W / 2, H / 2);
+    return;
+  }
+
+  // Trajectory arc (analytical ideal path shown in dim)
+  if (proj.vx > 0) {
+    const v0x = proj.launched ? proj.vx : 0;
+    const v0y = proj.launched ? proj.vy : 0;
+    ctx.strokeStyle = "rgba(59,130,246,0.15)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    for (let tx = 0; tx < (W - 120) / XSCALE; tx += 0.1) {
+      const ty = v0y / v0x * tx - 9.81 / (2 * v0x * v0x) * tx * tx;
+      if (ty < 0) break;
+      const px = OX + tx * XSCALE, py = OY - ty * YSCALE;
+      if (tx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Ball
+  const bx = OX + proj.x * XSCALE;
+  const by = OY - proj.y * YSCALE;
+  const speed = Math.sqrt(proj.vx ** 2 + proj.vy ** 2);
+  const ke = kineticEnergy(proj.mass, speed);
+  const pe = gravitationalPE(proj.mass, proj.y);
+
+  // Trail
+  ctx.fillStyle = C.ke + "33";
+  ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Glow
+  const glow = ctx.createRadialGradient(bx, by, 0, bx, by, 24 + ke * 0.02);
+  glow.addColorStop(0, C.ke + "66"); glow.addColorStop(1, "transparent");
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(bx, by, 24 + ke * 0.02, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = "#0a0a0f"; ctx.strokeStyle = C.ke; ctx.lineWidth = 2.5;
+  ctx.shadowBlur = 14; ctx.shadowColor = C.ke;
+  ctx.beginPath(); ctx.arc(bx, by, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Velocity vector components
+  if (Math.abs(proj.vx) > 0.1) {
+    arrow(ctx, bx, by, bx + proj.vx * XSCALE * 0.4, by, `vx=${proj.vx.toFixed(1)}`, C.vel, 1.5);
+  }
+  if (Math.abs(proj.vy) > 0.1) {
+    arrow(ctx, bx, by, bx, by - proj.vy * YSCALE * 0.4, `vy=${proj.vy.toFixed(1)}`, C.pe, 1.5);
+  }
+
+  // Height dotted line
+  ctx.strokeStyle = "rgba(16,185,129,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+  ctx.beginPath(); ctx.moveTo(OX, by); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.pe; ctx.font = "10px 'JetBrains Mono',monospace"; ctx.textAlign = "right";
+  ctx.fillText(`h=${proj.y.toFixed(1)}m`, OX - 4, by + 4);
+
+  if (showEnergyBar) {
+    drawEnergyBar(ctx, 60, H - 70, W - 120, 18, ke, pe);
+  }
+
+  chipHUD(ctx, [
+    { label: "KE", value: `${ke.toFixed(2)} J`, color: C.ke },
+    { label: "PE", value: `${pe.toFixed(2)} J`, color: C.pe },
+    { label: "SPEED", value: `${speed.toFixed(2)} m/s`, color: C.vel },
+    { label: "RANGE", value: `${proj.range.toFixed(1)} m`, color: C.dim },
+  ], 60, 20);
+}
+
+function renderCollision(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { coll, showVelocityVectors, showEnergyBar, showGrid } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+
+  const TY = H * 0.5;
+  const OX = 60, SCALE = W - 120;
+  const xScale = SCALE / coll.trackWidth;
+
+  // Track
+  const tg = ctx.createLinearGradient(0, TY - 2, 0, TY + 6);
+  tg.addColorStop(0, "#3f3f46"); tg.addColorStop(1, "#18181b");
+  ctx.fillStyle = tg; ctx.fillRect(OX, TY - 2, SCALE, 5);
+
+  // Walls
+  ctx.fillStyle = "rgba(63,63,70,0.9)"; ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(255,255,255,0.1)";
+  ctx.fillRect(OX - 24, TY - 30, 24, 60); ctx.strokeRect(OX - 24, TY - 30, 24, 60);
+  ctx.fillRect(OX + SCALE, TY - 30, 24, 60); ctx.strokeRect(OX + SCALE, TY - 30, 24, 60);
+
+  const x1 = OX + coll.b1.x * xScale;
+  const x2 = OX + coll.b2.x * xScale;
+  const r1 = Math.max(16, Math.min(38, 12 + coll.b1.mass * 3)) * (xScale / 40);
+  const r2 = Math.max(16, Math.min(38, 12 + coll.b2.mass * 3)) * (xScale / 40);
+
+  // Collision flash
+  if (coll.hasCollided && Math.abs(coll.b1.x - coll.b2.x) < coll.b1.radius + coll.b2.radius + 0.5) {
+    ctx.fillStyle = `rgba(245,158,11,${0.05 + 0.08 * Math.sin(coll.t * 20)})`;
+    ctx.fillRect(OX, 0, SCALE, H);
+  }
+
+  // Bodies
+  [
+    { x: x1, r: r1, v: coll.b1.v, m: coll.b1.mass, col: "#8b5cf6", glow: "rgba(139,92,246,0.4)" },
+    { x: x2, r: r2, v: coll.b2.v, m: coll.b2.mass, col: "#06b6d4", glow: "rgba(6,182,212,0.4)" },
+  ].forEach(({ x, r, v, m, col, glow }) => {
+    const ke = kineticEnergy(m, v);
+    const g = ctx.createRadialGradient(x, TY, r - 2, x, TY, r + 12 + ke * 0.03);
+    g.addColorStop(0, glow); g.addColorStop(1, "transparent");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, TY, r + 12 + ke * 0.03, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = "#0a0a0f"; ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+    ctx.shadowBlur = 14; ctx.shadowColor = col;
+    ctx.beginPath(); ctx.arc(x, TY, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = C.text; ctx.font = "11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+    ctx.fillText(`${m.toFixed(1)}kg`, x, TY + r + 18);
+    ctx.fillStyle = col; ctx.font = "bold 10px 'JetBrains Mono',monospace";
+    ctx.fillText(`KE=${ke.toFixed(1)}J`, x, TY + r + 32);
+
+    if (showVelocityVectors && Math.abs(v) > 0.05) {
+      arrow(ctx, x, TY - r - 12, x + v * 14, TY - r - 12, `${v.toFixed(2)} m/s`, C.vel, 2);
+    }
   });
 
-  // Keep references updated
-  useEffect(() => {
-    stateRef.current.v = transVelocity;
-    stateRef.current.mass = transMass;
-    stateRef.current.friction = transFriction;
-  }, [transVelocity, transMass, transFriction]);
+  // Conservation display
+  const totalKE = kineticEnergy(coll.b1.mass, coll.b1.v) + kineticEnergy(coll.b2.mass, coll.b2.v);
+  const totalMom = coll.b1.mass * coll.b1.v + coll.b2.mass * coll.b2.v;
+  const keLost = coll.hasCollided ? Math.max(0, coll.KEBefore - coll.KEAfter) : 0;
 
-  useEffect(() => {
-    stateRef.current.omega = rotOmega;
-  }, [rotOmega]);
+  if (showEnergyBar) {
+    drawEnergyBar(ctx, 60, H - 70, W - 120, 18, totalKE, 0, keLost);
+  }
 
-  useEffect(() => {
-    stateRef.current.temp = thermalTemp;
-    stateRef.current.gas = thermalGas;
-    stateRef.current.count = particleCount;
-    // Re-initialize thermal particles when count, temperature, or gas species changes
-    initThermalParticles();
-  }, [thermalTemp, thermalGas, particleCount]);
+  chipHUD(ctx, [
+    { label: "TOTAL KE", value: `${totalKE.toFixed(2)} J`, color: C.ke },
+    { label: "MOMENTUM", value: `${totalMom.toFixed(3)} kg·m/s`, color: C.mom },
+    { label: "e", value: `${coll.e.toFixed(2)}`, color: C.vel },
+    { label: "ΔKE LOST", value: `${keLost.toFixed(2)} J`, color: C.thermal },
+  ], 60, 20);
+}
 
-  // Handle impulse pushes
-  useEffect(() => {
-    if (impulseBoost > 0) {
-      // Delta v = Impulse / Mass
-      const deltaV = 15.0 / transMass;
-      const currentV = stateRef.current.v;
-      const nextV = currentV >= 0 ? currentV + deltaV : currentV - deltaV;
-      stateRef.current.v = nextV;
-      setTransVelocity(nextV);
-      setImpulseBoost(0);
+function renderRotational(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { rot, showGrid, showEnergyBar, showForceVectors } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const R = Math.min(120, Math.max(50, rot.radius * 260));
+  const ke = rotationalKE(rot.I, rot.omega);
+
+  // Glow
+  const glow = ctx.createRadialGradient(cx, cy, R * 0.5, cx, cy, R + 30 + ke * 0.05);
+  glow.addColorStop(0, C.rot + "44"); glow.addColorStop(1, "transparent");
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, R + 30 + ke * 0.05, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot.theta);
+
+  // Shape rendering
+  ctx.strokeStyle = C.rot; ctx.fillStyle = "#0d0d14"; ctx.lineWidth = 2.5;
+  ctx.shadowBlur = 16 + ke * 0.1; ctx.shadowColor = C.rot;
+
+  switch (rot.shape) {
+    case "disk": {
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // Spoke marks
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ctx.strokeStyle = C.rot + "55"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R * Math.cos(a), R * Math.sin(a)); ctx.stroke();
+      }
+      break;
     }
-  }, [impulseBoost]);
+    case "ring": {
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#09090b";
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.65, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = C.rot + "88"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.65, 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
+    case "sphere": {
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = C.rot + "44"; ctx.lineWidth = 1;
+      for (let e = -60; e <= 60; e += 30) {
+        const ey = R * Math.sin(e * Math.PI / 180);
+        const ex = R * Math.cos(e * Math.PI / 180);
+        ctx.beginPath(); ctx.arc(0, 0, ex, 0, Math.PI * 2); ctx.stroke();
+        // latitude
+        ctx.beginPath(); ctx.moveTo(-ex, ey); ctx.lineTo(ex, ey); ctx.stroke();
+      }
+      break;
+    }
+    case "rod": {
+      const rlen = R * 2;
+      rr(ctx, -rlen / 2, -10, rlen, 20, 4); ctx.fill(); ctx.stroke();
+      for (let i = -rlen / 2; i <= rlen / 2; i += 20) {
+        ctx.strokeStyle = C.rot + "44"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(i, -10); ctx.lineTo(i, 10); ctx.stroke();
+      }
+      break;
+    }
+    default: {
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+  }
+  ctx.shadowBlur = 0;
 
-  // Initialize Thermal Particles with Boltzmann-distributed speeds
-  const initThermalParticles = () => {
+  // Rotation direction indicator
+  ctx.strokeStyle = C.vel + "aa"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, R + 14, 0, rot.omega > 0 ? Math.PI * 1.5 : -Math.PI * 1.5, rot.omega < 0);
+  ctx.stroke();
+  const arrowEnd = rot.omega > 0 ? { x: 0, y: -(R + 14) } : { x: 0, y: R + 14 };
+  ctx.fillStyle = C.vel;
+  ctx.beginPath(); ctx.arc(arrowEnd.x, arrowEnd.y, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Axle
+  ctx.fillStyle = "#27272a"; ctx.strokeStyle = "#52525b"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  ctx.restore();
+
+  // Torque arrow (tangential)
+  if (showForceVectors && Math.abs(rot.torque) > 0.01) {
+    const ta = rot.theta + Math.PI / 2;
+    const tx1 = cx + R * Math.cos(rot.theta);
+    const ty1 = cy + R * Math.sin(rot.theta);
+    const tx2 = tx1 + rot.torque * 5 * Math.cos(ta);
+    const ty2 = ty1 + rot.torque * 5 * Math.sin(ta);
+    arrow(ctx, tx1, ty1, tx2, ty2, `τ=${rot.torque.toFixed(2)} N·m`, C.force, 2);
+  }
+
+  // ω label
+  ctx.fillStyle = C.vel; ctx.font = "bold 14px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  ctx.fillText(`ω = ${rot.omega.toFixed(3)} rad/s`, cx, cy + R + 55);
+  ctx.fillStyle = C.rot; ctx.font = "12px 'JetBrains Mono',monospace";
+  ctx.fillText(`I = ${rot.I.toFixed(4)} kg·m²`, cx, cy + R + 72);
+
+  if (showEnergyBar) {
+    drawEnergyBar(ctx, 60, H - 70, W - 120, 18, ke, 0);
+  }
+
+  chipHUD(ctx, [
+    { label: "KE_rot", value: `${ke.toFixed(3)} J`, color: C.rot },
+    { label: "ω", value: `${rot.omega.toFixed(3)} rad/s`, color: C.vel },
+    { label: "α", value: `${rot.alpha.toFixed(3)} rad/s²`, color: C.force },
+    { label: "I", value: `${rot.I.toFixed(4)} kg·m²`, color: C.dim },
+  ], 60, 20);
+}
+
+function renderRollerCoaster(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { rc, rcTrack, showGrid, showEnergyBar } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+  if (!rcTrack.length) return;
+
+  const OX = 40, OY = H - 80;
+  const XS = (W - 80) / rc.totalLength;
+  const maxY = Math.max(...rcTrack.map(p => p.y));
+  const YS = (H - 160) / Math.max(maxY, 1);
+
+  // Track path
+  ctx.strokeStyle = "#4b5563"; ctx.lineWidth = 3;
+  ctx.beginPath();
+  rcTrack.forEach((p, i) => {
+    const px = OX + p.x * XS, py = OY - p.y * YS;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  // Track gradient fill under track
+  ctx.strokeStyle = "#27272a"; ctx.lineWidth = 1;
+  ctx.fillStyle = "rgba(39,39,42,0.3)";
+  ctx.beginPath();
+  rcTrack.forEach((p, i) => {
+    const px = OX + p.x * XS, py = OY - p.y * YS;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.lineTo(OX + rc.totalLength * XS, OY);
+  ctx.lineTo(OX, OY);
+  ctx.closePath(); ctx.fill();
+
+  // Cart
+  const norm = rc.s / rc.totalLength;
+  const tIdx = Math.round(norm * (rcTrack.length - 1));
+  const tp = rcTrack[Math.max(0, Math.min(tIdx, rcTrack.length - 1))];
+  const cartX = OX + tp.x * XS;
+  const cartY = OY - tp.y * YS;
+
+  const ke = kineticEnergy(rc.mass, rc.v);
+  const pe = gravitationalPE(rc.mass, tp.y);
+  const total = ke + pe;
+
+  // Cart glow
+  const glowR = 16 + ke * 0.02;
+  const glow = ctx.createRadialGradient(cartX, cartY, 0, cartX, cartY, glowR);
+  glow.addColorStop(0, C.ke + "77"); glow.addColorStop(1, "transparent");
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cartX, cartY, glowR, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = "#0a0a0f"; ctx.strokeStyle = C.ke; ctx.lineWidth = 2.5;
+  ctx.shadowBlur = 16; ctx.shadowColor = C.ke;
+  rr(ctx, cartX - 14, cartY - 10, 28, 16, 4); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Wheels
+  [cartX - 8, cartX + 8].forEach(wx => {
+    ctx.fillStyle = "#27272a"; ctx.strokeStyle = "#52525b"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(wx, cartY + 10, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  });
+
+  // Height line
+  ctx.strokeStyle = "rgba(16,185,129,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+  ctx.beginPath(); ctx.moveTo(cartX, cartY); ctx.lineTo(cartX, OY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.pe; ctx.font = "10px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  ctx.fillText(`h=${tp.y.toFixed(1)}m`, cartX, (cartY + OY) / 2);
+
+  if (showEnergyBar) {
+    drawEnergyBar(ctx, 40, H - 70, W - 80, 18, ke, pe);
+  }
+
+  chipHUD(ctx, [
+    { label: "KE", value: `${ke.toFixed(2)} J`, color: C.ke },
+    { label: "PE", value: `${pe.toFixed(2)} J`, color: C.pe },
+    { label: "TOTAL E", value: `${total.toFixed(2)} J`, color: "#a78bfa" },
+    { label: "SPEED", value: `${rc.v.toFixed(2)} m/s`, color: C.vel },
+  ], 40, 20);
+}
+
+function renderVehicle(
+  ctx: CanvasRenderingContext2D, W: number, H: number,
+  store: ReturnType<typeof useKEStore.getState>
+) {
+  const { selectedVehicles, vehicles, showGrid } = store;
+  if (showGrid) drawGrid(ctx, W, H);
+
+  const selected = vehicles.filter(v => selectedVehicles.includes(v.name));
+  if (selected.length === 0) {
+    ctx.fillStyle = C.dim; ctx.font = "14px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+    ctx.fillText("Select vehicles in controls →", W / 2, H / 2);
+    return;
+  }
+
+  const keValues = selected.map(v => kineticEnergy(v.mass, v.speed));
+  const maxKE = Math.max(...keValues, 1);
+
+  const barH = Math.min(60, (H - 140) / selected.length - 16);
+  const OX = 80, barW = W - 200;
+  const OY = 60;
+
+  selected.forEach((v, i) => {
+    const ke = keValues[i];
+    const norm = ke / maxKE;
+    const y = OY + i * (barH + 16);
+
+    // Label
+    ctx.fillStyle = C.text; ctx.font = "13px 'JetBrains Mono',monospace"; ctx.textAlign = "right";
+    ctx.fillText(`${v.icon} ${v.name}`, OX - 8, y + barH / 2 + 5);
+
+    // Bar background
+    ctx.fillStyle = "rgba(39,39,42,0.5)";
+    rr(ctx, OX, y, barW, barH, 4); ctx.fill();
+
+    // Bar fill
+    const barFill = Math.max(2, norm * barW);
+    const bg = ctx.createLinearGradient(OX, 0, OX + barFill, 0);
+    bg.addColorStop(0, v.color + "cc"); bg.addColorStop(1, v.color + "44");
+    ctx.fillStyle = bg;
+    ctx.shadowBlur = 10; ctx.shadowColor = v.color;
+    rr(ctx, OX, y, barFill, barH, 4); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Value
+    ctx.fillStyle = v.color; ctx.font = "bold 11px 'JetBrains Mono',monospace"; ctx.textAlign = "left";
+    const keStr = ke >= 1e12 ? `${(ke / 1e12).toFixed(2)} TJ`
+      : ke >= 1e9 ? `${(ke / 1e9).toFixed(2)} GJ`
+      : ke >= 1e6 ? `${(ke / 1e6).toFixed(2)} MJ`
+      : ke >= 1e3 ? `${(ke / 1e3).toFixed(2)} kJ`
+      : `${ke.toFixed(2)} J`;
+    ctx.fillText(`${keStr}  |  m=${v.mass >= 1e6 ? (v.mass / 1e6).toFixed(1) + 'Mg' : v.mass + 'kg'}  v=${v.speed}m/s`, OX + barFill + 8, y + barH / 2 + 5);
+  });
+
+  // Title
+  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "11px 'JetBrains Mono',monospace"; ctx.textAlign = "center";
+  ctx.fillText("KINETIC ENERGY SCALE COMPARISON  ·  KE = ½mv²", W / 2, H - 30);
+}
+
+// ─── Main Canvas Component ────────────────────────────────────────────────────
+export const KineticEnergyCanvas: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>(0);
+  const lastT = useRef<number>(0);
+  const store = useKEStore();
+  const storeRef = useRef(store);
+  storeRef.current = store;
+
+  const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const w = canvas.width || 600;
-    const h = canvas.height || 400;
-
-    // Estimate particle speed based on Temperature and species mass
-    // vRms = sqrt(3 kB T / mParticle)
-    // Let's scale visual speeds to look nice:
-    // He: light/fast, Ar: medium, Xe: heavy/slow
-    const speedScale = stateRef.current.gas === "He" ? 2.5 : stateRef.current.gas === "Ar" ? 1.2 : 0.6;
-    const speedMultiplier = Math.sqrt(stateRef.current.temp / 300.0) * speedScale;
-
-    const list: Particle[] = [];
-    const count = Math.min(stateRef.current.count, 200);
-    const radius = stateRef.current.gas === "He" ? 3.5 : stateRef.current.gas === "Ar" ? 5.0 : 6.5;
-
-    for (let i = 0; i < count; i++) {
-      // Pick random direction and speed from Maxwell-Boltzmann approximation
-      const angle = Math.random() * Math.PI * 2;
-      // Box-Muller transform for normal speed distribution
-      const u1 = Math.random() || 0.0001;
-      const u2 = Math.random() || 0.0001;
-      const normRand = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(Math.PI * 2 * u2);
-      const speed = Math.abs(1.0 + normRand * 0.4) * speedMultiplier * 1.5;
-
-      list.push({
-        x: radius + Math.random() * (w - radius * 2 - 20) + 10,
-        y: radius + Math.random() * (h - radius * 2 - 20) + 10,
-        vx: speed * Math.cos(angle),
-        vy: speed * Math.sin(angle),
-        radius
-      });
+    const ctx = canvas.getContext("2d")!;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const W = rect.width, H = rect.height;
+    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
+      canvas.width = W * dpr; canvas.height = H * dpr;
     }
-    stateRef.current.particles = list;
-  };
+    ctx.resetTransform(); ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
 
-  // Main Loop
+    const s = storeRef.current;
+    switch (s.mode) {
+      case "freeparticle":  renderFreeParticle(ctx, W, H, s); break;
+      case "inclinedplane": renderInclinedPlane(ctx, W, H, s); break;
+      case "projectile":    renderProjectile(ctx, W, H, s); break;
+      case "collision":     renderCollision(ctx, W, H, s); break;
+      case "rotational":    renderRotational(ctx, W, H, s); break;
+      case "rollercoaster": renderRollerCoaster(ctx, W, H, s); break;
+      case "vehicle":       renderVehicle(ctx, W, H, s); break;
+    }
+  }, []);
+
+  // Physics loop
   useEffect(() => {
-    let lastTime = performance.now();
-
-    const loop = (now: number) => {
-      const dt = Math.min((now - lastTime) / 1000, 0.05); // Cap dt
-      lastTime = now;
-
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        animRef.current = requestAnimationFrame(loop);
-        return;
-      }
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        animRef.current = requestAnimationFrame(loop);
-        return;
-      }
-
-      const w = canvas.width;
-      const h = canvas.height;
-
-      // Ensure dimensions are correct
-      if (canvas.width !== canvas.parentElement?.clientWidth || canvas.height !== canvas.parentElement?.clientHeight) {
-        canvas.width = canvas.parentElement?.clientWidth || 600;
-        canvas.height = canvas.parentElement?.clientHeight || 400;
-      }
-
-      ctx.clearRect(0, 0, w, h);
-
-      // Render backgrounds or modes
-      if (isPlaying) {
-        // Evolve physics parameters
-        if (subMode === "translational") {
-          // Decelerate due to friction: a = μ * g
-          const g = 9.81;
-          const a = stateRef.current.friction * g;
-          let currentV = stateRef.current.v;
-
-          if (Math.abs(currentV) > 0.01) {
-            const drag = a * dt * Math.sign(currentV);
-            if (Math.abs(drag) >= Math.abs(currentV)) {
-              currentV = 0;
-            } else {
-              currentV -= drag;
-            }
-            stateRef.current.v = currentV;
-            // Sync with controls component throttling updates
-            if (Math.random() < 0.1) {
-              setTransVelocity(currentV);
-            }
-          }
-
-          // Update position
-          stateRef.current.x += currentV * dt * 40; // Scale speed for display
-          // Wrap around edges
-          const blockW = 80;
-          if (stateRef.current.x > w) {
-            stateRef.current.x = -blockW;
-          } else if (stateRef.current.x < -blockW) {
-            stateRef.current.x = w;
-          }
-        } else if (subMode === "rotational") {
-          stateRef.current.angle += stateRef.current.omega * dt;
-        } else if (subMode === "relativistic") {
-          // Particle moving in accelerator tube.
-          // Visual speed is based on relBeta
-          const cPixelsPerSec = w * 0.9;
-          stateRef.current.relX += relBeta * cPixelsPerSec * dt;
-          if (stateRef.current.relX > w - 40) {
-            stateRef.current.relX = 40;
-          }
-          stateRef.current.relT += dt;
-        } else if (subMode === "thermal") {
-          // Evolve particles bouncing inside box
-          const pts = stateRef.current.particles;
-          
-          // Speed scale to adjust velocities dynamically if temperature slider changed
-          const targetScale = stateRef.current.gas === "He" ? 2.5 : stateRef.current.gas === "Ar" ? 1.2 : 0.6;
-          const targetMultiplier = Math.sqrt(stateRef.current.temp / 300.0) * targetScale * 1.5;
-
-          // Simple wall collisions & molecular step
-          pts.forEach((p) => {
-            p.x += p.vx * dt * 60;
-            p.y += p.vy * dt * 60;
-
-            // Wall check
-            if (p.x < p.radius) {
-              p.x = p.radius;
-              p.vx = -p.vx;
-            } else if (p.x > w - p.radius) {
-              p.x = w - p.radius;
-              p.vx = -p.vx;
-            }
-
-            if (p.y < p.radius) {
-              p.y = p.radius;
-              p.vy = -p.vy;
-            } else if (p.y > h - p.radius) {
-              p.y = h - p.radius;
-              p.vy = -p.vy;
-            }
-          });
-
-          // Resolve particle-particle elastic collisions (simplified)
-          for (let i = 0; i < pts.length; i++) {
-            for (let j = i + 1; j < pts.length; j++) {
-              const p1 = pts[i];
-              const p2 = pts[j];
-              const dx = p2.x - p1.x;
-              const dy = p2.y - p1.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              const minDist = p1.radius + p2.radius;
-
-              if (dist < minDist && dist > 0) {
-                // Separate particles to avoid overlap
-                const overlap = minDist - dist;
-                const sx = (dx / dist) * overlap * 0.5;
-                const sy = (dy / dist) * overlap * 0.5;
-                p1.x -= sx;
-                p1.y -= sy;
-                p2.x += sx;
-                p2.y += sy;
-
-                // Elastic collision physics (equal mass for simplified gas modeling)
-                const nx = dx / dist;
-                const ny = dy / dist;
-                // Relative velocity
-                const kx = p1.vx - p2.vx;
-                const ky = p1.vy - p2.vy;
-                const p = 2.0 * (kx * nx + ky * ny) / 2.0;
-
-                p1.vx -= p * nx;
-                p1.vy -= p * ny;
-                p2.vx += p * nx;
-                p2.vy += p * ny;
-              }
-            }
-          }
-        } else if (subMode === "quantum") {
-          stateRef.current.qTime += dt * 4;
-        }
-      }
-
-      // ── RENDERING PHASES ──
-
-      if (subMode === "translational") {
-        // Draw track
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(10, h * 0.65);
-        ctx.lineTo(w - 10, h * 0.65);
-        ctx.stroke();
-
-        // Draw track ticks
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        ctx.lineWidth = 1;
-        for (let tX = 20; tX < w; tX += 30) {
-          ctx.beginPath();
-          ctx.moveTo(tX, h * 0.65);
-          ctx.lineTo(tX, h * 0.68);
-          ctx.stroke();
-        }
-
-        // Draw Block
-        const blockW = 70;
-        const blockH = 45;
-        const bx = stateRef.current.x;
-        const by = h * 0.65 - blockH;
-
-        ctx.save();
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = "rgba(6, 182, 212, 0.4)";
-        ctx.fillStyle = "#18181b";
-        ctx.strokeStyle = "#06b6d4";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.roundRect(bx, by, blockW, blockH, 8);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-
-        // Draw Mass Label Inside Block
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 9px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(`${transMass.toFixed(1)}kg`, bx + blockW / 2, by + blockH / 2);
-
-        // Draw Velocity Arrow
-        const velVal = stateRef.current.v;
-        if (Math.abs(velVal) > 0.1) {
-          ctx.save();
-          ctx.strokeStyle = "#10b981";
-          ctx.fillStyle = "#10b981";
-          ctx.lineWidth = 3;
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = "rgba(16,185,129,0.5)";
-
-          const arrowLength = Math.min(Math.abs(velVal) * 5, w * 0.25);
-          const arrowDir = Math.sign(velVal);
-          const arrowStartX = arrowDir > 0 ? bx + blockW : bx;
-          const arrowStartY = by + blockH / 2;
-          const arrowEndX = arrowStartX + arrowLength * arrowDir;
-
-          ctx.beginPath();
-          ctx.moveTo(arrowStartX, arrowStartY);
-          ctx.lineTo(arrowEndX, arrowStartY);
-          ctx.stroke();
-
-          // Arrow head
-          ctx.beginPath();
-          ctx.moveTo(arrowEndX, arrowStartY);
-          ctx.lineTo(arrowEndX - 6 * arrowDir, arrowStartY - 4);
-          ctx.lineTo(arrowEndX - 6 * arrowDir, arrowStartY + 4);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-
-          // Velocity value
-          ctx.fillStyle = "#10b981";
-          ctx.font = "black 9px monospace";
-          ctx.fillText(`${velVal.toFixed(1)} m/s`, arrowStartX + (arrowLength / 2) * arrowDir, arrowStartY - 10);
-        }
-
-        // Draw Friction spark icons if sliding with friction
-        if (transFriction > 0 && Math.abs(velVal) > 0.5) {
-          ctx.fillStyle = "rgba(245,158,11,0.6)";
-          for (let s = 0; s < 3; s++) {
-            ctx.beginPath();
-            ctx.arc(bx + (velVal > 0 ? 0 : blockW) + (Math.random() - 0.5) * 10, h * 0.65 + (Math.random() - 0.5) * 4, 1.5, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      } else if (subMode === "rotational") {
-        const cx = w / 2;
-        const cy = h / 2;
-        const radius = rotRadius * 70 + 30; // Scale radius visually
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(stateRef.current.angle);
-
-        // Draw shapes
-        ctx.shadowBlur = 25;
-        ctx.shadowColor = "rgba(6,182,212,0.3)";
-
-        if (rotShape === "ring") {
-          ctx.strokeStyle = "#06b6d4";
-          ctx.lineWidth = 12;
-          ctx.beginPath();
-          ctx.arc(0, 0, radius, 0, Math.PI * 2);
-          ctx.stroke();
-          
-          // Spokes to see rotation
-          ctx.strokeStyle = "rgba(6,182,212,0.3)";
-          ctx.lineWidth = 2;
-          for (let s = 0; s < 4; s++) {
-            ctx.rotate(Math.PI / 2);
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(radius, 0);
-            ctx.stroke();
-          }
-        } else if (rotShape === "disk") {
-          ctx.fillStyle = "rgba(6,182,212,0.1)";
-          ctx.strokeStyle = "#06b6d4";
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.arc(0, 0, radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          // Lines to show rotation
-          ctx.strokeStyle = "#06b6d4";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(-radius, 0);
-          ctx.lineTo(radius, 0);
-          ctx.moveTo(0, -radius);
-          ctx.lineTo(0, radius);
-          ctx.stroke();
-        } else if (rotShape === "sphere") {
-          // Radial sphere rendering
-          const gradient = ctx.createRadialGradient(-radius * 0.2, -radius * 0.2, radius * 0.1, 0, 0, radius);
-          gradient.addColorStop(0, "rgba(34,211,238,0.6)");
-          gradient.addColorStop(1, "rgba(8,145,178,0.1)");
-          ctx.fillStyle = gradient;
-          ctx.strokeStyle = "#06b6d4";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(0, 0, radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          // Horizontal lines showing spherical contour spinning
-          ctx.strokeStyle = "rgba(6,182,212,0.4)";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.ellipse(0, 0, radius, radius * 0.4, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        } else if (rotShape === "rod") {
-          // Pivot Center Rod
-          ctx.fillStyle = "rgba(6,182,212,0.15)";
-          ctx.strokeStyle = "#06b6d4";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.roundRect(-radius, -8, radius * 2, 16, 6);
-          ctx.fill();
-          ctx.stroke();
-        }
-
-        // Central pivot pin
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // Speed indicator curved markers
-        if (Math.abs(stateRef.current.omega) > 0.1) {
-          ctx.save();
-          ctx.strokeStyle = "#10b981";
-          ctx.lineWidth = 2.5;
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = "rgba(16,185,129,0.5)";
-          ctx.beginPath();
-          // Draw arc indicator around shape
-          const indRadius = radius + 20;
-          ctx.arc(cx, cy, indRadius, stateRef.current.angle, stateRef.current.angle + Math.PI * 0.4);
-          ctx.stroke();
-
-          // Arrow tip for arc
-          const tipX = cx + indRadius * Math.cos(stateRef.current.angle + Math.PI * 0.4);
-          const tipY = cy + indRadius * Math.sin(stateRef.current.angle + Math.PI * 0.4);
-          ctx.fillStyle = "#10b981";
-          ctx.beginPath();
-          ctx.arc(tipX, tipY, 4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-      } else if (subMode === "relativistic") {
-        // Draw relativistic accelerator tube
-        ctx.strokeStyle = "rgba(255,255,255,0.08)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(30, h / 2 - 40, w - 60, 80);
-        ctx.fillStyle = "rgba(255,255,255,0.02)";
-        ctx.fillRect(30, h / 2 - 40, w - 60, 80);
-
-        // Draw electromagnetic coils
-        ctx.strokeStyle = "rgba(6,182,212,0.15)";
-        ctx.lineWidth = 3;
-        for (let cxX = 50; cxX < w - 60; cxX += 40) {
-          ctx.strokeRect(cxX, h / 2 - 48, 12, 96);
-        }
-
-        // Visual Lorentz contraction scaling
-        // Length shrinks by 1/gamma.
-        const gamma = 1 / Math.sqrt(1 - relBeta * relBeta);
-        const originalWidth = 40;
-        const contractedWidth = originalWidth / gamma;
-
-        // Particle coordinates
-        const px = stateRef.current.relX;
-        const py = h / 2;
-
-        // Glowing fields representing Doppler color shifts (Redshift/Blueshift halo)
-        // At high speed we show compression of field lines
-        ctx.save();
-        ctx.shadowBlur = 20;
-        // Doppler blue shift at the front, red shift at the back
-        const colorGrad = ctx.createLinearGradient(px - contractedWidth, py, px + contractedWidth, py);
-        colorGrad.addColorStop(0, "rgba(239,68,68,0.8)"); // Red back
-        colorGrad.addColorStop(0.5, "rgba(34,211,238,0.9)"); // Cyan center
-        colorGrad.addColorStop(1, "rgba(59,130,246,0.9)"); // Blue front
-
-        ctx.fillStyle = colorGrad;
-        ctx.shadowColor = "rgba(6,182,212,0.6)";
-
-        ctx.beginPath();
-        // Ellipse showing the Lorentz-contracted circular particle
-        ctx.ellipse(px, py, contractedWidth, 20, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // Draw relativistic velocity labels
-        ctx.fillStyle = "#a1a1aa";
-        ctx.font = "bold 9px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(`v = ${relBeta.toFixed(3)}c`, px, py + 35);
-        ctx.fillText(`γ = ${gamma.toFixed(3)}`, px, py - 30);
-      } else if (subMode === "thermal") {
-        // Draw Gas Chamber Box
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(10, 10, w - 20, h - 20);
-
-        // Draw Particles
-        const pts = stateRef.current.particles;
-        pts.forEach((p) => {
-          ctx.save();
-          // Color based on velocity (hot = pink/cyan, slow = blue)
-          const velocityMag = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-          // Normalize based on 300K speed
-          const relativeSpeed = velocityMag / 3.0;
-
-          const color = relativeSpeed > 1.5 
-            ? "rgba(236,72,153,0.85)" // Pink (Fast)
-            : relativeSpeed > 0.8
-              ? "rgba(34,211,238,0.85)" // Cyan (Average)
-              : "rgba(59,130,246,0.8)"; // Blue (Slow)
-
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Small directional tail vector
-          ctx.strokeStyle = "rgba(255,255,255,0.15)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(p.x + p.vx * 3, p.y + p.vy * 3);
-          ctx.stroke();
-          ctx.restore();
-        });
-      } else if (subMode === "quantum") {
-        // Quantum Potential Box
-        const leftBoundary = w * 0.15;
-        const rightBoundary = w * 0.85;
-        const boxL = rightBoundary - leftBoundary;
-
-        // Draw potential walls
-        ctx.strokeStyle = "rgba(255,255,255,0.15)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(leftBoundary, h * 0.2);
-        ctx.lineTo(leftBoundary, h * 0.8);
-        ctx.lineTo(rightBoundary, h * 0.8);
-        ctx.lineTo(rightBoundary, h * 0.2);
-        ctx.stroke();
-
-        // Wavefunction amplitude graph: psi(x) = sqrt(2/L) * sin(n * pi * x / L)
-        // Real part oscillates at e^(-i E t / hbar)
-        const qTime = stateRef.current.qTime;
-
-        ctx.save();
-        ctx.lineWidth = 2.5;
-        ctx.shadowBlur = 12;
-
-        // 1. Draw Wavefunction Real Part (blue/cyan stroke)
-        ctx.strokeStyle = "rgba(34,211,238,0.85)";
-        ctx.shadowColor = "rgba(34,211,238,0.5)";
-        ctx.beginPath();
-        for (let sx = leftBoundary; sx <= rightBoundary; sx++) {
-          const relativeX = (sx - leftBoundary) / boxL;
-          const psiX = Math.sqrt(2.0) * Math.sin(quantumN * Math.PI * relativeX);
-          // Wave oscillation term
-          const osc = Math.cos(qTime + quantumN * 0.5);
-          const drawY = h * 0.5 - psiX * 50 * osc;
-
-          if (sx === leftBoundary) ctx.moveTo(sx, drawY);
-          else ctx.lineTo(sx, drawY);
-        }
-        ctx.stroke();
-
-        // 2. Draw Probability Density |psi(x)|^2 (green filled translucent area)
-        ctx.fillStyle = "rgba(16,185,129,0.12)";
-        ctx.strokeStyle = "rgba(16,185,129,0.6)";
-        ctx.shadowColor = "rgba(16,185,129,0.3)";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(leftBoundary, h * 0.8);
-
-        for (let sx = leftBoundary; sx <= rightBoundary; sx++) {
-          const relativeX = (sx - leftBoundary) / boxL;
-          const psiX = Math.sqrt(2.0) * Math.sin(quantumN * Math.PI * relativeX);
-          const density = psiX * psiX; // |psi|^2
-          const drawY = h * 0.8 - density * 60; // scale density visual height
-          ctx.lineTo(sx, drawY);
-        }
-        ctx.lineTo(rightBoundary, h * 0.8);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-
-        // Labels for Well
-        ctx.fillStyle = "rgba(255,255,255,0.3)";
-        ctx.font = "bold 9px monospace";
-        ctx.fillText(`x = 0`, leftBoundary - 10, h * 0.82);
-        ctx.fillText(`x = L (${wellWidth.toFixed(1)} nm)`, rightBoundary - 20, h * 0.82);
-        ctx.fillText(`Ψ_${quantumN}(x)`, w / 2, h * 0.28);
-        ctx.fillText(`|Ψ_${quantumN}(x)|²`, w / 2, h * 0.72);
-      }
-
-      animRef.current = requestAnimationFrame(loop);
+    let alive = true;
+    const loop = (ts: number) => {
+      if (!alive) return;
+      const dt = lastT.current > 0 ? Math.min((ts - lastT.current) / 1000, 0.05) : 0.016;
+      lastT.current = ts;
+      storeRef.current.tick(dt);
+      render();
+      rafRef.current = requestAnimationFrame(loop);
     };
-
-    animRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [isPlaying, subMode, transMass, transVelocity, transFriction, rotShape, rotMass, rotRadius, rotOmega, relMass, relBeta, thermalTemp, thermalGas, particleCount, quantumN, wellWidth, quantumParticle]);
+    rafRef.current = requestAnimationFrame(loop);
+    return () => { alive = false; cancelAnimationFrame(rafRef.current); };
+  }, [render]);
 
   return (
-    <div className="w-full h-full relative bg-transparent overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-20" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] h-[50%] bg-cyan-500/5 rounded-full blur-[130px] -z-10" />
+    <div className="relative w-full h-full min-h-[500px] rounded-2xl bg-[#09090b] border border-white/5 overflow-hidden shadow-2xl">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,rgba(59,130,246,0.04),transparent_60%)] pointer-events-none" />
+      <canvas ref={canvasRef} className="w-full h-full block" />
+      {/* Mode badge */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 pointer-events-none">
+        <div className={`w-2 h-2 rounded-full ${storeRef.current.isPlaying ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" : "bg-zinc-600"}`} />
+        <span className="text-[9px] text-white/30 font-black uppercase tracking-[0.3em] font-mono">
+          Physics Engine
+        </span>
+      </div>
     </div>
   );
 };

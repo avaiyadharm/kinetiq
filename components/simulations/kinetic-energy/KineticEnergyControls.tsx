@@ -1,612 +1,378 @@
 "use client";
+import React from "react";
+import { useKEStore, KEMode } from "@/store/kineticEnergyStore";
+import { momentOfInertia } from "@/lib/physics/kineticEnergy";
 
-import React, { useState, useEffect } from "react";
-import { Slider } from "@/components/ui/slider";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
-import { Play, Pause, RotateCcw, Weight, Compass, Zap, HelpCircle, Activity } from "lucide-react";
-
-interface KineticEnergyControlsProps {
-  subMode: string;
-  isPlaying: boolean;
-  setIsPlaying: (v: boolean) => void;
-
-  // Translational
-  transMass: number;
-  setTransMass: (v: number) => void;
-  transVelocity: number;
-  setTransVelocity: (v: number) => void;
-  transFriction: number;
-  setTransFriction: (v: number) => void;
-  setImpulseBoost: React.Dispatch<React.SetStateAction<number>>;
-
-  // Rotational
-  rotShape: "ring" | "disk" | "sphere" | "rod";
-  setRotShape: (v: "ring" | "disk" | "sphere" | "rod") => void;
-  rotMass: number;
-  setRotMass: (v: number) => void;
-  rotRadius: number;
-  setRotRadius: (v: number) => void;
-  rotOmega: number;
-  setRotOmega: (v: number) => void;
-
-  // Relativistic
-  relMass: number;
-  setRelMass: (v: number) => void;
-  relBeta: number;
-  setRelBeta: (v: number) => void;
-
-  // Thermal
-  thermalTemp: number;
-  setThermalTemp: (v: number) => void;
-  thermalGas: "He" | "Ar" | "Xe";
-  setThermalGas: (v: "He" | "Ar" | "Xe") => void;
-  particleCount: number;
-  setParticleCount: (v: number) => void;
-
-  // Quantum
-  quantumN: number;
-  setQuantumN: (v: number) => void;
-  wellWidth: number;
-  setWellWidth: (v: number) => void;
-  quantumParticle: "electron" | "proton";
-  setQuantumParticle: (v: "electron" | "proton") => void;
-}
-
-// Custom text/number input for sliders
-const ValueInput = ({
-  value,
-  onChange,
-  min,
-  max,
-  suffix,
-  colorClass = "bg-primary/10 border-primary/30 text-primary",
-  step = 1
+// ─── Slider ───────────────────────────────────────────────────────────────────
+function Slider({
+  label, value, min, max, step = 0.01, unit = "",
+  onChange, color = "#3b82f6", fmt,
 }: {
-  value: number;
+  label: string; value: number; min: number; max: number;
+  step?: number; unit?: string; color?: string;
   onChange: (v: number) => void;
-  min: number;
-  max: number;
-  suffix: string;
-  colorClass?: string;
-  step?: number;
-}) => {
-  const [localValue, setLocalValue] = useState(value.toString());
-
-  useEffect(() => {
-    setLocalValue(value.toFixed(2));
-  }, [value]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalValue(e.target.value);
-    const num = parseFloat(e.target.value);
-    if (!isNaN(num)) {
-      const clamped = Math.max(min, Math.min(max, num));
-      onChange(clamped);
-    }
-  };
-
-  const handleBlur = () => {
-    setLocalValue(value.toFixed(step >= 1 ? 0 : 2));
-  };
-
+  fmt?: (v: number) => string;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  const display = fmt ? fmt(value) : value.toFixed(2);
   return (
-    <div className={cn("flex items-center gap-1 px-2 py-0.5 rounded border transition-all focus-within:ring-1", colorClass)}>
-      <input
-        type="number"
-        value={localValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        step={step}
-        className="bg-transparent border-none outline-none font-mono text-xs font-bold w-14 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-white"
-      />
-      <span className="text-[9px] font-bold opacity-45 uppercase text-white/50">{suffix}</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between items-center">
+        <span className="text-[11px] text-white/50 font-mono uppercase tracking-wider">{label}</span>
+        <span className="text-[12px] font-mono font-bold" style={{ color }}>
+          {display}{unit}
+        </span>
+      </div>
+      <div className="relative h-1.5 rounded-full bg-white/5">
+        <div
+          className="absolute h-full rounded-full transition-none"
+          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}99, ${color})` }}
+        />
+        <input
+          type="range" min={min} max={max} step={step} value={value}
+          onChange={e => onChange(parseFloat(e.target.value))}
+          className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
+        />
+      </div>
     </div>
   );
-};
+}
 
-export const KineticEnergyControls: React.FC<Readonly<KineticEnergyControlsProps>> = ({
-  subMode,
-  isPlaying,
-  setIsPlaying,
-
-  // Translational
-  transMass, setTransMass,
-  transVelocity, setTransVelocity,
-  transFriction, setTransFriction,
-  setImpulseBoost,
-
-  // Rotational
-  rotShape, setRotShape,
-  rotMass, setRotMass,
-  rotRadius, setRotRadius,
-  rotOmega, setRotOmega,
-
-  // Relativistic
-  relMass, setRelMass,
-  relBeta, setRelBeta,
-
-  // Thermal
-  thermalTemp, setThermalTemp,
-  thermalGas, setThermalGas,
-  particleCount, setParticleCount,
-
-  // Quantum
-  quantumN, setQuantumN,
-  wellWidth, setWellWidth,
-  quantumParticle, setQuantumParticle,
-}) => {
+// ─── Toggle Switch ────────────────────────────────────────────────────────────
+function Toggle({ label, checked, onChange, color = "#3b82f6" }: {
+  label: string; checked: boolean; onChange: (v: boolean) => void; color?: string;
+}) {
   return (
-    <div className="flex flex-col gap-4">
-      
-      {/* Simulation Playback State */}
-      <div className="flex items-center gap-2">
+    <label className="flex items-center justify-between gap-3 cursor-pointer group">
+      <span className="text-[11px] text-white/50 font-mono uppercase tracking-wider group-hover:text-white/70 transition-colors">
+        {label}
+      </span>
+      <div
+        onClick={() => onChange(!checked)}
+        className={`relative w-9 h-5 rounded-full transition-all duration-200 flex-shrink-0 ${checked ? "bg-[#3b82f6]" : "bg-white/10"}`}
+      >
+        <div
+          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${checked ? "left-[18px]" : "left-0.5"}`}
+          style={{ boxShadow: checked ? `0 0 6px ${color}` : undefined }}
+        />
+      </div>
+    </label>
+  );
+}
+
+// ─── Section Header ───────────────────────────────────────────────────────────
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-white/30 border-b border-white/5 pb-1.5">
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ─── Mode-specific control panels ─────────────────────────────────────────────
+
+function FreeParticleControls() {
+  const { fp, setFP } = useKEStore();
+  return (
+    <>
+      <Section title="Object">
+        <Slider label="Mass" value={fp.mass} min={0.5} max={20} step={0.1} unit=" kg" color="#3b82f6" onChange={v => setFP({ mass: v })} />
+        <Slider label="Init. Velocity" value={fp.v} min={-30} max={30} step={0.5} unit=" m/s" color="#f59e0b" onChange={v => setFP({ v })} />
+      </Section>
+      <Section title="Forces">
+        <Slider label="Applied Force" value={fp.appliedForce} min={-100} max={100} step={1} unit=" N" color="#ef4444" onChange={v => setFP({ appliedForce: v })} />
+        <Slider label="Friction μk" value={fp.friction} min={0} max={1} step={0.01} unit="" color="#f97316" onChange={v => setFP({ friction: v })} />
+        <Toggle label="Surface Contact" checked={fp.surface} onChange={v => setFP({ surface: v })} />
+      </Section>
+    </>
+  );
+}
+
+function InclinedPlaneControls() {
+  const { ip, setIP, isPlaying, setPlaying } = useKEStore();
+  const degAngle = (ip.angle * 180 / Math.PI);
+  return (
+    <>
+      <Section title="Ramp">
+        <Slider label="Angle θ" value={degAngle} min={5} max={75} step={1} unit="°" color="#f59e0b"
+          onChange={v => { setIP({ angle: v * Math.PI / 180 }); }} />
+        <Slider label="Ramp Length" value={ip.trackLength} min={2} max={20} step={0.5} unit=" m" color="#8b5cf6"
+          onChange={v => setIP({ trackLength: v })} />
+      </Section>
+      <Section title="Block">
+        <Slider label="Mass" value={ip.mass} min={0.5} max={20} step={0.1} unit=" kg" color="#3b82f6" onChange={v => setIP({ mass: v })} />
+        <Slider label="Friction μk" value={ip.mu} min={0} max={0.9} step={0.01} unit="" color="#f97316" onChange={v => setIP({ mu: v })} />
+      </Section>
+      <button
+        onClick={() => { setIP({ x: ip.trackLength, v: 0 }); setPlaying(true); }}
+        className="w-full py-2 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/20 transition-all"
+      >
+        Place at Top & Release
+      </button>
+    </>
+  );
+}
+
+function ProjectileControls() {
+  const { launchAngle, launchSpeed, proj, setLaunchParams, launchProjectile, setProj } = useKEStore();
+  return (
+    <>
+      <Section title="Launch Parameters">
+        <Slider label="Angle" value={launchAngle} min={5} max={85} step={1} unit="°" color="#f59e0b"
+          onChange={v => setLaunchParams(v, launchSpeed)} />
+        <Slider label="Speed" value={launchSpeed} min={5} max={80} step={1} unit=" m/s" color="#3b82f6"
+          onChange={v => setLaunchParams(launchAngle, v)} />
+        <Slider label="Mass" value={proj.mass} min={0.05} max={10} step={0.05} unit=" kg" color="#8b5cf6"
+          onChange={v => setProj({ mass: v })} />
+      </Section>
+      <Section title="Physics">
+        <Toggle label="Air Resistance" checked={proj.dragEnabled} onChange={v => setProj({ dragEnabled: v })} />
+      </Section>
+      <button
+        onClick={launchProjectile}
+        className="w-full py-2.5 rounded-lg text-[12px] font-mono font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transition-all"
+      >
+        🚀 Launch
+      </button>
+    </>
+  );
+}
+
+function CollisionControls() {
+  const { coll, setColl } = useKEStore();
+  return (
+    <>
+      <Section title="Body 1 (Purple)">
+        <Slider label="Mass m₁" value={coll.b1.mass} min={0.5} max={15} step={0.1} unit=" kg" color="#8b5cf6"
+          onChange={v => setColl({ b1: { ...coll.b1, mass: v } })} />
+        <Slider label="Velocity v₁" value={coll.b1.v} min={-20} max={20} step={0.5} unit=" m/s" color="#f59e0b"
+          onChange={v => setColl({ b1: { ...coll.b1, v } })} />
+      </Section>
+      <Section title="Body 2 (Cyan)">
+        <Slider label="Mass m₂" value={coll.b2.mass} min={0.5} max={15} step={0.1} unit=" kg" color="#06b6d4"
+          onChange={v => setColl({ b2: { ...coll.b2, mass: v } })} />
+        <Slider label="Velocity v₂" value={coll.b2.v} min={-20} max={20} step={0.5} unit=" m/s" color="#f59e0b"
+          onChange={v => setColl({ b2: { ...coll.b2, v } })} />
+      </Section>
+      <Section title="Collision Type">
+        <Slider label="Restitution e" value={coll.e} min={0} max={1} step={0.01} unit="" color="#10b981"
+          fmt={v => v === 0 ? "0.00 (perfectly inelastic)" : v === 1 ? "1.00 (perfectly elastic)" : v.toFixed(2)}
+          onChange={v => setColl({ e: v })} />
+      </Section>
+    </>
+  );
+}
+
+function RotationalControls() {
+  const { rot, setRot } = useKEStore();
+  const shapes = [
+    { id: "disk",        label: "Disk",           formula: "½mr²" },
+    { id: "ring",        label: "Ring",           formula: "mr²" },
+    { id: "sphere",      label: "Solid Sphere",   formula: "²⁄₅mr²" },
+    { id: "hollowSphere",label: "Hollow Sphere",  formula: "²⁄₃mr²" },
+    { id: "rod",         label: "Thin Rod",       formula: "¹⁄₁₂ml²" },
+    { id: "cylinder",    label: "Cylinder",       formula: "½mr²" },
+  ] as const;
+  return (
+    <>
+      <Section title="Shape">
+        <div className="grid grid-cols-2 gap-1.5">
+          {shapes.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setRot({ shape: s.id })}
+              className={`py-2 px-2 rounded-lg text-[10px] font-mono text-left transition-all border ${
+                rot.shape === s.id
+                  ? "bg-violet-500/20 border-violet-500/40 text-violet-300"
+                  : "bg-white/3 border-white/5 text-white/40 hover:text-white/60 hover:border-white/10"
+              }`}
+            >
+              <div className="font-bold">{s.label}</div>
+              <div className="text-[9px] opacity-60">I = {s.formula}</div>
+            </button>
+          ))}
+        </div>
+      </Section>
+      <Section title="Parameters">
+        <Slider label="Mass" value={rot.mass} min={0.5} max={20} step={0.1} unit=" kg" color="#8b5cf6"
+          onChange={v => setRot({ mass: v })} />
+        <Slider label="Radius" value={rot.radius} min={0.05} max={1} step={0.01} unit=" m" color="#a78bfa"
+          onChange={v => setRot({ radius: v })} />
+        <Slider label="Torque" value={rot.torque} min={-10} max={10} step={0.1} unit=" N·m" color="#ef4444"
+          onChange={v => setRot({ torque: v })} />
+        <Slider label="Friction" value={rot.friction} min={0} max={2} step={0.01} unit=" N·m" color="#f97316"
+          onChange={v => setRot({ friction: v })} />
+      </Section>
+      <div className="text-[10px] font-mono text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-lg p-3">
+        I = {rot.I.toFixed(5)} kg·m²
+        <br />
+        KE = ½Iω² = {(0.5 * rot.I * rot.omega * rot.omega).toFixed(3)} J
+      </div>
+    </>
+  );
+}
+
+function RollerCoasterControls() {
+  const { rc, setRC, setPlaying } = useKEStore();
+  return (
+    <>
+      <Section title="Cart">
+        <Slider label="Mass" value={rc.mass} min={1} max={50} step={0.5} unit=" kg" color="#3b82f6"
+          onChange={v => setRC({ mass: v })} />
+        <Slider label="Rolling Friction μ" value={rc.mu} min={0} max={0.2} step={0.005} unit="" color="#f97316"
+          onChange={v => setRC({ mu: v })} />
+      </Section>
+      <Section title="Launch">
+        <Slider label="Initial Speed" value={rc.v} min={0} max={20} step={0.5} unit=" m/s" color="#f59e0b"
+          onChange={v => setRC({ v, s: 0 })} />
+      </Section>
+      <button
+        onClick={() => { setRC({ s: 0 }); setPlaying(true); }}
+        className="w-full py-2 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/20 transition-all"
+      >
+        Release from Start
+      </button>
+    </>
+  );
+}
+
+function VehicleControls() {
+  const { vehicles, selectedVehicles, toggleVehicle } = useKEStore();
+  const ke = (m: number, v: number) => 0.5 * m * v * v;
+  const fmt = (j: number) =>
+    j >= 1e12 ? `${(j / 1e12).toFixed(1)} TJ`
+    : j >= 1e9  ? `${(j / 1e9).toFixed(1)} GJ`
+    : j >= 1e6  ? `${(j / 1e6).toFixed(1)} MJ`
+    : j >= 1e3  ? `${(j / 1e3).toFixed(1)} kJ`
+    : `${j.toFixed(1)} J`;
+
+  return (
+    <Section title="Select Vehicles">
+      <div className="flex flex-col gap-2">
+        {vehicles.map(v => {
+          const selected = selectedVehicles.includes(v.name);
+          return (
+            <button
+              key={v.name}
+              onClick={() => toggleVehicle(v.name)}
+              className={`flex items-center justify-between py-2 px-3 rounded-lg text-[11px] font-mono transition-all border ${
+                selected
+                  ? "border-opacity-40 text-white/80"
+                  : "bg-white/3 border-white/5 text-white/30 hover:text-white/50"
+              }`}
+              style={selected ? { borderColor: v.color + "66", background: v.color + "11" } : {}}
+            >
+              <span>{v.icon} {v.name}</span>
+              <span className="text-[10px]" style={{ color: selected ? v.color : undefined }}>
+                {fmt(ke(v.mass, v.speed))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+// ─── Visualization Toggles ────────────────────────────────────────────────────
+function VizToggles() {
+  const {
+    showVelocityVectors, showForceVectors, showEnergyBar, showGrid, showTrail, scientificMode,
+    setToggle,
+  } = useKEStore();
+  return (
+    <Section title="Visualization">
+      <Toggle label="Velocity Vectors" checked={showVelocityVectors} onChange={v => setToggle("showVelocityVectors", v)} />
+      <Toggle label="Force Vectors" checked={showForceVectors} onChange={v => setToggle("showForceVectors", v)} />
+      <Toggle label="Energy Bar" checked={showEnergyBar} onChange={v => setToggle("showEnergyBar", v)} />
+      <Toggle label="Grid" checked={showGrid} onChange={v => setToggle("showGrid", v)} />
+      <Toggle label="Trail" checked={showTrail} onChange={v => setToggle("showTrail", v)} />
+      <Toggle label="Scientific Mode" checked={scientificMode} onChange={v => setToggle("scientificMode", v)} color="#f59e0b" />
+    </Section>
+  );
+}
+
+// ─── Mode Tabs ────────────────────────────────────────────────────────────────
+const MODES: { id: KEMode; label: string; icon: string }[] = [
+  { id: "freeparticle",  label: "Free Particle",   icon: "●" },
+  { id: "inclinedplane", label: "Inclined Plane",  icon: "◸" },
+  { id: "projectile",    label: "Projectile",      icon: "⌒" },
+  { id: "collision",     label: "Collision",       icon: "◌" },
+  { id: "rotational",    label: "Rotational",      icon: "⟳" },
+  { id: "rollercoaster", label: "Roller Coaster",  icon: "~" },
+  { id: "vehicle",       label: "Vehicle Scale",   icon: "▬" },
+];
+
+// ─── Main Controls Component ──────────────────────────────────────────────────
+export const KineticEnergyControls: React.FC = () => {
+  const { mode, setMode, isPlaying, setPlaying, reset, playbackSpeed, setPlaybackSpeed } = useKEStore();
+
+  return (
+    <div className="flex flex-col gap-5 h-full overflow-y-auto pr-1">
+      {/* Mode Selector */}
+      <div className="flex flex-col gap-1.5">
+        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-white/30">Simulation Mode</div>
+        <div className="grid grid-cols-2 gap-1">
+          {MODES.map(m => (
+            <button
+              key={m.id}
+              onClick={() => { setMode(m.id); reset(); }}
+              className={`flex items-center gap-2 py-2 px-3 rounded-lg text-[10px] font-mono text-left transition-all border ${
+                mode === m.id
+                  ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
+                  : "bg-white/3 border-white/5 text-white/40 hover:border-white/10 hover:text-white/60"
+              }`}
+            >
+              <span className="text-sm">{m.icon}</span>
+              <span className="font-bold leading-tight">{m.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Playback */}
+      <div className="flex gap-2">
         <button
-          onClick={() => setIsPlaying(!isPlaying)}
-          className={cn(
-            "flex-1 py-2 px-3 rounded-lg font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all active:scale-95 border",
+          onClick={() => setPlaying(!isPlaying)}
+          className={`flex-1 py-2 rounded-lg text-[11px] font-mono font-black uppercase tracking-wider transition-all ${
             isPlaying
-              ? "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
-              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
-          )}
+              ? "bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30"
+              : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30"
+          }`}
         >
-          {isPlaying ? (
-            <>
-              <Pause className="w-3.5 h-3.5" />
-              Pause Sim
-            </>
-          ) : (
-            <>
-              <Play className="w-3.5 h-3.5 fill-current" />
-              Resume Sim
-            </>
-          )}
+          {isPlaying ? "⏸ Pause" : "▶ Play"}
+        </button>
+        <button
+          onClick={reset}
+          className="px-4 py-2 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider bg-white/5 text-white/40 hover:bg-white/8 border border-white/5 transition-all"
+        >
+          ↺ Reset
         </button>
       </div>
 
-      {/* ── 1. TRANSLATIONAL CONTROLS ── */}
-      {subMode === "translational" && (
-        <div className="space-y-4">
-          {/* Mass Slider */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Weight className="w-3 h-3 text-cyan-400" />
-                Block Mass
-              </Label>
-              <ValueInput
-                value={transMass}
-                onChange={setTransMass}
-                min={0.5} max={50.0}
-                step={0.1}
-                suffix="kg"
-              />
-            </div>
-            <Slider
-              value={[transMass]}
-              onValueChange={(v) => setTransMass(v[0])}
-              min={0.5} max={50.0} step={0.1}
-              className="cursor-pointer"
-            />
-          </div>
+      {/* Speed */}
+      <Slider
+        label="Playback Speed" value={playbackSpeed} min={0.1} max={5} step={0.1} unit="×"
+        color="#f59e0b" onChange={setPlaybackSpeed}
+        fmt={v => `${v.toFixed(1)}`}
+      />
 
-          {/* Velocity Slider */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Compass className="w-3 h-3 text-cyan-400" />
-                Initial Velocity
-              </Label>
-              <ValueInput
-                value={transVelocity}
-                onChange={setTransVelocity}
-                min={-30.0} max={30.0}
-                step={0.5}
-                suffix="m/s"
-              />
-            </div>
-            <Slider
-              value={[transVelocity]}
-              onValueChange={(v) => setTransVelocity(v[0])}
-              min={-30.0} max={30.0} step={0.5}
-              className="cursor-pointer"
-            />
-          </div>
+      <div className="border-t border-white/5" />
 
-          {/* Friction Slider */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Zap className="w-3 h-3 text-amber-400" />
-                Friction Coeff.
-              </Label>
-              <ValueInput
-                value={transFriction}
-                onChange={setTransFriction}
-                min={0.0} max={0.8}
-                step={0.01}
-                suffix="μ"
-              />
-            </div>
-            <Slider
-              value={[transFriction]}
-              onValueChange={(v) => setTransFriction(v[0])}
-              min={0.0} max={0.8} step={0.01}
-              className="cursor-pointer"
-            />
-          </div>
+      {/* Mode-specific controls */}
+      {mode === "freeparticle"  && <FreeParticleControls />}
+      {mode === "inclinedplane" && <InclinedPlaneControls />}
+      {mode === "projectile"    && <ProjectileControls />}
+      {mode === "collision"     && <CollisionControls />}
+      {mode === "rotational"    && <RotationalControls />}
+      {mode === "rollercoaster" && <RollerCoasterControls />}
+      {mode === "vehicle"       && <VehicleControls />}
 
-          {/* Sudden Impulse Push */}
-          <button
-            onClick={() => setImpulseBoost((prev) => prev + 1)}
-            className="w-full py-2.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 font-bold rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95"
-          >
-            <Zap className="w-3.5 h-3.5 fill-cyan-400/20" />
-            Apply Impulse (+15 N·s)
-          </button>
-        </div>
-      )}
-
-      {/* ── 2. ROTATIONAL CONTROLS ── */}
-      {subMode === "rotational" && (
-        <div className="space-y-4">
-          {/* Shape Selector */}
-          <div className="space-y-2">
-            <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Inertia Geometry</Label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(["ring", "disk", "sphere", "rod"] as const).map((shape) => (
-                <button
-                  key={shape}
-                  onClick={() => setRotShape(shape)}
-                  className={cn(
-                    "py-2 rounded-lg border text-[10px] uppercase font-bold tracking-wider transition-all",
-                    rotShape === shape
-                      ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-lg"
-                      : "bg-white/5 border-white/5 text-white/40 hover:text-white/80"
-                  )}
-                >
-                  {shape === "ring" && "Thin Ring (MR²)"}
-                  {shape === "disk" && "Solid Disk (½MR²)"}
-                  {shape === "sphere" && "Solid Sphere (⅖MR²)"}
-                  {shape === "rod" && "Center Rod (¹/₁₂ML²)"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Rotational Mass */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Weight className="w-3 h-3 text-cyan-400" />
-                Rotor Mass
-              </Label>
-              <ValueInput
-                value={rotMass}
-                onChange={setRotMass}
-                min={0.2} max={10.0}
-                step={0.1}
-                suffix="kg"
-              />
-            </div>
-            <Slider
-              value={[rotMass]}
-              onValueChange={(v) => setRotMass(v[0])}
-              min={0.2} max={10.0} step={0.1}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Rotational Radius */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Compass className="w-3 h-3 text-cyan-400" />
-                Rotor Radius
-              </Label>
-              <ValueInput
-                value={rotRadius}
-                onChange={setRotRadius}
-                min={0.1} max={2.0}
-                step={0.05}
-                suffix="m"
-              />
-            </div>
-            <Slider
-              value={[rotRadius]}
-              onValueChange={(v) => setRotRadius(v[0])}
-              min={0.1} max={2.0} step={0.05}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Angular Velocity ω */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Zap className="w-3 h-3 text-cyan-400" />
-                Angular Speed (ω)
-              </Label>
-              <ValueInput
-                value={rotOmega}
-                onChange={setRotOmega}
-                min={0.0} max={40.0}
-                step={0.5}
-                suffix="rad/s"
-              />
-            </div>
-            <Slider
-              value={[rotOmega]}
-              onValueChange={(v) => setRotOmega(v[0])}
-              min={0.0} max={40.0} step={0.5}
-              className="cursor-pointer"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── 3. RELATIVISTIC CONTROLS ── */}
-      {subMode === "relativistic" && (
-        <div className="space-y-4">
-          {/* Particle Selector */}
-          <div className="space-y-2">
-            <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Test Particle</Label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(["electron", "proton"] as const).map((particle) => (
-                <button
-                  key={particle}
-                  onClick={() => setQuantumParticle(particle)}
-                  className={cn(
-                    "py-2 rounded-lg border text-[10px] uppercase font-bold tracking-wider transition-all",
-                    quantumParticle === particle
-                      ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
-                      : "bg-white/5 border-white/5 text-white/40 hover:text-white/80"
-                  )}
-                >
-                  {particle === "electron" ? "Electron (0.511 MeV)" : "Proton (938.3 MeV)"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Particle Scaling factor (Mass) */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Weight className="w-3 h-3 text-cyan-400" />
-                Mass Multiplier
-              </Label>
-              <ValueInput
-                value={relMass}
-                onChange={setRelMass}
-                min={0.1} max={10.0}
-                step={0.1}
-                suffix="x"
-              />
-            </div>
-            <Slider
-              value={[relMass]}
-              onValueChange={(v) => setRelMass(v[0])}
-              min={0.1} max={10.0} step={0.1}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Speed Beta v/c */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Zap className="w-3 h-3 text-cyan-400" />
-                Velocity Fraction (v/c)
-              </Label>
-              <ValueInput
-                value={relBeta}
-                onChange={setRelBeta}
-                min={0.0} max={0.999}
-                step={0.001}
-                suffix="c"
-              />
-            </div>
-            <Slider
-              value={[relBeta]}
-              onValueChange={(v) => setRelBeta(v[0])}
-              min={0.0} max={0.999} step={0.001}
-              className="cursor-pointer"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── 4. THERMAL CONTROLS ── */}
-      {subMode === "thermal" && (
-        <div className="space-y-4">
-          {/* Gas Type Selection */}
-          <div className="space-y-2">
-            <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Ideal Gas Species</Label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(["He", "Ar", "Xe"] as const).map((gas) => (
-                <button
-                  key={gas}
-                  onClick={() => setThermalGas(gas)}
-                  className={cn(
-                    "py-2 rounded-lg border text-[10px] uppercase font-bold tracking-wider transition-all",
-                    thermalGas === gas
-                      ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
-                      : "bg-white/5 border-white/5 text-white/40 hover:text-white/80"
-                  )}
-                >
-                  {gas === "He" && "Helium (4u)"}
-                  {gas === "Ar" && "Argon (40u)"}
-                  {gas === "Xe" && "Xenon (131u)"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Temperature (K) */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Compass className="w-3 h-3 text-cyan-400" />
-                Temperature
-              </Label>
-              <ValueInput
-                value={thermalTemp}
-                onChange={setThermalTemp}
-                min={10} max={1200}
-                step={5}
-                suffix="K"
-              />
-            </div>
-            <Slider
-              value={[thermalTemp]}
-              onValueChange={(v) => setThermalTemp(v[0])}
-              min={10} max={1200} step={5}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Molecular Density (Particle Count) */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Weight className="w-3 h-3 text-cyan-400" />
-                Molecules Count
-              </Label>
-              <ValueInput
-                value={particleCount}
-                onChange={setParticleCount}
-                min={20} max={200}
-                step={5}
-                suffix="pcs"
-              />
-            </div>
-            <Slider
-              value={[particleCount]}
-              onValueChange={(v) => setParticleCount(v[0])}
-              min={20} max={200} step={5}
-              className="cursor-pointer"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── 5. QUANTUM CONTROLS ── */}
-      {subMode === "quantum" && (
-        <div className="space-y-4">
-          {/* Particle Type */}
-          <div className="space-y-2">
-            <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Confined Particle</Label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(["electron", "proton"] as const).map((particle) => (
-                <button
-                  key={particle}
-                  onClick={() => setQuantumParticle(particle)}
-                  className={cn(
-                    "py-2 rounded-lg border text-[10px] uppercase font-bold tracking-wider transition-all",
-                    quantumParticle === particle
-                      ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
-                      : "bg-white/5 border-white/5 text-white/40 hover:text-white/80"
-                  )}
-                >
-                  {particle === "electron" ? "Electron" : "Proton"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Quantum State n */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Zap className="w-3 h-3 text-cyan-400" />
-                Energy State (n)
-              </Label>
-              <ValueInput
-                value={quantumN}
-                onChange={setQuantumN}
-                min={1} max={5}
-                step={1}
-                suffix="idx"
-              />
-            </div>
-            <Slider
-              value={[quantumN]}
-              onValueChange={(v) => setQuantumN(v[0])}
-              min={1} max={5} step={1}
-              className="cursor-pointer"
-            />
-          </div>
-
-          {/* Box Width L (nm) */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
-                <Compass className="w-3 h-3 text-cyan-400" />
-                Well Width (L)
-              </Label>
-              <ValueInput
-                value={wellWidth}
-                onChange={setWellWidth}
-                min={0.5} max={4.0}
-                step={0.1}
-                suffix="nm"
-              />
-            </div>
-            <Slider
-              value={[wellWidth]}
-              onValueChange={(v) => setWellWidth(v[0])}
-              min={0.5} max={4.0} step={0.1}
-              className="cursor-pointer"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── INFO BOX FOOTER ── */}
-      <div className="mt-4 p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
-        <div className="flex items-center gap-1.5 text-white/40">
-          <HelpCircle className="w-4 h-4 text-cyan-500" />
-          <Label className="text-[10px] font-bold uppercase tracking-wider">Physics Formula Summary</Label>
-        </div>
-
-        <div className="p-3 rounded-lg bg-black/40 border border-white/5 space-y-1.5 font-mono text-[10.5px]">
-          {subMode === "translational" && (
-            <div className="flex justify-between items-center text-emerald-400">
-              <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Formula</span>
-              <span>KE = ½ m v²</span>
-            </div>
-          )}
-          {subMode === "rotational" && (
-            <div className="flex justify-between items-center text-emerald-400">
-              <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Formula</span>
-              <span>KE_rot = ½ I ω²</span>
-            </div>
-          )}
-          {subMode === "relativistic" && (
-            <div className="flex justify-between items-center text-emerald-400">
-              <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Formula</span>
-              <span>KE = (γ - 1) m c²</span>
-            </div>
-          )}
-          {subMode === "thermal" && (
-            <div className="flex justify-between items-center text-emerald-400">
-              <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Formula</span>
-              <span>KE_avg = ³/₂ k_B T</span>
-            </div>
-          )}
-          {subMode === "quantum" && (
-            <div className="flex justify-between items-center text-emerald-400">
-              <span className="text-[9px] text-white/30 uppercase font-bold tracking-tighter">Formula</span>
-              <span>E_n = n²h² / (8mL²)</span>
-            </div>
-          )}
-        </div>
-        <p className="px-1 text-[9px] text-white/20 leading-normal">
-          Change tabs above to see detailed LaTeX derivations or analytical comparison charts.
-        </p>
-      </div>
+      <div className="border-t border-white/5" />
+      <VizToggles />
     </div>
   );
 };
