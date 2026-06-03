@@ -342,15 +342,108 @@ export interface VehicleEntry {
   speed: number;    // m/s
   color: string;
   icon: string;
+  desc?: string;    // human-readable scale analogy
 }
 
 export const VEHICLES: VehicleEntry[] = [
-  { name: "Baseball",   mass: 0.145,    speed: 44.7,  color: "#f59e0b", icon: "⚾" },
-  { name: "Human",      mass: 75,       speed: 7,     color: "#06b6d4", icon: "🏃" },
-  { name: "Car",        mass: 1500,     speed: 30,    color: "#8b5cf6", icon: "🚗" },
-  { name: "Race Car",   mass: 750,      speed: 90,    color: "#ef4444", icon: "🏎️" },
-  { name: "Bullet",     mass: 0.004,    speed: 900,   color: "#ec4899", icon: "🔫" },
-  { name: "Train",      mass: 500000,   speed: 55,    color: "#10b981", icon: "🚄" },
-  { name: "Rocket",     mass: 549054,   speed: 9800,  color: "#f97316", icon: "🚀" },
-  { name: "Asteroid",   mass: 1.4e12,   speed: 20000, color: "#6366f1", icon: "☄️" },
+  { name: "Baseball",   mass: 0.145,    speed: 44.7,  color: "#f59e0b", icon: "⚾", desc: "MLB fastball" },
+  { name: "Human",      mass: 75,       speed: 7,     color: "#06b6d4", icon: "🏃", desc: "sprint speed" },
+  { name: "Car",        mass: 1500,     speed: 30,    color: "#8b5cf6", icon: "🚗", desc: "urban 108 km/h" },
+  { name: "Race Car",   mass: 750,      speed: 90,    color: "#ef4444", icon: "🏎️", desc: "F1 at 324 km/h" },
+  { name: "Bullet",     mass: 0.004,    speed: 900,   color: "#ec4899", icon: "🔫", desc: "9mm pistol" },
+  { name: "Train",      mass: 500000,   speed: 55,    color: "#10b981", icon: "🚄", desc: "TGV at 198 km/h" },
+  { name: "Rocket",     mass: 549054,   speed: 9800,  color: "#f97316", icon: "🚀", desc: "orbital velocity" },
+  { name: "Asteroid",   mass: 1.4e12,   speed: 20000, color: "#6366f1", icon: "☄️", desc: "Chicxulub scale" },
 ];
+
+// ─── TNT Equivalent ───────────────────────────────────────────────────────────
+/** 1 ton TNT = 4.184 GJ */
+export const TNT_PER_JOULE = 1 / 4.184e9;
+
+export function toTNT(joules: number): string {
+  const tons = joules * TNT_PER_JOULE;
+  if (tons >= 1e9)   return `${(tons / 1e9).toFixed(2)} GT TNT`;
+  if (tons >= 1e6)   return `${(tons / 1e6).toFixed(2)} MT TNT`;
+  if (tons >= 1e3)   return `${(tons / 1e3).toFixed(2)} kT TNT`;
+  if (tons >= 1)     return `${tons.toFixed(3)} T TNT`;
+  if (tons >= 1e-3)  return `${(tons * 1e3).toFixed(1)} kg TNT`;
+  return `${(tons * 1e6).toFixed(1)} g TNT`;
+}
+
+// ─── Visual Energy Intensity (for glow/particle scaling) ─────────────────────
+/**
+ * Maps kinetic energy to a normalized 0–1 visual intensity.
+ * Scales with v² (i.e., √(KE/mass) = v, so intensity ∝ v).
+ * Uses a soft log-sigmoid curve so tiny KE still shows some glow.
+ */
+export function energyIntensity(ke: number, refKE = 500): number {
+  if (ke <= 0) return 0;
+  return Math.min(1, Math.sqrt(ke / refKE));
+}
+
+/** Returns glow radius based on v² — NOT linearly on v */
+export function keGlowRadius(ke: number, baseRadius: number, maxExtra = 60): number {
+  return baseRadius + Math.min(maxExtra, Math.sqrt(Math.max(0, ke)) * 1.2);
+}
+
+/** Returns glow alpha (0–1) that intensifies quadratically with speed */
+export function keGlowAlpha(ke: number, refKE = 200): number {
+  return Math.min(0.9, 0.15 + 0.75 * Math.min(1, ke / refKE));
+}
+
+// ─── Trail Point ──────────────────────────────────────────────────────────────
+export interface TrailPt { x: number; y: number; ke: number; age: number; }
+
+export function addTrailPoint(trail: TrailPt[], x: number, y: number, ke: number, maxLen = 120): TrailPt[] {
+  const next = [...trail, { x, y, ke, age: 0 }];
+  const aged = next.map(p => ({ ...p, age: p.age + 1 }));
+  return aged.filter(p => p.age < maxLen).slice(-maxLen);
+}
+
+// ─── Verlet Integration (free particle) ──────────────────────────────────────
+/**
+ * Velocity Verlet: more accurate than Euler for energy conservation.
+ * x_{n+1} = x_n + v_n·dt + ½a_n·dt²
+ * v_{n+1} = v_n + ½(a_n + a_{n+1})·dt
+ */
+export function stepFreeParticleVerlet(s: FreeParticleState, dt: number): FreeParticleState {
+  const accel = (state: FreeParticleState) => {
+    const fric = state.surface && Math.abs(state.v) > 1e-6
+      ? -Math.sign(state.v) * state.friction * state.mass * G : 0;
+    const drag = dragForce(state.v);
+    return (state.appliedForce + fric + drag) / state.mass;
+  };
+  const a0 = accel(s);
+  const xNew = s.x + s.v * dt + 0.5 * a0 * dt * dt;
+  const vHalf = s.v + a0 * dt;
+  const sHalf = { ...s, x: xNew, v: vHalf };
+  const a1 = accel(sHalf);
+  const vNew = s.v + 0.5 * (a0 + a1) * dt;
+  return { ...s, x: xNew, v: vNew, t: s.t + dt };
+}
+
+// ─── Collision Presets ────────────────────────────────────────────────────────
+export type CollisionPreset = "elastic" | "inelastic" | "headon" | "truckbike" | "bulletwall";
+
+export function collisionPreset(preset: CollisionPreset): Partial<CollisionState> {
+  switch (preset) {
+    case "elastic":
+      return { b1: { x: 2, v: 8, mass: 3, radius: 0.35 }, b2: { x: 8, v: -5, mass: 3, radius: 0.35 }, e: 1.0 };
+    case "inelastic":
+      return { b1: { x: 2, v: 8, mass: 5, radius: 0.4 }, b2: { x: 8, v: 0, mass: 5, radius: 0.4 }, e: 0.0 };
+    case "headon":
+      return { b1: { x: 1.5, v: 10, mass: 4, radius: 0.38 }, b2: { x: 8.5, v: -10, mass: 4, radius: 0.38 }, e: 0.85 };
+    case "truckbike":
+      return { b1: { x: 1.5, v: 6, mass: 12, radius: 0.55 }, b2: { x: 7, v: -3, mass: 0.8, radius: 0.18 }, e: 0.4 };
+    case "bulletwall":
+      return { b1: { x: 1, v: 18, mass: 0.01, radius: 0.12 }, b2: { x: 7, v: 0, mass: 20, radius: 0.6 }, e: 0.05 };
+    default:
+      return {};
+  }
+}
+
+// ─── Stopping Distance ────────────────────────────────────────────────────────
+/** d = v² / (2μg) — braking distance on flat surface */
+export function stoppingDistance(v: number, mu = 0.7): number {
+  return (v * v) / (2 * mu * G);
+}

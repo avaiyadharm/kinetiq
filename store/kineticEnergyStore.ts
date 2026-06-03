@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import {
   FreeParticleState, InclinedPlaneState, ProjectileState, CollisionState,
-  RotationalState, RollerCoasterState, HistoryPoint,
-  stepFreeParticle, stepInclinedPlane, stepProjectile, stepCollision,
+  RotationalState, RollerCoasterState, HistoryPoint, TrailPt,
+  stepFreeParticleVerlet, stepInclinedPlane, stepProjectile, stepCollision,
   stepRotational, stepRollerCoaster, buildRollerCoasterTrack, TrackPoint,
   makeHistoryPoint, kineticEnergy, gravitationalPE, rotationalKE, momentOfInertia,
+  addTrailPoint, collisionPreset, CollisionPreset,
   VEHICLES, VehicleEntry,
 } from "@/lib/physics/kineticEnergy";
 
@@ -18,6 +19,26 @@ export type KEMode =
   | "vehicle";
 
 const HISTORY_MAX = 600;
+const TRAIL_MAX = 120;
+
+// ─── Callout System ───────────────────────────────────────────────────────────
+export interface Callout {
+  id: string;
+  text: string;
+  subtext?: string;
+  color: string;
+  icon: string;
+  expires: number; // performance.now() ms
+}
+
+// ─── Shockwave Effect ─────────────────────────────────────────────────────────
+export interface ShockwaveEffect {
+  x: number; y: number;
+  r: number; maxR: number;
+  opacity: number;
+  color: string;
+  active: boolean;
+}
 
 // ─── Default States ───────────────────────────────────────────────────────────
 const defaultFP: FreeParticleState = {
@@ -62,9 +83,9 @@ interface KEStore {
   rc: RollerCoasterState;
   rcTrack: TrackPoint[];
 
-  // Projectile launch parameters (separate from flying state)
-  launchAngle: number;   // degrees
-  launchSpeed: number;   // m/s
+  // Projectile launch parameters
+  launchAngle: number;
+  launchSpeed: number;
 
   // Vehicle comparison
   selectedVehicles: string[];
@@ -73,15 +94,37 @@ interface KEStore {
   // History
   history: HistoryPoint[];
 
+  // Trail buffer
+  trail: TrailPt[];
+
+  // Camera shake
+  shakeIntensity: number;
+
+  // Active callout
+  callouts: Callout[];
+
+  // Shockwaves
+  shockwaves: ShockwaveEffect[];
+
+  // Previous KE for callout detection
+  prevKE: number;
+  prevVelocity: number;
+
+  // Collision replay buffer
+  collisionReplayBuffer: CollisionState[];
+  isReplayMode: boolean;
+  replayFrame: number;
+
   // Visualization toggles
   showVelocityVectors: boolean;
   showForceVectors: boolean;
   showEnergyBar: boolean;
   showGrid: boolean;
   showTrail: boolean;
-
-  // Scientific mode
+  showEquationPanel: boolean;
+  showCallouts: boolean;
   scientificMode: boolean;
+  vehicleLogScale: boolean;
 
   // ── Actions ──────────────────────────────────────────────────────────
   setMode: (m: KEMode) => void;
@@ -100,9 +143,26 @@ interface KEStore {
 
   setLaunchParams: (angle: number, speed: number) => void;
   launchProjectile: () => void;
+  applyCollisionPreset: (preset: CollisionPreset) => void;
 
-  setToggle: (key: "showVelocityVectors" | "showForceVectors" | "showEnergyBar" | "showGrid" | "showTrail" | "scientificMode", val: boolean) => void;
+  addCallout: (c: Omit<Callout, "id" | "expires">) => void;
+  dismissCallout: (id: string) => void;
+  addShockwave: (sw: Omit<ShockwaveEffect, "r" | "opacity" | "active">) => void;
+  tickEffects: (dt: number) => void;
+
+  startReplay: () => void;
+  stopReplay: () => void;
+
+  setToggle: (key: "showVelocityVectors" | "showForceVectors" | "showEnergyBar" | "showGrid" | "showTrail" | "showEquationPanel" | "showCallouts" | "scientificMode" | "vehicleLogScale", val: boolean) => void;
   toggleVehicle: (name: string) => void;
+
+  // Live equation data
+  liveEquation: {
+    formula: string;
+    substituted: string;
+    result: string;
+    value: number;
+  };
 }
 
 // ─── Store Implementation ─────────────────────────────────────────────────────
@@ -123,20 +183,42 @@ export const useKEStore = create<KEStore>((set, get) => ({
   launchAngle: 45,
   launchSpeed: 20,
 
-  selectedVehicles: ["Car", "Bullet", "Rocket"],
+  selectedVehicles: ["Car", "Bullet", "Rocket", "Train"],
   vehicles: VEHICLES,
 
   history: [],
+  trail: [],
+
+  shakeIntensity: 0,
+  callouts: [],
+  shockwaves: [],
+
+  prevKE: 0,
+  prevVelocity: 0,
+
+  collisionReplayBuffer: [],
+  isReplayMode: false,
+  replayFrame: 0,
 
   showVelocityVectors: true,
   showForceVectors: true,
   showEnergyBar: true,
   showGrid: true,
   showTrail: true,
+  showEquationPanel: true,
+  showCallouts: true,
   scientificMode: false,
+  vehicleLogScale: true,
+
+  liveEquation: {
+    formula: "KE = ½mv²",
+    substituted: "KE = ½ × ? × ?²",
+    result: "KE = ? J",
+    value: 0,
+  },
 
   // ── Actions ─────────────────────────────────────────────────────────
-  setMode: (m) => set({ mode: m, history: [] }),
+  setMode: (m) => set({ mode: m, history: [], trail: [], callouts: [], shakeIntensity: 0 }),
   setPlaying: (p) => set({ isPlaying: p }),
   setPlaybackSpeed: (s) => set({ playbackSpeed: s }),
 
@@ -167,15 +249,65 @@ export const useKEStore = create<KEStore>((set, get) => ({
     const rad = (launchAngle * Math.PI) / 180;
     set({
       proj: {
-        ...proj,
-        x: 0, y: 0,
+        ...proj, x: 0, y: 0,
         vx: launchSpeed * Math.cos(rad),
         vy: launchSpeed * Math.sin(rad),
         t: 0, launched: true, landed: false, maxHeight: 0, range: 0,
       },
       isPlaying: true,
+      trail: [],
     });
   },
+
+  applyCollisionPreset: (preset) => {
+    const patch = collisionPreset(preset);
+    set(s => ({
+      coll: { ...s.coll, ...patch, hasCollided: false, collisionCount: 0, KEBefore: 0, KEAfter: 0, t: 0 },
+      trail: [], history: [],
+    }));
+  },
+
+  addCallout: (c) => {
+    const id = `callout_${Date.now()}_${Math.random()}`;
+    set(s => ({
+      callouts: [
+        ...s.callouts.filter(x => x.text !== c.text),
+        { ...c, id, expires: Date.now() + 3500 }
+      ].slice(-3),
+    }));
+  },
+
+  dismissCallout: (id) => set(s => ({ callouts: s.callouts.filter(c => c.id !== id) })),
+
+  addShockwave: (sw) => set(s => ({
+    shockwaves: [...s.shockwaves.filter(w => w.active), { ...sw, r: 0, opacity: 1, active: true }].slice(-4),
+  })),
+
+  tickEffects: (dt) => {
+    set(s => {
+      // Decay shake
+      const shake = Math.max(0, s.shakeIntensity - dt * 12);
+      // Advance shockwaves
+      const sws = s.shockwaves.map(sw => {
+        if (!sw.active) return sw;
+        const r = sw.r + 280 * dt;
+        const opacity = Math.max(0, 1 - r / sw.maxR);
+        return { ...sw, r, opacity, active: opacity > 0 };
+      });
+      // Expire callouts
+      const now = Date.now();
+      const callouts = s.callouts.filter(c => c.expires > now);
+      return { shakeIntensity: shake, shockwaves: sws, callouts };
+    });
+  },
+
+  startReplay: () => {
+    const { collisionReplayBuffer } = get();
+    if (collisionReplayBuffer.length > 0) {
+      set({ isReplayMode: true, replayFrame: 0, isPlaying: false });
+    }
+  },
+  stopReplay: () => set({ isReplayMode: false }),
 
   setToggle: (key, val) => set({ [key]: val }),
   toggleVehicle: (name) => set(s => {
@@ -187,61 +319,196 @@ export const useKEStore = create<KEStore>((set, get) => ({
 
   tick: (rawDt) => {
     const s = get();
+    if (s.isReplayMode) {
+      const nextFrame = s.replayFrame + 1;
+      if (nextFrame >= s.collisionReplayBuffer.length) {
+        set({ isReplayMode: false, replayFrame: 0 });
+        return;
+      }
+      set({ coll: s.collisionReplayBuffer[nextFrame], replayFrame: nextFrame });
+      return;
+    }
     if (!s.isPlaying) return;
     const dt = Math.min(rawDt, 0.05) * s.playbackSpeed;
+
+    get().tickEffects(rawDt);
 
     let histPoint: HistoryPoint | null = null;
 
     switch (s.mode) {
       case "freeparticle": {
-        const fp = stepFreeParticle(s.fp, dt);
-        // Wrap position for continuous demo
+        const fp = stepFreeParticleVerlet(s.fp, dt);
         const x = ((fp.x % 10) + 10) % 10;
         const newFP = { ...fp, x };
-        set({ fp: newFP, globalTime: newFP.t });
+        const ke = kineticEnergy(newFP.mass, newFP.v);
+
+        // Callout: velocity doubled → KE quadrupled
+        if (s.prevVelocity > 1 && Math.abs(newFP.v) > s.prevVelocity * 1.95 && Math.abs(newFP.v) < s.prevVelocity * 2.05) {
+          get().addCallout({ text: "v × 2 → KE × 4!", subtext: `${s.prevVelocity.toFixed(1)} → ${newFP.v.toFixed(1)} m/s`, color: "#f59e0b", icon: "⚡" });
+        }
+
+        set({
+          fp: newFP, globalTime: newFP.t,
+          prevKE: ke, prevVelocity: Math.abs(newFP.v),
+          trail: s.showTrail ? addTrailPoint(s.trail, x / 10, 0.5, ke, TRAIL_MAX) : s.trail,
+          liveEquation: {
+            formula: "KE = ½mv²",
+            substituted: `KE = ½ × ${newFP.mass.toFixed(1)} × ${Math.abs(newFP.v).toFixed(2)}²`,
+            result: `KE = ${ke.toFixed(3)} J`,
+            value: ke,
+          },
+        });
         histPoint = makeHistoryPoint(newFP.t, newFP.mass, newFP.v, 0, 0, newFP.appliedForce);
         break;
       }
+
       case "inclinedplane": {
         const ip = stepInclinedPlane(s.ip, dt);
-        set({ ip, globalTime: ip.t });
+        const ke = kineticEnergy(ip.mass, ip.v);
+        const pe = gravitationalPE(ip.mass, ip.height);
+
+        // Callout: block reaches bottom
+        if (ip.x < 0.05 && s.ip.x > 0.1 && ip.v > 0.5) {
+          get().addCallout({ text: "PE → KE Complete!", subtext: `v = √(2gh) = ${ip.v.toFixed(2)} m/s`, color: "#10b981", icon: "🎯" });
+          get().addShockwave({ x: 0.1, y: 0.9, maxR: 120, color: "#3b82f6" });
+          set({ shakeIntensity: Math.min(8, ip.v * 0.3) });
+        }
+
+        set({
+          ip, globalTime: ip.t,
+          trail: s.showTrail ? addTrailPoint(s.trail, ip.x / ip.trackLength, 1 - ip.height / 10, ke, TRAIL_MAX) : s.trail,
+          liveEquation: {
+            formula: "PE + KE = E_total",
+            substituted: `${pe.toFixed(1)} + ${ke.toFixed(1)} = ${(pe + ke).toFixed(1)} J`,
+            result: `E = ${(pe + ke).toFixed(3)} J`,
+            value: pe + ke,
+          },
+        });
         histPoint = makeHistoryPoint(ip.t, ip.mass, ip.v, ip.height);
         break;
       }
+
       case "projectile": {
         if (s.proj.landed || !s.proj.launched) return;
         const proj = stepProjectile(s.proj, dt);
-        set({ proj, globalTime: proj.t });
         const speed = Math.sqrt(proj.vx ** 2 + proj.vy ** 2);
+        const ke = kineticEnergy(proj.mass, speed);
+        const pe = gravitationalPE(proj.mass, proj.y);
+
+        if (proj.landed && !s.proj.landed) {
+          get().addCallout({ text: "IMPACT!", subtext: `KE = ${ke.toFixed(1)} J at landing`, color: "#ef4444", icon: "💥" });
+          get().addShockwave({ x: 0.1, y: 0.9, maxR: 150, color: "#f59e0b" });
+          set({ shakeIntensity: Math.min(12, speed * 0.2) });
+        }
+
+        set({
+          proj, globalTime: proj.t,
+          trail: s.showTrail ? addTrailPoint(s.trail, proj.x, proj.y, ke, TRAIL_MAX) : s.trail,
+          liveEquation: {
+            formula: "KE = ½mv²",
+            substituted: `KE = ½ × ${proj.mass.toFixed(2)} × ${speed.toFixed(2)}²`,
+            result: `KE = ${ke.toFixed(3)} J`,
+            value: ke,
+          },
+        });
         histPoint = makeHistoryPoint(proj.t, proj.mass, speed, proj.y);
         break;
       }
+
       case "collision": {
+        const prevCollCount = s.coll.collisionCount;
         const coll = stepCollision(s.coll, dt);
-        set({ coll, globalTime: coll.t });
         const totalKE = kineticEnergy(coll.b1.mass, coll.b1.v) + kineticEnergy(coll.b2.mass, coll.b2.v);
+        const totalMom = coll.b1.mass * coll.b1.v + coll.b2.mass * coll.b2.v;
+
+        // New collision event detected
+        if (coll.collisionCount > prevCollCount) {
+          const keLost = Math.max(0, coll.KEBefore - coll.KEAfter);
+          const contactX = (coll.b1.x + coll.b2.x) / 2 / coll.trackWidth;
+          get().addShockwave({ x: contactX, y: 0.5, maxR: 160, color: coll.e === 1 ? "#3b82f6" : "#f97316" });
+          const impulse = Math.abs(coll.b1.mass * (coll.b1.v - s.coll.b1.v));
+          set({ shakeIntensity: Math.min(15, impulse * 0.5) });
+
+          if (coll.e === 1) {
+            get().addCallout({ text: "Elastic Collision!", subtext: "KE conserved: Σ½mv² unchanged", color: "#3b82f6", icon: "⚡" });
+          } else if (coll.e === 0) {
+            get().addCallout({ text: "Perfectly Inelastic!", subtext: `ΔKE = -${keLost.toFixed(1)} J lost to heat`, color: "#f97316", icon: "🔥" });
+          } else {
+            get().addCallout({ text: `e = ${coll.e.toFixed(2)}`, subtext: `ΔKE = -${keLost.toFixed(1)} J dissipated`, color: "#f59e0b", icon: "💢" });
+          }
+
+          // Buffer last 90 frames for replay
+          set({ collisionReplayBuffer: [] });
+        }
+
+        // Build replay buffer (record last 90 pre-collision states)
+        const newReplayBuffer = coll.collisionCount > 0
+          ? [...s.collisionReplayBuffer, coll].slice(-90)
+          : [...s.collisionReplayBuffer, coll].slice(-90);
+
+        set({
+          coll, globalTime: coll.t,
+          collisionReplayBuffer: newReplayBuffer,
+          liveEquation: {
+            formula: "Σp = m₁v₁ + m₂v₂",
+            substituted: `Σp = ${(coll.b1.mass * coll.b1.v).toFixed(2)} + ${(coll.b2.mass * coll.b2.v).toFixed(2)}`,
+            result: `Σp = ${totalMom.toFixed(3)} kg·m/s`,
+            value: totalMom,
+          },
+        });
         histPoint = {
           t: coll.t, ke: totalKE, pe: 0,
           v: Math.abs(coll.b1.v),
-          momentum: coll.b1.mass * coll.b1.v + coll.b2.mass * coll.b2.v,
-          power: 0, totalE: totalKE, thermalLoss: Math.max(0, coll.KEBefore - coll.KEAfter),
+          momentum: totalMom,
+          power: 0, totalE: totalKE,
+          thermalLoss: Math.max(0, coll.KEBefore - coll.KEAfter),
         };
         break;
       }
+
       case "rotational": {
         const rot = stepRotational(s.rot, dt);
-        set({ rot, globalTime: rot.t });
         const ke = rotationalKE(rot.I, rot.omega);
+
+        set({
+          rot, globalTime: rot.t,
+          liveEquation: {
+            formula: "KE_rot = ½Iω²",
+            substituted: `KE = ½ × ${rot.I.toFixed(4)} × ${rot.omega.toFixed(3)}²`,
+            result: `KE = ${ke.toFixed(4)} J`,
+            value: ke,
+          },
+        });
         histPoint = { t: rot.t, ke, pe: 0, v: rot.omega, momentum: rot.I * rot.omega, power: rot.torque * rot.omega, totalE: ke, thermalLoss: 0 };
         break;
       }
+
       case "rollercoaster": {
         const rc = stepRollerCoaster(s.rc, s.rcTrack, dt);
-        set({ rc, globalTime: rc.t });
-        const trackY = s.rcTrack.length > 0
-          ? (s.rcTrack[Math.round((rc.s / rc.totalLength) * (s.rcTrack.length - 1))]?.y ?? 0)
-          : 0;
-        histPoint = makeHistoryPoint(rc.t, rc.mass, rc.v, trackY);
+        const tIdx = Math.round((rc.s / rc.totalLength) * (s.rcTrack.length - 1));
+        const tp = s.rcTrack[Math.max(0, Math.min(tIdx, s.rcTrack.length - 1))];
+        const ke = kineticEnergy(rc.mass, rc.v);
+        const pe = gravitationalPE(rc.mass, tp?.y ?? 0);
+
+        // Callout at valley (max speed)
+        const prevTIdx = Math.round((s.rc.s / s.rc.totalLength) * (s.rcTrack.length - 1));
+        const prevTp = s.rcTrack[Math.max(0, Math.min(prevTIdx, s.rcTrack.length - 1))];
+        if (tp && prevTp && tp.y < 0.5 && prevTp.y > 1 && rc.v > 2) {
+          get().addCallout({ text: "Max Speed at Valley!", subtext: `v = ${rc.v.toFixed(2)} m/s`, color: "#3b82f6", icon: "⚡" });
+          set({ shakeIntensity: Math.min(6, rc.v * 0.15) });
+        }
+
+        set({
+          rc, globalTime: rc.t,
+          trail: s.showTrail ? addTrailPoint(s.trail, rc.s / rc.totalLength, tp?.y ?? 0, ke, TRAIL_MAX) : s.trail,
+          liveEquation: {
+            formula: "PE + KE = E₀",
+            substituted: `${pe.toFixed(1)} + ${ke.toFixed(1)} = ${(pe + ke).toFixed(1)} J`,
+            result: `v = ${rc.v.toFixed(3)} m/s`,
+            value: ke,
+          },
+        });
+        histPoint = makeHistoryPoint(rc.t, rc.mass, rc.v, tp?.y ?? 0);
         break;
       }
     }
@@ -256,17 +523,31 @@ export const useKEStore = create<KEStore>((set, get) => ({
   },
 
   reset: () => {
-    const { mode } = get();
     set({
       isPlaying: false,
       history: [],
+      trail: [],
       globalTime: 0,
+      shakeIntensity: 0,
+      callouts: [],
+      shockwaves: [],
+      prevKE: 0,
+      prevVelocity: 0,
+      collisionReplayBuffer: [],
+      isReplayMode: false,
+      replayFrame: 0,
       fp: { ...defaultFP },
       ip: { ...defaultIP },
       proj: { ...defaultProj },
       coll: { ...defaultColl },
       rot: { ...defaultRot },
       rc: { ...defaultRC },
+      liveEquation: {
+        formula: "KE = ½mv²",
+        substituted: "KE = ½ × ? × ?²",
+        result: "KE = ? J",
+        value: 0,
+      },
     });
   },
 }));

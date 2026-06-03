@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { useKEStore, KEMode } from "@/store/kineticEnergyStore";
-import { momentOfInertia } from "@/lib/physics/kineticEnergy";
+import { momentOfInertia, CollisionPreset } from "@/lib/physics/kineticEnergy";
 
 // ─── Slider ───────────────────────────────────────────────────────────────────
 function Slider({
@@ -142,9 +142,38 @@ function ProjectileControls() {
 }
 
 function CollisionControls() {
-  const { coll, setColl } = useKEStore();
+  const { coll, setColl, applyCollisionPreset, startReplay, isReplayMode, collisionReplayBuffer } = useKEStore();
+  
+  const presets: { id: CollisionPreset; label: string }[] = [
+    { id: "elastic", label: "Elastic" },
+    { id: "inelastic", label: "Inelastic" },
+    { id: "headon", label: "Head-on" },
+    { id: "truckbike", label: "Truck v Bike" },
+    { id: "bulletwall", label: "Bullet v Wall" },
+  ];
+
   return (
     <>
+      <Section title="Presets & Replay">
+        <div className="grid grid-cols-2 gap-1.5">
+          {presets.map(p => (
+            <button
+              key={p.id}
+              onClick={() => applyCollisionPreset(p.id)}
+              className="py-1.5 px-2 rounded-lg text-[9px] font-mono text-center transition-all bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 hover:text-white"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={startReplay}
+          disabled={collisionReplayBuffer.length === 0 || isReplayMode}
+          className="w-full py-2 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-1"
+        >
+          {isReplayMode ? "Replaying..." : "⏪ Slow-Mo Replay"}
+        </button>
+      </Section>
       <Section title="Body 1 (Purple)">
         <Slider label="Mass m₁" value={coll.b1.mass} min={0.5} max={15} step={0.1} unit=" kg" color="#8b5cf6"
           onChange={v => setColl({ b1: { ...coll.b1, mass: v } })} />
@@ -308,30 +337,10 @@ const MODES: { id: KEMode; label: string; icon: string }[] = [
 
 // ─── Main Controls Component ──────────────────────────────────────────────────
 export const KineticEnergyControls: React.FC = () => {
-  const { mode, setMode, isPlaying, setPlaying, reset, playbackSpeed, setPlaybackSpeed } = useKEStore();
+  const { mode, isPlaying, setPlaying, reset, playbackSpeed, setPlaybackSpeed } = useKEStore();
 
   return (
     <div className="flex flex-col gap-5 h-full overflow-y-auto pr-1">
-      {/* Mode Selector */}
-      <div className="flex flex-col gap-1.5">
-        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-white/30">Simulation Mode</div>
-        <div className="grid grid-cols-2 gap-1">
-          {MODES.map(m => (
-            <button
-              key={m.id}
-              onClick={() => { setMode(m.id); reset(); }}
-              className={`flex items-center gap-2 py-2 px-3 rounded-lg text-[10px] font-mono text-left transition-all border ${
-                mode === m.id
-                  ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
-                  : "bg-white/3 border-white/5 text-white/40 hover:border-white/10 hover:text-white/60"
-              }`}
-            >
-              <span className="text-sm">{m.icon}</span>
-              <span className="font-bold leading-tight">{m.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Playback */}
       <div className="flex gap-2">
