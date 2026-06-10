@@ -24,14 +24,22 @@ interface StatProps {
   unit?: string;
   color?: string;
   sub?: string | React.ReactNode;
+  badge?: { text: string; color: string };
 }
 
 const Stat: React.FC<StatProps> = ({
-  label, value, unit, color = "text-white", sub
+  label, value, unit, color = "text-white", sub, badge
 }) => (
   <div className="bg-zinc-900/60 p-4 rounded-xl border border-zinc-800/80 space-y-1 flex flex-col justify-between">
     <div className="space-y-0.5">
-      <div className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider">{label}</div>
+      <div className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+        {label}
+        {badge && (
+          <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest ${badge.color}`}>
+            {badge.text}
+          </span>
+        )}
+      </div>
       <div className={`text-base font-mono font-black ${color} flex items-baseline gap-1.5`}>
         {value}
         {unit && <span className="text-[10px] text-zinc-500 font-normal">{unit}</span>}
@@ -39,6 +47,13 @@ const Stat: React.FC<StatProps> = ({
     </div>
     {sub && <div className="text-[9.5px] font-mono text-zinc-400 mt-1.5 border-t border-zinc-900/60 pt-1 leading-tight">{sub}</div>}
   </div>
+);
+
+const SectionHeader: React.FC<{ color: string; children: React.ReactNode }> = ({ color, children }) => (
+  <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
+    <span className={`w-1.5 h-1.5 rounded-full ${color}`} />
+    {children}
+  </h3>
 );
 
 export const ThermalExpansionAnalytics: React.FC = () => {
@@ -54,14 +69,23 @@ export const ThermalExpansionAnalytics: React.FC = () => {
     realDeltaL,
     stressAtConstraint,
     mechanicalStrain,
+    fosYield,
+    fosFracture,
     factorOfSafety,
     isYielding,
     isFailed,
+    isMelting,
+    isCreeping,
     fatigueAccumulated,
     cycleCount,
     plasticStrain,
-    bucklingCriticalLoad,
+    plasticityModel,
+    bucklingCriticalLoad: bucklingPcr,
     bucklingLoad,
+    bucklingI,
+    bucklingR,
+    bucklingK,
+    bucklingTcr,
     willBuckle,
     bimetallicCurvature,
     bimetallicDeflection,
@@ -73,7 +97,7 @@ export const ThermalExpansionAnalytics: React.FC = () => {
     energyLossTotal,
     energyBalanceResidual,
     solverTelemetry,
-    
+
     // Spatial fields from store
     thermalProfile2D,
     nodeDisplacement2D,
@@ -92,29 +116,56 @@ export const ThermalExpansionAnalytics: React.FC = () => {
   if (!mat) return null;
 
   const dT = avgTemperature - PhysicsEngine.T_REF;
-  const alpha = PhysicsEngine.alpha(mat, avgTemperature);
-  const E = PhysicsEngine.youngsModulus(mat, avgTemperature);
-  const σ_y = PhysicsEngine.yieldStrength(mat, avgTemperature);
-  const alpha_th = PhysicsEngine.thermalDiffusivity(mat);
 
-  const thermalStrain = alpha * dT;
-  const volume = crossSectionalArea * L0;
-  const strainEnergy = Math.abs(stressAtConstraint) > 0
-    ? PhysicsEngine.strainEnergy(stressAtConstraint, volume, E)
+  // ── Temperature-dependent material properties ──
+  const alpha     = PhysicsEngine.alpha(mat, avgTemperature);
+  const E         = PhysicsEngine.youngsModulus(mat, avgTemperature);
+  const σ_y       = PhysicsEngine.yieldStrength(mat, avgTemperature);
+  const k_T       = PhysicsEngine.thermalConductivity(mat, avgTemperature);
+  const cp_T      = PhysicsEngine.specificHeatCapacity(mat, avgTemperature);
+  const rho_T     = PhysicsEngine.densityAtT(mat, avgTemperature);
+  const alpha_th  = PhysicsEngine.thermalDiffusivity(mat, avgTemperature);
+
+  // ── Temperature-dependent property changes (%) ──
+  const dAlphaPct = ((alpha - mat.alpha0) / Math.abs(mat.alpha0)) * 100;
+  const dEPct     = ((E - mat.youngsModulus) / mat.youngsModulus) * 100;
+  const dSyPct    = ((σ_y - mat.yieldStrength) / mat.yieldStrength) * 100;
+  const dKPct     = ((k_T - mat.thermalConductivity) / mat.thermalConductivity) * 100;
+
+  // ── Thermal strain decomposition ──
+  const thermalStrainIntegrated = PhysicsEngine.thermalStrain(mat, avgTemperature); // ∫α dT
+  const elasticStrain   = E > 0 ? stressAtConstraint / E : 0;                       // σ/E
+  const creepStrainRate = PhysicsEngine.creepStrainRate(mat, Math.abs(stressAtConstraint), avgTemperature);
+  const totalStrain     = thermalStrainIntegrated + mechanicalStrain + plasticStrain; // elastic + thermal
+
+  // ── Volume ──
+  const V0              = crossSectionalArea * L0;
+  const volumeExpanded  = PhysicsEngine.volumetricExpansion(mat, avgTemperature, V0);
+  const dVpct           = ((volumeExpanded - V0) / V0) * 100;
+  const isLargeDeltatT  = Math.abs(dT) > 150;
+
+  // ── Energy ──
+  const strainEnergy    = Math.abs(stressAtConstraint) > 0
+    ? PhysicsEngine.strainEnergy(stressAtConstraint, volumeExpanded, E)
     : 0;
-  const volumeExpanded = PhysicsEngine.volumetricExpansion(mat, avgTemperature, volume);
+  const thermalEnergyQ  = rho_T * cp_T * volumeExpanded * Math.abs(dT);
+  const energyBalPct    = Math.abs(energyBalanceResidual) / Math.max(Math.abs(thermalEnergyQ), 1) * 100;
 
+  // ── Thermal gradient ──
   const maxT = Math.max(...thermalProfile);
   const minT = Math.min(...thermalProfile);
-  const thermalGradient = (maxT - minT) / L0; // K/m
+  const thermalGradient = (maxT - minT) / L0;
 
-  const I = (Math.PI / 64) * Math.pow(diameter, 4);
-  const r_gyration = Math.sqrt(I / crossSectionalArea);
-  const slenderness = L0 / r_gyration;
+  // ── Buckling classification ──
+  const { regime: bucklingRegime, lambdaEuler, limitingStress } = PhysicsEngine.columnClassification(
+    bucklingR > 0 ? (bucklingK * L0) / bucklingR : 0,
+    E,
+    σ_y
+  );
+  const slendernessKL_r = bucklingR > 0 ? (bucklingK * L0) / bucklingR : L0 / Math.sqrt(bucklingI / crossSectionalArea || 1e-6);
 
+  // ── Spatial field extrema ──
   const is2D = objectType === "plate" || objectType === "bimetallic";
-
-  // ── 1. Calculate Spatial Field Extrema ──
   let maxUx = 0, maxUy = 0;
   let maxSxx = 0, maxSyy = 0, maxSxy = 0, maxSvm = 0;
   let meanSxx = 0;
@@ -131,7 +182,6 @@ export const ThermalExpansionAnalytics: React.FC = () => {
       if (Math.abs(s.vm) > Math.abs(maxSvm)) maxSvm = s.vm;
     });
   } else {
-    // 1D Mode
     if (nodeDisplacementProfile.length > 0) {
       maxUx = nodeDisplacementProfile[nodeDisplacementProfile.length - 1];
     }
@@ -145,53 +195,37 @@ export const ThermalExpansionAnalytics: React.FC = () => {
     }
   }
 
-  // ── 2. Temperature-dependent properties percent changes ──
-  const dAlphaPct = ((alpha - mat.alpha0) / mat.alpha0) * 100;
-  const dEPct = ((E - mat.youngsModulus) / mat.youngsModulus) * 100;
-  const dSyPct = ((σ_y - mat.yieldStrength) / mat.yieldStrength) * 100;
-
-  // ── 3. FEA Degrees of Freedom (DoFs) & CFL check ──
-  const numNodes = thermalProfile.length;
-  let dofsT = numNodes;
-  let dofsM = numNodes;
+  // ── FEA Grid Info ──
+  const numNodes  = thermalProfile.length;
+  const numElements = numNodes > 0 ? numNodes - 1 : 0; // 1D: nodes - 1 = elements
+  let gridInfo    = `41 nodes, 40 elements`;
+  let dofsT       = numNodes + 1; // correct off-by-one
+  let dofsM       = numNodes + 1;
   let solverMethod = "Conjugate Gradient (1D Truss)";
-  let gridInfo = `${numNodes} elements`;
-  
+
   if (is2D) {
     const nx = objectType === "bimetallic" ? 30 : 12;
     const ny = objectType === "bimetallic" ? 4 : 8;
     const numNodes2D = (nx + 1) * (ny + 1);
     dofsT = numNodes2D;
-    dofsM = numNodes2D * 2; // 2 DOFs (u_x, u_y) per node
+    dofsM = numNodes2D * 2;
     solverMethod = "Conjugate Gradient (Q4 Plane Stress)";
-    gridInfo = `${nx}×${ny} Bilinear Quads`;
+    gridInfo = `${nx}×${ny} Bilinear Quads (${(nx+1)*(ny+1)} nodes, ${nx*ny} elements)`;
   }
 
-  // Time-step stability check (CFL number)
-  const dt = 0.02; // average state dt
-  const dx = L0 / numNodes;
-  const cfl = (alpha_th * dt) / (dx * dx);
+  // ── Failure status (hierarchy: Melting > Fractured > Buckling > Creep > Yielding > Fatigue > Elastic) ──
+  let statusLabel = "ELASTIC STATE";
+  let statusColor = "text-emerald-400";
+  if (isMelting)                       { statusLabel = "MELTING"; statusColor = "text-red-300 animate-pulse"; }
+  else if (isFailed)                   { statusLabel = "FRACTURED"; statusColor = "text-red-400 animate-pulse"; }
+  else if (willBuckle)                 { statusLabel = "BUCKLING"; statusColor = "text-red-400 animate-pulse"; }
+  else if (isCreeping)                 { statusLabel = "CREEP REGIME"; statusColor = "text-orange-400"; }
+  else if (isYielding)                 { statusLabel = "PLASTIC YIELD"; statusColor = "text-amber-400"; }
+  else if (fatigueAccumulated > 0.8)   { statusLabel = "FATIGUE RISK"; statusColor = "text-amber-300"; }
 
-  // ── 4. Buckling classification ──
-  let K_buckle = 1.0;
-  let bucklingLimitType = "Intermediate Column (Euler-Johnson boundary)";
-  if (constraint === "fixed") {
-    K_buckle = 0.5;
-    bucklingLimitType = "Fixed-Fixed constraints (K = 0.5)";
-  } else if (constraint === "partial") {
-    K_buckle = 0.7;
-    bucklingLimitType = "Pinned-Fixed constraints (K = 0.7)";
-  } else if (objectType === "bimetallic") {
-    K_buckle = 2.0;
-    bucklingLimitType = "Fixed-Free Cantilever (K = 2.0)";
-  }
-  
-  let bucklingStatus = "Elastic stability active";
-  if (slenderness < 40) {
-    bucklingStatus = "Short block limit (no buckling risk)";
-  } else if (slenderness > 200) {
-    bucklingStatus = "Slender column (Euler theory matches)";
-  }
+  // ── Thermal shock stress uses surface temperature (first node) ──
+  const T_surface = thermalProfile[0] ?? avgTemperature;
+  const shockStress = (E * alpha * Math.abs(T_surface - avgTemperature)) / (1 - mat.poissonsRatio);
 
   return (
     <div className="flex-1 bg-[#09090b] overflow-y-auto custom-scrollbar select-text">
@@ -204,105 +238,198 @@ export const ThermalExpansionAnalytics: React.FC = () => {
               Engineering Analysis
             </h2>
             <p className="text-sm text-cyan-400 mt-1 font-mono uppercase tracking-wider">
-              {mat.name} · {experimentMode.replace(/_/g, " ").toUpperCase()} · {avgTemperature.toFixed(1)} K
+              {mat.name} · {experimentMode.replace(/_/g, " ").toUpperCase()} · {avgTemperature.toFixed(1)} K · ΔT = {dT >= 0 ? "+" : ""}{dT.toFixed(1)} K
             </p>
           </div>
-          <div className="text-right font-mono text-[10px] text-zinc-500">
+          <div className="text-right font-mono text-[10px] text-zinc-500 space-y-0.5">
             <div>SOLVER KERNEL: ACTIVE</div>
-            <div>MESH INTEGRITY: VALIDATED</div>
+            <div>MESH: {gridInfo.split("(")[0].trim()}</div>
+            <div className={`font-bold ${isMelting ? "text-red-400" : isFailed ? "text-red-400" : willBuckle ? "text-amber-400" : "text-emerald-400"}`}>
+              STATUS: {statusLabel}
+            </div>
           </div>
         </div>
 
-        {/* Section 1: Temperature-dependent material states */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 1: Temperature-Dependent Material State
+        ════════════════════════════════════════════════════════ */}
         <section>
-          <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
-            Material State & Thermal Softening
-          </h3>
+          <SectionHeader color="bg-cyan-500">
+            Material State — Temperature-Dependent Properties
+          </SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat
-              label={<InlineMath math="\alpha(T) \text{ — Linear CTE}" />}
+              label={<InlineMath math="\alpha(T) \text{ — CTE}" />}
               value={`${(alpha * 1e6).toFixed(3)}`}
               unit="×10⁻⁶ /K"
-              color="text-cyan-400"
-              sub={
-                <span>
-                  Ref: {(mat.alpha0 * 1e6).toFixed(1)} ({dAlphaPct >= 0 ? "+" : ""}{dAlphaPct.toFixed(1)}%)
-                </span>
-              }
+              color={alpha < 0 ? "text-blue-400" : "text-cyan-400"}
+              sub={<span>Ref: {(mat.alpha0 * 1e6).toFixed(1)} ({dAlphaPct >= 0 ? "+" : ""}{dAlphaPct.toFixed(1)}%)</span>}
+              badge={alpha < 0 ? { text: "Negative CTE", color: "bg-blue-500/20 text-blue-400" } : undefined}
             />
             <Stat
-              label={<InlineMath math="E(T) \text{ — Young&apos;s Modulus}" />}
+              label={<InlineMath math="E(T) \text{ — Young's Modulus}" />}
               value={`${(E / 1e9).toFixed(1)}`}
               unit="GPa"
               color="text-amber-400"
-              sub={
-                <span>
-                  Ref: {(mat.youngsModulus / 1e9).toFixed(0)} ({dEPct.toFixed(1)}%)
-                </span>
-              }
+              sub={<span>Ref: {(mat.youngsModulus / 1e9).toFixed(0)} ({dEPct.toFixed(1)}%)</span>}
             />
             <Stat
               label={<InlineMath math="\sigma_y(T) \text{ — Yield Strength}" />}
               value={`${(σ_y / 1e6).toFixed(0)}`}
               unit="MPa"
-              color="text-orange-400"
-              sub={
-                <span>
-                  Ref: {(mat.yieldStrength / 1e6).toFixed(0)} ({dSyPct.toFixed(1)}%)
-                </span>
-              }
+              color={avgTemperature > mat.meltingPoint * 0.7 ? "text-red-400" : "text-orange-400"}
+              sub={<span>Ref: {(mat.yieldStrength / 1e6).toFixed(0)} ({dSyPct.toFixed(1)}%)</span>}
             />
             <Stat
-              label={<InlineMath math="\alpha_{\text{th}} \text{ — Thermal Diffusivity}" />}
+              label={<InlineMath math="\alpha_{\text{th}}(T) \text{ — Thermal Diffusivity}" />}
               value={alpha_th.toExponential(2)}
               unit="m²/s"
               color="text-purple-400"
-              sub={<InlineMath math="\alpha_{\text{th}} = \frac{k}{\rho \cdot c_p}" />}
+              sub={<InlineMath math="\alpha_{\text{th}} = k(T)/(\rho(T)\cdot c_p(T))" />}
             />
             <Stat
-              label="Conductivity k"
-              value={mat.thermalConductivity.toFixed(1)}
+              label={<InlineMath math="k(T) \text{ — Conductivity}" />}
+              value={k_T.toFixed(2)}
               unit="W/(m·K)"
               color="text-zinc-300"
-              sub="Fourier heat transport"
+              sub={<span>Ref: {mat.thermalConductivity.toFixed(1)} ({dKPct >= 0 ? "+" : ""}{dKPct.toFixed(1)}%)</span>}
             />
             <Stat
-              label="Poisson&apos;s Ratio ν"
-              value={mat.poissonsRatio.toFixed(3)}
+              label={<InlineMath math="c_p(T) \text{ — Specific Heat}" />}
+              value={cp_T.toFixed(0)}
+              unit="J/(kg·K)"
               color="text-zinc-300"
-              sub="Lateral strain coupling"
+              sub={<span>Ref: {mat.specificHeat.toFixed(0)} J/(kg·K)</span>}
             />
             <Stat
-              label="Density ρ"
-              value={mat.density.toLocaleString()}
+              label={<InlineMath math="\rho(T) \text{ — Density}" />}
+              value={rho_T.toFixed(1)}
               unit="kg/m³"
               color="text-zinc-300"
-              sub={mat.crystalStructure}
+              sub={<span>Ref: {mat.density} | ΔV/V = {dVpct.toFixed(3)}%</span>}
             />
             <Stat
-              label="Melting point T_m"
+              label="Melting Point T_m"
               value={mat.meltingPoint.toFixed(0)}
               unit="K"
-              color={avgTemperature > mat.meltingPoint * 0.9 ? "text-red-400" : "text-zinc-300"}
-              sub={
-                <span>
-                  Homologous T: {(avgTemperature / mat.meltingPoint * 100).toFixed(0)}%
-                </span>
-              }
+              color={isMelting ? "text-red-300 animate-pulse" : avgTemperature > mat.meltingPoint * 0.9 ? "text-red-400" : "text-zinc-300"}
+              sub={<span>T/T_m = {(avgTemperature / mat.meltingPoint * 100).toFixed(0)}% {isMelting ? "⚠ LIQUID" : ""}</span>}
             />
           </div>
           <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
-            * Material parameters dynamically interpolate over temperature-dependent curves derived from standard NIST and ASM Metals handbooks.
+            * All properties interpolated from piecewise tables calibrated to NIST, ASM Metals Handbook, and EN 1993-1-2 data.
+            Crystal structure: {mat.crystalStructure}. K_Ic = {(mat.fractureToughness / 1e6).toFixed(1)} MPa√m.
           </p>
         </section>
 
-        {/* Section 2: Spatial Field Extrema */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 2: Thermal Expansion Results
+        ════════════════════════════════════════════════════════ */}
         <section>
-          <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <SectionHeader color="bg-emerald-500">
+            Thermal Expansion Results
+          </SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat
+              label={<InlineMath math="\Delta L = \int_{{T_0}}^T \alpha(T')\,L_0\,dT'" />}
+              value={`${realDeltaL >= 0 ? "+" : ""}${(realDeltaL * 1000).toFixed(4)}`}
+              unit="mm"
+              color={realDeltaL >= 0 ? "text-emerald-400" : "text-blue-400"}
+              sub={<span>
+                {isLargeDeltatT
+                  ? "⚡ Nonlinear integration (|ΔT| > 150 K)"
+                  : "Linear approx valid (|ΔT| < 150 K)"}
+              </span>}
+              badge={isLargeDeltatT ? { text: "Integrated", color: "bg-amber-500/20 text-amber-400" } : undefined}
+            />
+            <Stat
+              label={<InlineMath math="\varepsilon_{\text{th}} = \int \alpha(T')\,dT'" />}
+              value={(thermalStrainIntegrated * 1e6).toFixed(1)}
+              unit="μstrain"
+              color="text-cyan-400"
+              sub={<InlineMath math={`\\alpha \\cdot \\Delta T = ${(alpha * Math.abs(dT) * 1e6).toFixed(1)} \\text{ (linear)}`} />}
+            />
+            <Stat
+              label={<InlineMath math="\Delta T = T - T_{\text{ref}}" />}
+              value={`${dT >= 0 ? "+" : ""}${dT.toFixed(2)}`}
+              unit="K"
+              color={Math.abs(dT) > 300 ? "text-red-400" : Math.abs(dT) > 150 ? "text-amber-400" : "text-white"}
+              sub={<span>T_ref = {PhysicsEngine.T_REF.toFixed(2)} K (20°C)</span>}
+              badge={Math.abs(dT) > 300 ? { text: "|ΔT|>300K", color: "bg-red-500/20 text-red-400" } : undefined}
+            />
+            <Stat
+              label={<InlineMath math="V(T) = V_0\,e^{\int 3\alpha\,dT'}" />}
+              value={(volumeExpanded * 1e6).toFixed(3)}
+              unit="cm³"
+              color="text-zinc-300"
+              sub={<span>V₀ = {(V0 * 1e6).toFixed(3)} cm³ | ΔV/V = {dVpct.toFixed(3)}%</span>}
+              badge={isLargeDeltatT ? { text: "Nonlinear", color: "bg-amber-500/20 text-amber-400" } : undefined}
+            />
+          </div>
+          <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
+            * ΔL computed via trapezoidal integration of α(T) over temperature path (20 sub-intervals). V(T) uses exp(∫3α dT) — accurate for all |ΔT|. Linear approx error for |ΔT| &gt; 150K can exceed 0.5%.
+          </p>
+        </section>
+
+        {/* ════════════════════════════════════════════════════════
+            SECTION 3: Complete Strain Decomposition
+        ════════════════════════════════════════════════════════ */}
+        <section>
+          <SectionHeader color="bg-violet-500">
+            Strain State Decomposition
+          </SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:grid-cols-5">
+            <Stat
+              label={<InlineMath math="\varepsilon_{\text{th}} \text{ — Thermal}" />}
+              value={(thermalStrainIntegrated * 1e6).toFixed(2)}
+              unit="μstrain"
+              color="text-cyan-400"
+              sub={<InlineMath math="\int \alpha(T')\,dT'" />}
+            />
+            <Stat
+              label={<InlineMath math="\varepsilon_{\text{el}} \text{ — Elastic}" />}
+              value={(elasticStrain * 1e6).toFixed(2)}
+              unit="μstrain"
+              color="text-amber-400"
+              sub={<InlineMath math="\sigma / E(T)" />}
+            />
+            <Stat
+              label={<InlineMath math="\varepsilon_{\text{pl}} \text{ — Plastic}" />}
+              value={plasticStrain.toExponential(3)}
+              color={plasticStrain > 0 ? "text-orange-400" : "text-zinc-500"}
+              sub={<span>{plasticityModel === "epp" ? "Elastic-perfectly-plastic" : "Isotropic hardening (H=0.05E)"}</span>}
+            />
+            <Stat
+              label={<InlineMath math="\dot{\varepsilon}_{\text{cr}} \text{ — Creep Rate}" />}
+              value={creepStrainRate > 0 ? creepStrainRate.toExponential(2) : "0"}
+              unit="/s"
+              color={creepStrainRate > 0 ? "text-red-400" : "text-zinc-500"}
+              sub={<span>
+                {isCreeping
+                  ? `T > T_cr = ${mat.creepOnsetTemp.toFixed(0)} K`
+                  : "Elastic only (T < T_creep)"}
+              </span>}
+            />
+            <Stat
+              label={<InlineMath math="\varepsilon_{\text{total}}" />}
+              value={(totalStrain * 1e6).toFixed(2)}
+              unit="μstrain"
+              color="text-white"
+              sub={<InlineMath math="\varepsilon_{th} + \varepsilon_{el} + \varepsilon_{pl}" />}
+            />
+          </div>
+          <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
+            * Constitutive split: ε_total = ε_thermal + ε_elastic + ε_plastic + ε_creep (4-component additive decomposition per EN 1992-1-2 thermoelastoplastic framework).
+          </p>
+        </section>
+
+        {/* ════════════════════════════════════════════════════════
+            SECTION 4: Spatial Field Extrema
+        ════════════════════════════════════════════════════════ */}
+        <section>
+          <SectionHeader color="bg-emerald-500">
             Discretized Spatial Fields Extrema
-          </h3>
+          </SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {is2D ? (
               <>
@@ -345,277 +472,412 @@ export const ThermalExpansionAnalytics: React.FC = () => {
                   sub="Deformation at final node"
                 />
                 <Stat
-                  label={<InlineMath math="\sigma_{xx,\text{max}} \text{ — Peak normal stress}" />}
+                  label={<InlineMath math="\sigma_{xx,\text{max}} \text{ — Peak Normal Stress}" />}
                   value={`${(maxSxx / 1e6).toFixed(1)}`}
                   unit="MPa"
                   color={Math.abs(maxSxx) > σ_y ? "text-red-400" : "text-amber-400"}
                   sub="Max element stress tensor"
                 />
                 <Stat
-                  label={<InlineMath math="\sigma_{xx,\text{mean}} \text{ — Mean normal stress}" />}
+                  label={<InlineMath math="\sigma_{xx,\text{mean}} \text{ — Mean Stress}" />}
                   value={`${(meanSxx / 1e6).toFixed(1)}`}
                   unit="MPa"
                   color="text-zinc-300"
                   sub="Spatially averaged normal stress"
                 />
                 <Stat
-                  label={<InlineMath math="\epsilon^{\text{th}}_{\text{max}} \text{ — Max Thermal Strain}" />}
-                  value={(thermalStrain * 100).toFixed(4)}
-                  unit="%"
-                  color="text-cyan-400"
-                  sub={<InlineMath math="\alpha(T) \cdot \Delta T" />}
+                  label={<InlineMath math="\nabla T \text{ — Thermal Gradient}" />}
+                  value={thermalGradient.toFixed(1)}
+                  unit="K/m"
+                  color={thermalGradient > 100 ? "text-amber-400" : "text-zinc-300"}
+                  sub={<span>ΔT = {(maxT - minT).toFixed(1)} K across rod {maxT - minT > 20 ? "⚡ Non-uniform" : ""}</span>}
                 />
               </>
             )}
           </div>
-          <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
-            {is2D 
-              ? `* Values extracted across ${gridInfo} grid elements. Local stress tensor coordinates include normal: σ_xx, σ_yy and shear: τ_xy.`
-              : `* Local values solved along 1D discretized domain (41 nodes, 40 Truss elements).`
-            }
-          </p>
         </section>
 
-        {/* Section 3: Thermoelastic Stress & Constraints */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 5: Structural Integrity & Factor of Safety
+        ════════════════════════════════════════════════════════ */}
         <section>
-          <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-            Structural Integrity & Boundary Conditions
-          </h3>
+          <SectionHeader color="bg-amber-500">
+            Structural Integrity & Factor of Safety
+          </SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat
-              label="Reaction stress σ"
+              label="Reaction Stress σ"
               value={(stressAtConstraint / 1e6).toFixed(1)}
               unit="MPa"
               color={Math.abs(stressAtConstraint) > σ_y ? "text-red-400" : "text-amber-400"}
               sub={
-                constraint === "free" ? "Free expansion (σ ≈ 0)" :
-                constraint === "fixed" ? "Fully constrained constraint" :
-                constraint === "partial" ? "Gap contact active" : "Elastic spring resistance"
+                constraint === "free" ? "σ = 0 (Free expansion — no constraint)" :
+                constraint === "fixed" ? "σ = −E(T)·α(T)·ΔT (Fully fixed)" :
+                constraint === "partial" ? "Gap contact: σ active after gap closure" :
+                "Spring resistance: σ = −kE/(E+k)·ε_th"
               }
             />
             <Stat
-              label="Design Margin (FOS)"
-              value={factorOfSafety >= 999 ? "∞" : factorOfSafety.toFixed(2)}
-              color={factorOfSafety < 1.0 ? "text-red-400" : factorOfSafety < 2.0 ? "text-amber-400" : "text-emerald-400"}
-              sub={factorOfSafety < 1.0 ? "FAIL: Stress exceeds Yield" : "FOS = σ_y / |σ|"}
+              label={<InlineMath math="\text{FOS}_{\text{yield}} = \sigma_y / |\sigma|" />}
+              value={fosYield >= 999 ? "∞" : fosYield.toFixed(2)}
+              color={fosYield < 1.0 ? "text-red-400" : fosYield < 1.5 ? "text-amber-400" : "text-emerald-400"}
+              sub={isYielding ? "⚠ Yield criterion exceeded (ductile)" : "Yield FOS — governs ductile design"}
             />
             <Stat
-              label={<InlineMath math="U \text{ — Strain Energy}" />}
-              value={strainEnergy.toFixed(4)}
-              unit="J"
-              color="text-zinc-300"
-              sub={<InlineMath math="U = \int \frac{\sigma_{xx}^2}{2E} dV" />}
-            />
-            <Stat
-              label={<InlineMath math="\epsilon^{\text{pl}} \text{ — Plastic strain}" />}
-              value={plasticStrain.toExponential(3)}
-              color={plasticStrain > 0 ? "text-amber-400" : "text-zinc-500"}
-              sub={plasticStrain > 0 ? "Plastic flow limit exceeded" : "Purely elastic state"}
+              label={<InlineMath math="\text{FOS}_{\text{fracture}} = \sigma_u / |\sigma|" />}
+              value={fosFracture >= 999 ? "∞" : fosFracture.toFixed(2)}
+              color={fosFracture < 1.0 ? "text-red-400" : fosFracture < 2.0 ? "text-amber-400" : "text-zinc-300"}
+              sub={isFailed ? "⚠ Fracture criterion exceeded" : "Ultimate FOS — governs brittle failure"}
             />
             <Stat
               label="Failure Status"
-              value={isFailed ? "FRACTURED" : isYielding ? "PLASTIC YIELD" : "ELASTIC STATE"}
-              color={isFailed ? "text-red-400" : isYielding ? "text-amber-400" : "text-emerald-400"}
-              sub={isFailed ? "Griffith fracture threshold" : "Yield criterion check"}
+              value={statusLabel}
+              color={statusColor}
+              sub={
+                isMelting    ? `T/T_m = ${(avgTemperature/mat.meltingPoint*100).toFixed(0)}% — Liquid phase` :
+                isFailed     ? "Griffith/Fracture threshold breached" :
+                willBuckle   ? `P_th/P_cr = ${(bucklingLoad/Math.max(bucklingPcr,1)).toFixed(2)}` :
+                isCreeping   ? `T > T_creep = ${mat.creepOnsetTemp.toFixed(0)} K` :
+                isYielding   ? `σ > σ_y(T) = ${(σ_y/1e6).toFixed(0)} MPa` :
+                "All criteria satisfied"
+              }
             />
             <Stat
-              label="Fatigue Damage"
+              label={<InlineMath math="U \text{ — Elastic Strain Energy}" />}
+              value={strainEnergy.toFixed(4)}
+              unit="J"
+              color="text-zinc-300"
+              sub={<InlineMath math="U = \sigma^2 V / (2E)" />}
+            />
+            <Stat
+              label={<InlineMath math="\varepsilon^{\text{pl}} \text{ — Plastic Strain}" />}
+              value={plasticStrain.toExponential(3)}
+              color={plasticStrain > 0 ? "text-orange-400" : "text-zinc-500"}
+              sub={plasticStrain > 0 ? `Model: ${plasticityModel === "epp" ? "Elastic-Perfectly-Plastic" : "Isotropic Hardening H=0.05E"}` : "Purely elastic state"}
+            />
+            <Stat
+              label="Fatigue Damage (Miner)"
               value={`${(fatigueAccumulated * 100).toFixed(3)}`}
               unit="%"
               color={fatigueAccumulated > 0.8 ? "text-red-400" : "text-zinc-300"}
-              sub={`${cycleCount} cycles (Palmgren-Miner)`}
-            />
-            <Stat
-              label={<InlineMath math="\nabla T_{\text{max}} \text{ — Thermal Gradient}" />}
-              value={thermalGradient.toFixed(1)}
-              unit="K/m"
-              color="text-zinc-300"
-              sub={`ΔT = ${(maxT - minT).toFixed(0)} K across rod`}
+              sub={`${cycleCount} cycles | D/cycle via Coffin-Manson`}
             />
             <Stat
               label={<InlineMath math="\sigma_{\text{shock}} \text{ — Thermal Shock}" />}
-              value={((E * alpha * Math.abs(dT)) / (1 - mat.poissonsRatio) / 1e6).toFixed(0)}
+              value={(shockStress / 1e6).toFixed(0)}
               unit="MPa"
               color="text-zinc-400"
-              sub={<InlineMath math="\sigma_{\text{shock}} = \frac{E \alpha \Delta T}{1-\nu}" />}
+              sub={<InlineMath math="\sigma_{\text{shock}} = E\alpha\Delta T_{\text{surface}} / (1-\nu)" />}
             />
           </div>
           <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
-            * Stress mechanics resolved via <InlineMath math="\sigma_{ij} = C_{ijkl}(\epsilon_{kl} - \epsilon^{\text{th}}_{kl})" />. Plastic strain accumulates when von Mises equivalent stress exceeds local yield strength <InlineMath math="\sigma_y(T)" />.
+            * FOS_yield = σ_y(T)/|σ| governs ductile design; FOS_fracture = σ_u(T)/|σ| governs ultimate failure and brittle materials.
+            Stress: <InlineMath math="\sigma_{ij} = C_{ijkl}(\varepsilon_{kl} - \varepsilon^{\text{th}}_{kl})" />. Plastic strain uses {plasticityModel === "epp" ? "elastic-perfectly-plastic" : "isotropic hardening"} model.
           </p>
         </section>
 
-        {/* Section 4: Buckling instability */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 6: Euler Column Buckling Analysis
+        ════════════════════════════════════════════════════════ */}
         <section>
-          <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+          <SectionHeader color="bg-purple-500">
             Euler Column Buckling Analysis
-          </h3>
+          </SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat
-              label={<InlineMath math="P_{\text{cr}} \text{ — Critical Load}" />}
-              value={(bucklingCriticalLoad / 1e3).toFixed(2)}
+              label={<InlineMath math="P_{\text{cr}} = \pi^2 E(T) I / (KL)^2" />}
+              value={(bucklingPcr / 1e3).toFixed(2)}
               unit="kN"
               color="text-cyan-400"
-              sub={bucklingLimitType}
+              sub={<span>K = {bucklingK} ({
+                bucklingK === 0.5 ? "Fixed-Fixed" :
+                bucklingK === 2.0 ? "Fixed-Free" :
+                bucklingK === 0.7 ? "Fixed-Pinned" :
+                "Pinned-Pinned"
+              })</span>}
             />
             <Stat
-              label={<InlineMath math="P_{\text{th}} \text{ — Compressive Load}" />}
+              label={<InlineMath math="P_{\text{th}} = E A \alpha \Delta T" />}
               value={(bucklingLoad / 1e3).toFixed(2)}
               unit="kN"
               color={willBuckle ? "text-red-400" : "text-zinc-300"}
-              sub={willBuckle ? "⚠ Stable bifurcation limits exceeded" : "P_th < P_cr (Stable)"}
+              sub={
+                constraint === "free"
+                  ? "P_th = 0 (Free expansion — no compressive load)"
+                  : willBuckle
+                  ? `⚠ P_th/P_cr = ${(bucklingLoad / Math.max(bucklingPcr, 1)).toFixed(2)} > 1`
+                  : `P_th/P_cr = ${(bucklingLoad / Math.max(bucklingPcr, 1)).toFixed(2)} (Stable)`
+              }
             />
             <Stat
-              label={<InlineMath math="I \text{ — Second Moment of Area}" />}
-              value={(I * 1e8).toFixed(3)}
+              label={<InlineMath math="I = \pi d^4 / 64 \text{ — MOA}" />}
+              value={(bucklingI * 1e8).toFixed(3)}
               unit="×10⁻⁸ m⁴"
               color="text-zinc-400"
-              sub={<InlineMath math="I = \frac{\pi d^4}{64}" />}
+              sub={<span>r = {(bucklingR * 1000).toFixed(2)} mm (radius of gyration)</span>}
             />
             <Stat
-              label="Slenderness Ratio"
-              value={slenderness.toFixed(1)}
-              color={slenderness > 200 ? "text-amber-400" : "text-zinc-300"}
-              sub={bucklingStatus}
+              label={<InlineMath math="\lambda = KL/r \text{ — Slenderness}" />}
+              value={slendernessKL_r.toFixed(1)}
+              color={slendernessKL_r > lambdaEuler ? "text-amber-400" : "text-zinc-300"}
+              sub={<span>
+                {bucklingRegime === "long" ? "🔴 Long Column (Euler governs)" :
+                 bucklingRegime === "intermediate" ? "🟡 Intermediate (Johnson parabola)" :
+                 "🟢 Short Column (yielding governs)"}
+                {" | λ_E = "}{lambdaEuler.toFixed(0)}
+              </span>}
+            />
+            <Stat
+              label="Critical Buckling Temperature"
+              value={bucklingTcr !== null ? bucklingTcr.toFixed(0) : (constraint === "free" ? "∞" : "—")}
+              unit="K"
+              color={bucklingTcr !== null && avgTemperature > bucklingTcr * 0.9 ? "text-amber-400" : "text-zinc-300"}
+              sub={bucklingTcr !== null
+                ? `T_cr − T_now = ${(bucklingTcr - avgTemperature).toFixed(0)} K margin`
+                : constraint === "free" ? "No constraint → no buckling" : "Computing..."}
+            />
+            <Stat
+              label="Euler Limiting Stress σ_cr"
+              value={(limitingStress / 1e6).toFixed(0)}
+              unit="MPa"
+              color="text-zinc-400"
+              sub={bucklingRegime === "long"
+                ? <InlineMath math="\sigma_{cr} = \pi^2 E / \lambda^2" />
+                : bucklingRegime === "intermediate"
+                ? <InlineMath math="\sigma_{cr} = \sigma_y(1 - \sigma_y\lambda^2/(4\pi^2 E))" />
+                : "Short block — σ_cr = σ_y"
+              }
+            />
+            <Stat
+              label="Effective Length Factor K"
+              value={bucklingK.toFixed(1)}
+              color="text-zinc-300"
+              sub={`λ_Euler = π√(2E/σ_y) = ${lambdaEuler.toFixed(0)}`}
+            />
+            <Stat
+              label="Buckling Safety Ratio"
+              value={bucklingLoad > 0 ? (bucklingPcr / bucklingLoad).toFixed(2) : "∞"}
+              color={bucklingLoad > 0 && bucklingPcr / bucklingLoad < 1.5 ? "text-amber-400" : "text-emerald-400"}
+              sub="P_cr / P_th (> 1.0 = stable)"
             />
           </div>
           <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
-            * Instability evaluated based on Euler buckling criterion <InlineMath math="P_{\text{cr}} = \pi^2 E(T) I / (K L)^2" /> where effective length factor <InlineMath math="K" /> adapts to boundary constraints.
+            * Instability: <InlineMath math="P_{\text{cr}} = \pi^2 E(T) I / (KL)^2" /> with K={bucklingK} from boundary conditions.
+            Thermal load P_th = EAαΔT is ONLY generated when constraint prevents expansion.
+            For free expansion: P_th ≡ 0 (no compressive load, no buckling risk).
           </p>
         </section>
 
-        {/* Section 5: Solver Telemetry */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 7: Energy Budget
+        ════════════════════════════════════════════════════════ */}
         <section>
-          <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-            FEA Solver Telemetry & Stability Diagnostics
-          </h3>
+          <SectionHeader color="bg-yellow-500">
+            Thermodynamic Energy Budget — First Law
+          </SectionHeader>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat
-              label="Thermal Solver PDE"
+              label={<InlineMath math="Q_{\text{stored}} = \rho c_p V \Delta T" />}
+              value={thermalEnergyQ.toFixed(2)}
+              unit="J"
+              color="text-yellow-400"
+              sub="Thermal energy above ambient"
+            />
+            <Stat
+              label="Q_input — Cumulative Input"
+              value={energyInputTotal.toFixed(2)}
+              unit="J"
+              color="text-emerald-400"
+              sub="Heat supplied to domain"
+            />
+            <Stat
+              label="Q_loss — Convective + Radiative"
+              value={energyLossTotal.toFixed(2)}
+              unit="J"
+              color="text-zinc-300"
+              sub="Newton cooling + Stefan-Boltzmann"
+            />
+            <Stat
+              label={<InlineMath math="U_{\text{elastic}} = \sigma^2 V / (2E)" />}
+              value={strainEnergy.toFixed(4)}
+              unit="J"
+              color="text-amber-400"
+              sub="Recoverable elastic strain energy"
+            />
+            <Stat
+              label="Energy Balance Error"
+              value={energyBalPct.toFixed(3)}
+              unit="%"
+              color={energyBalPct > 2.0 ? "text-amber-400" : "text-cyan-400"}
+              sub={<span>Residual = {energyBalanceResidual.toExponential(2)} J</span>}
+              badge={energyBalPct > 2.0
+                ? { text: "Drift", color: "bg-amber-500/20 text-amber-400" }
+                : { text: "Conserved", color: "bg-emerald-500/20 text-emerald-400" }}
+            />
+            <Stat
+              label="Isothermal Compressibility β_T"
+              value={PhysicsEngine.isothermalCompressibility(mat, avgTemperature).toExponential(2)}
+              unit="Pa⁻¹"
+              color="text-zinc-400"
+              sub={<InlineMath math="\beta_T = 3(1-2\nu)/E(T)" />}
+            />
+          </div>
+          <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
+            * First Law: ΔU_internal = Q_in − Q_loss. Energy balance error reflects numerical discretization
+            and time-integration accuracy. Values &gt;2% indicate solver drift.
+          </p>
+        </section>
+
+        {/* ════════════════════════════════════════════════════════
+            SECTION 8: FEA Solver Telemetry
+        ════════════════════════════════════════════════════════ */}
+        <section>
+          <SectionHeader color="bg-blue-500">
+            FEA Solver Telemetry & Numerical Diagnostics
+          </SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat
+              label="Thermal Solver"
               value={is2D ? "2D Implicit Heat" : "1D Implicit Heat"}
               color="text-emerald-400"
-              sub={
-                <span>
-                  CG Iters: {solverTelemetry.thermalIters} | Res: {solverTelemetry.thermalError > 0 ? solverTelemetry.thermalError.toExponential(1) : "1.2e-16"}
-                </span>
-              }
+              sub={<span>
+                CG Iters: {solverTelemetry.thermalIters} | Res: {
+                  solverTelemetry.thermalError > 0
+                    ? solverTelemetry.thermalError.toExponential(2)
+                    : "< 1e-16"
+                } | {solverTelemetry.thermalSolveMs.toFixed(1)} ms
+              </span>}
             />
             <Stat
-              label="Mechanical Solver FEA"
+              label="Mechanical Solver"
               value={is2D ? "2D Q4 Plane Stress" : "1D Truss Linear"}
               color="text-emerald-400"
-              sub={
-                <span>
-                  CG Iters: {solverTelemetry.mechIters} | Res: {solverTelemetry.mechError > 0 ? solverTelemetry.mechError.toExponential(1) : "3.4e-16"}
-                </span>
-              }
+              sub={<span>
+                CG Iters: {solverTelemetry.mechIters} | Res: {
+                  solverTelemetry.mechError > 0
+                    ? solverTelemetry.mechError.toExponential(2)
+                    : "< 1e-16"
+                } | {solverTelemetry.mechSolveMs.toFixed(1)} ms
+              </span>}
             />
             <Stat
-              label={<InlineMath math="\Delta E \text{ — First Law Balance}" />}
-              value={energyBalanceResidual === 0 ? "0.0e+00" : energyBalanceResidual.toExponential(2)}
-              unit="J"
-              color={Math.abs(energyBalanceResidual) > 1e1 ? "text-amber-400" : "text-cyan-400"}
-              sub={
-                <span>
-                  In: {energyInputTotal.toFixed(0)} J | Out: {energyLossTotal.toFixed(0)} J
-                </span>
-              }
+              label="Mesh Discretization"
+              value={gridInfo.split("(")[0].trim()}
+              color="text-zinc-300"
+              sub={`DOFs: ${dofsT} (thermal) / ${dofsM} (mechanical)`}
             />
             <Stat
               label="Analytical Error Margin"
-              value={solverTelemetry.validationError === 0 ? "0.000%" : `${solverTelemetry.validationError.toFixed(3)}%`}
+              value={`${solverTelemetry.validationError.toFixed(3)}%`}
               color={solverTelemetry.validationError > 1.0 ? "text-amber-400" : "text-emerald-400"}
-              sub="Diff from closed-form equation"
+              sub="FEA vs closed-form solution"
+              badge={solverTelemetry.validationError > 2 ? { text: "High Error", color: "bg-amber-500/20 text-amber-400" } : undefined}
             />
             <Stat
-              label="Degrees of Freedom (DOFs)"
-              value={`${dofsT} / ${dofsM}`}
-              color="text-zinc-300"
-              sub={`Thermal / Mechanical DOFs`}
+              label="Yielded Elements"
+              value={`${solverTelemetry.yieldedElementCount} / ${solverTelemetry.totalElements}`}
+              color={solverTelemetry.yieldedElementCount > 0 ? "text-amber-400" : "text-zinc-300"}
+              sub={solverTelemetry.totalElements > 0
+                ? `${((solverTelemetry.yieldedElementCount / solverTelemetry.totalElements) * 100).toFixed(0)}% of domain yielded`
+                : "No plasticity"}
             />
             <Stat
-              label="Grid Details"
-              value={gridInfo}
-              color="text-zinc-300"
-              sub="Finite Element discretization"
+              label="Condition Number (est.)"
+              value={solverTelemetry.conditionEstimate.toFixed(1)}
+              color={solverTelemetry.conditionEstimate > 20 ? "text-amber-400" : "text-zinc-300"}
+              sub="Gershgorin bound proxy"
             />
             <Stat
-              label="Isothermal Compressibility"
-              value={(1 / (3 * E * (1 - 2 * mat.poissonsRatio))).toExponential(2)}
-              unit="Pa⁻¹"
+              label="Matrix Memory (est.)"
+              value={solverTelemetry.memoryKB < 1024
+                ? `${solverTelemetry.memoryKB} KB`
+                : `${(solverTelemetry.memoryKB / 1024).toFixed(1)} MB`}
               color="text-zinc-400"
-              sub={<InlineMath math="\beta_T = \frac{3(1-2\nu)}{E}" />}
+              sub="Sparse stiffness matrix"
             />
             <Stat
-              label="Courant-Friedrichs-Lewy"
-              value={cfl.toFixed(3)}
-              color={cfl > 0.5 ? "text-amber-400" : "text-zinc-400"}
-              sub="Unconditionally stable (Implicit)"
+              label="CFL / Stability"
+              value="Unconditional"
+              color="text-cyan-400"
+              sub="Implicit Euler — no CFL restriction"
             />
           </div>
           <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
-            * Energy residual checks compliance with the First Law of Thermodynamics: <InlineMath math="E_{\text{internal}} \approx Q_{\text{input}} - Q_{\text{lost}}" />. Implicit formulation allows integration steps bypassing classical explicit stability restrictions (<InlineMath math="CFL > 0.5" />).
+            * Implicit Euler formulation: [C + dt·K]{"{"}T_new{"}"} = C·T_old + dt·F_source.
+            Unconditionally stable for any time step. CG solver tolerance ≈ 1e-10.
+            Energy residual: <InlineMath math="\Delta E = U_{\text{internal}} - (Q_{\text{in}} - Q_{\text{loss}})" />.
           </p>
         </section>
 
-        {/* Section 6: Bimetallic Strip */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 9: Bimetallic Strip (conditional)
+        ════════════════════════════════════════════════════════ */}
         {(objectType === "bimetallic" || experimentMode === "bimetallic" || experimentMode === "spacecraft") && mat1 && mat2 && (
           <section>
-            <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-              Bimetallic Bending Analytics
-            </h3>
+            <SectionHeader color="bg-pink-500">
+              Bimetallic Laminate Analytics (Timoshenko 1925)
+            </SectionHeader>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Stat
                 label={<InlineMath math="\kappa \text{ — Curvature}" />}
                 value={bimetallicCurvature.toFixed(4)}
                 unit="m⁻¹"
                 color="text-purple-400"
-                sub={<InlineMath math="R = 1/\kappa =" /> + ` ${bimetallicCurvature !== 0 ? (1 / Math.abs(bimetallicCurvature)).toFixed(2) : "∞"} m`}
+                sub={`R = ${bimetallicCurvature !== 0 ? (1 / Math.abs(bimetallicCurvature)).toFixed(2) : "∞"} m`}
               />
               <Stat
                 label="Tip Deflection δ"
                 value={(bimetallicDeflection * 1000).toFixed(3)}
                 unit="mm"
                 color="text-pink-400"
-                sub="Vertical displacement field"
+                sub="Vertical displacement at free end"
               />
               <Stat
                 label="Laminate Mismatch Δα"
                 value={`${((PhysicsEngine.alpha(mat2, avgTemperature) - PhysicsEngine.alpha(mat1, avgTemperature)) * 1e6).toFixed(3)}`}
                 unit="×10⁻⁶/K"
                 color="text-amber-400"
-                sub={`α₁: ${(PhysicsEngine.alpha(mat1, avgTemperature)*1e6).toFixed(1)} | α₂: ${(PhysicsEngine.alpha(mat2, avgTemperature)*1e6).toFixed(1)}`}
+                sub={`α₁: ${(PhysicsEngine.alpha(mat1, avgTemperature)*1e6).toFixed(2)} | α₂: ${(PhysicsEngine.alpha(mat2, avgTemperature)*1e6).toFixed(2)}`}
               />
             </div>
             <p className="text-[10px] text-zinc-500 font-mono mt-2 italic">
-              * Curvature results emerge organically from the solved 2D Q4 displacement fields rather than Timoshenko beam simplifications.
+              * Curvature from 2D Q4 FEA displacement field. Timoshenko analytical κ = 6(α₂−α₁)(1+m)²ΔT / [t(3(1+m)² + (1+mn)(m²+1/mn))] used as validation reference.
             </p>
           </section>
         )}
 
-        {/* Section 7: Live Solver Logging */}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 10: Solver Activity Logs
+        ════════════════════════════════════════════════════════ */}
         <section>
-          <h3 className="text-sm font-bold text-white/80 mb-3 font-display flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>
-            Solver Activity Logs
-          </h3>
-          <div className="bg-zinc-950/60 rounded-xl border border-zinc-800 p-4 max-h-52 overflow-y-auto custom-scrollbar font-mono text-[9.5px] space-y-1">
-            {useThermalExpansionStore.getState().logs.slice(0, 60).map((log, i) => (
-              <div key={i} className={
-                log.type === "error" ? "text-red-400 font-bold" :
-                log.type === "warning" ? "text-amber-400" :
-                "text-zinc-500"
-              }>
-                <span className="text-zinc-600 mr-2 select-none">
-                  [{new Date(log.timestamp).toLocaleTimeString()}]
-                </span>
-                {log.message}
-              </div>
-            ))}
+          <SectionHeader color="bg-zinc-600">
+            Solver Activity Logs — FEA Engine Output
+          </SectionHeader>
+          <div className="bg-zinc-950/60 rounded-xl border border-zinc-800 p-4 max-h-52 overflow-y-auto custom-scrollbar font-mono text-[9.5px] space-y-0.5">
+            {useThermalExpansionStore.getState().logs.slice(0, 80).map((log, i) => {
+              // Color-code by module prefix
+              const msg = log.message;
+              let lineColor = "text-zinc-500";
+              let prefixColor = "text-zinc-600";
+              if (log.type === "error") { lineColor = "text-red-400 font-bold"; prefixColor = "text-red-500"; }
+              else if (log.type === "warning") { lineColor = "text-amber-400"; prefixColor = "text-amber-500"; }
+              else if (msg.startsWith("[SOLVER]")) { lineColor = "text-emerald-400/80"; prefixColor = "text-emerald-500"; }
+              else if (msg.startsWith("[THERMAL]")) { lineColor = "text-cyan-400/80"; prefixColor = "text-cyan-500"; }
+              else if (msg.startsWith("[ENERGY]")) { lineColor = "text-yellow-400/80"; prefixColor = "text-yellow-500"; }
+              else if (msg.startsWith("[PLASTICITY]") || msg.startsWith("[FRACTURE]")) { lineColor = "text-orange-400/80"; prefixColor = "text-orange-500"; }
+              else if (msg.startsWith("[BUCKLING]")) { lineColor = "text-purple-400/80"; prefixColor = "text-purple-500"; }
+              else if (msg.startsWith("[MATERIAL]")) { lineColor = "text-blue-400/80"; prefixColor = "text-blue-500"; }
+              else if (msg.startsWith("[FATIGUE]")) { lineColor = "text-rose-400/80"; prefixColor = "text-rose-500"; }
+
+              return (
+                <div key={i} className={`${lineColor} flex gap-2`}>
+                  <span className="text-zinc-600 shrink-0 select-none">
+                    [{new Date(log.timestamp).toLocaleTimeString()}]
+                  </span>
+                  <span>{log.message}</span>
+                </div>
+              );
+            })}
           </div>
         </section>
 

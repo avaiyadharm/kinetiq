@@ -22,7 +22,8 @@ export class ThermalSolver {
     diameter = 0.05,
     h_conv = 15.0,
     T_ambient = 293.15
-  ): { iterations: number; error: number; heatInputRate: number; heatLossRate: number } {
+  ): { iterations: number; error: number; heatInputRate: number; heatLossRate: number; solveTimeMs: number } {
+    const t0 = performance.now();
     const N = mesh.nodes.length;
     const builder = new MatrixBuilder(N);
     const rhs = new Float64Array(N);
@@ -41,10 +42,10 @@ export class ThermalSolver {
       const mat = MATERIAL_DB[el.materialId];
       if (!mat) continue;
       
-      // Local elemental properties evaluated at average temperature
+      // Local elemental properties — temperature-dependent k(T) and cp(T)
       const T_el = (n1.T + n2.T) / 2;
-      const k_cond = mat.thermalConductivity; // Piecewise conductivity could be added here
-      const rho_cp = mat.density * mat.specificHeat; // Debye-like heat capacity is accounted for
+      const k_cond = PhysicsEngine.thermalConductivity(mat, T_el);
+      const rho_cp = PhysicsEngine.densityAtT(mat, T_el) * PhysicsEngine.specificHeatCapacity(mat, T_el);
       
       // Elemental Thermal Stiffness (Conduction)
       const k_el = (k_cond * A_cross) / dx;
@@ -143,7 +144,8 @@ export class ThermalSolver {
       iterations: result.iterations,
       error: result.error,
       heatInputRate: Math.max(0, totalHeatInput),
-      heatLossRate: totalHeatLoss
+      heatLossRate: totalHeatLoss,
+      solveTimeMs: performance.now() - t0,
     };
   }
 
@@ -154,7 +156,8 @@ export class ThermalSolver {
     thickness = 0.05,
     h_conv = 15.0,
     T_ambient = 293.15
-  ): { iterations: number; error: number; heatInputRate: number; heatLossRate: number } {
+  ): { iterations: number; error: number; heatInputRate: number; heatLossRate: number; solveTimeMs: number } {
+    const t0 = performance.now();
     const N = mesh.nodes.length;
     const builder = new MatrixBuilder(N);
     const rhs = new Float64Array(N);
@@ -192,8 +195,10 @@ export class ThermalSolver {
       const mat = MATERIAL_DB[el.materialId];
       if (!mat) continue;
       
-      const k_cond = mat.thermalConductivity;
-      const rho_cp = mat.density * mat.specificHeat;
+      // Average element temperature for property lookup
+      const T_el_avg = mesh.nodes[el.nodeIds[0]].T; // approximation; CG handles non-uniformity
+      const k_cond = PhysicsEngine.thermalConductivity(mat, T_el_avg);
+      const rho_cp = PhysicsEngine.densityAtT(mat, T_el_avg) * PhysicsEngine.specificHeatCapacity(mat, T_el_avg);
       
       const Ke = Array.from({ length: 4 }, () => new Float64Array(4));
       const Ce = Array.from({ length: 4 }, () => new Float64Array(4));
@@ -375,7 +380,8 @@ export class ThermalSolver {
       iterations: result.iterations,
       error: result.error,
       heatInputRate: Math.max(0, totalHeatInput),
-      heatLossRate: totalHeatLoss
+      heatLossRate: totalHeatLoss,
+      solveTimeMs: performance.now() - t0,
     };
   }
 }

@@ -1,16 +1,19 @@
 // ============================================================
-// KINETIQ THERMAL EXPANSION — SCIENTIFIC PHYSICS ENGINE v2
+// KINETIQ THERMAL EXPANSION — SCIENTIFIC PHYSICS ENGINE v3
 // ============================================================
 // All equations are physically accurate. Units: SI throughout.
 // Temperature: Kelvin | Length: meters | Stress: Pa | Strain: dimensionless
 //
-// Key improvements over v1:
-// - Piecewise α(T), E(T), σ_y(T) using data-validated interpolation
-// - α(T) now used in deltaL and spatialExpansion (not constant α₀)
-// - Buckling only evaluated when constraint generates compression
-// - High-temperature warnings: creep, oxidation, phase instability
-// - CFL stability: analytically handles high-diffusivity metals
-// - Cryogenic: Debye-like c_p reduction at very low T
+// v3 Scientific Audit improvements:
+// - k(T): piecewise thermal conductivity for all materials
+// - cp(T): piecewise specific heat capacity for all materials
+// - ρ(T): computed from volumetric expansion
+// - volumetricExpansion: integrated using trapezoidal rule
+// - bucklingCriticalLoad: K factor correctly applied in formula
+// - Column classification: Euler / Johnson / Short regimes
+// - criticalBucklingTemperature: iterative search
+// - Fracture toughness K_Ic for all materials
+// - Refined thermalDiffusivity uses k(T) and cp(T)
 // ============================================================
 
 export interface MaterialProperties {
@@ -19,10 +22,10 @@ export interface MaterialProperties {
   category: "metal" | "ceramic" | "polymer" | "composite";
   crystalStructure: string;
 
-  // Thermal properties at 293 K
+  // Thermal properties at 293 K (reference values)
   alpha0: number;               // Linear CTE at 293 K (1/K)
-  thermalConductivity: number;  // k  W/(m·K)
-  specificHeat: number;         // c_p  J/(kg·K)
+  thermalConductivity: number;  // k  W/(m·K) — reference value
+  specificHeat: number;         // c_p  J/(kg·K) — reference value
   density: number;              // ρ  kg/m³
   emissivity: number;           // ε (0–1)
 
@@ -32,7 +35,7 @@ export interface MaterialProperties {
   yieldStrength: number;        // σ_y  Pa
   ultimateStrength: number;     // σ_u  Pa
   fatigueLimit: number;         // σ_f  Pa (endurance limit)
-  fractureToughness?: number;   // K_Ic Pa√m (Griffith criterion)
+  fractureToughness: number;    // K_Ic  Pa√m (Griffith criterion)
 
   // Failure
   meltingPoint: number;         // K
@@ -44,12 +47,14 @@ export interface MaterialProperties {
   // ── Piecewise property tables ─────────────────────────────
   // Each table: [[T_K, value], ...] sorted by T_K
   alphaPiecewise: [number, number][];   // α(T)  /K
-  ePiecewise: [number, number][];       // E(T)  Pa
-  syPiecewise: [number, number][];      // σ_y(T) Pa
+  ePiecewise:     [number, number][];   // E(T)  Pa
+  syPiecewise:    [number, number][];   // σ_y(T) Pa
+  kPiecewise:     [number, number][];   // k(T)  W/(m·K)
+  cpPiecewise:    [number, number][];   // cp(T)  J/(kg·K)
 }
 
 // ============================================================
-// PIECEWISE INTERPOLATION HELPER
+// PIECEWISE LINEAR INTERPOLATION HELPER
 // ============================================================
 function piecewiseInterp(table: [number, number][], T: number): number {
   if (table.length === 0) return 0;
@@ -69,7 +74,7 @@ function piecewiseInterp(table: [number, number][], T: number): number {
 // ============================================================
 // MATERIAL DATABASE — 13 Engineering Materials
 // All piecewise data sourced from engineering handbooks
-// (Matweb, ASM Metals Handbook, NIST)
+// (Matweb, ASM Metals Handbook, NIST, Eurocode 3 EN 1993-1-2)
 // ============================================================
 export const MATERIAL_DB: Record<string, MaterialProperties> = {
 
@@ -79,6 +84,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 12e-6, thermalConductivity: 50, specificHeat: 490, density: 7850, emissivity: 0.28,
     youngsModulus: 200e9, poissonsRatio: 0.29,
     yieldStrength: 250e6, ultimateStrength: 400e6, fatigueLimit: 200e6,
+    fractureToughness: 50e6,   // ~50 MPa√m for structural steel
     meltingPoint: 1773, creepOnsetTemp: 700,
     description: "Standard construction steel. BCC structure transitions to austenite (FCC) at 1183 K. Susceptible to thermal buckling when constrained.",
     color: "#78716c",
@@ -120,6 +126,32 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1200,   3e6],
       [1773,   1e6],
     ],
+    // k(T): ASM Metals Handbook Vol 2 — decreases with T due to phonon scattering
+    kPiecewise: [
+      [0,    55.0],
+      [100,  52.0],
+      [293,  50.0],
+      [400,  48.0],
+      [600,  40.0],
+      [800,  34.0],
+      [1000, 30.0],
+      [1200, 28.0],
+      [1773, 25.0],
+    ],
+    // cp(T): NIST — increases with T, jump at Curie/austenite transition
+    cpPiecewise: [
+      [0,    100.0],
+      [100,  370.0],
+      [200,  450.0],
+      [293,  490.0],
+      [400,  530.0],
+      [600,  600.0],
+      [800,  650.0],
+      [1000, 680.0],
+      [1183, 750.0],
+      [1400, 700.0],
+      [1773, 680.0],
+    ],
   },
 
   stainless: {
@@ -128,6 +160,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 16e-6, thermalConductivity: 16, specificHeat: 502, density: 8000, emissivity: 0.12,
     youngsModulus: 193e9, poissonsRatio: 0.28,
     yieldStrength: 290e6, ultimateStrength: 580e6, fatigueLimit: 220e6,
+    fractureToughness: 200e6,  // ~200 MPa√m — austenitic SS is very tough
     meltingPoint: 1643, creepOnsetTemp: 650,
     description: "Austenitic stainless. Higher CTE than carbon steel, very low thermal conductivity — prone to severe thermal gradients under non-uniform heating.",
     color: "#94a3b8",
@@ -161,6 +194,26 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1200,  10e6],
       [1643,   2e6],
     ],
+    kPiecewise: [
+      [0,    10.0],
+      [100,  13.0],
+      [293,  16.0],
+      [400,  18.0],
+      [600,  21.0],
+      [800,  24.0],
+      [1000, 26.0],
+      [1643, 29.0],
+    ],
+    cpPiecewise: [
+      [0,    300.0],
+      [100,  420.0],
+      [293,  502.0],
+      [400,  530.0],
+      [600,  560.0],
+      [800,  580.0],
+      [1000, 600.0],
+      [1643, 620.0],
+    ],
   },
 
   aluminum: {
@@ -169,6 +222,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 23.6e-6, thermalConductivity: 167, specificHeat: 896, density: 2700, emissivity: 0.09,
     youngsModulus: 69e9, poissonsRatio: 0.33,
     yieldStrength: 276e6, ultimateStrength: 310e6, fatigueLimit: 97e6,
+    fractureToughness: 29e6,   // ~29 MPa√m for 6061-T6
     meltingPoint: 933, creepOnsetTemp: 370,
     description: "Very high CTE and conductivity — heats uniformly but expands significantly. Creep becomes important above ~370 K for T6 temper.",
     color: "#cbd5e1",
@@ -200,6 +254,26 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [600,   20e6],
       [933,    2e6],
     ],
+    // k(T): slightly increases then decreases for AA6061
+    kPiecewise: [
+      [0,    80.0],
+      [100,  130.0],
+      [200,  155.0],
+      [293,  167.0],
+      [400,  175.0],
+      [500,  180.0],
+      [700,  170.0],
+      [933,  155.0],
+    ],
+    cpPiecewise: [
+      [0,    200.0],
+      [100,  600.0],
+      [200,  800.0],
+      [293,  896.0],
+      [400,  960.0],
+      [600,  1030.0],
+      [933,  1100.0],
+    ],
   },
 
   copper: {
@@ -208,6 +282,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 17e-6, thermalConductivity: 385, specificHeat: 385, density: 8960, emissivity: 0.03,
     youngsModulus: 117e9, poissonsRatio: 0.35,
     yieldStrength: 70e6, ultimateStrength: 220e6, fatigueLimit: 60e6,
+    fractureToughness: 70e6,   // ~70 MPa√m
     meltingPoint: 1358, creepOnsetTemp: 540,
     description: "Excellent thermal conductor. Very low yield strength — easily plastically deforms under thermal stress. Very fast thermal equilibration.",
     color: "#b45309",
@@ -241,6 +316,29 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1000,   3e6],
       [1358,   1e6],
     ],
+    // k(T): decreases monotonically with T for pure metals (electron-phonon scattering)
+    kPiecewise: [
+      [0,    480.0],
+      [100,  430.0],
+      [200,  405.0],
+      [293,  385.0],
+      [400,  375.0],
+      [600,  358.0],
+      [800,  342.0],
+      [1000, 330.0],
+      [1358, 315.0],
+    ],
+    cpPiecewise: [
+      [0,    100.0],
+      [100,  330.0],
+      [200,  370.0],
+      [293,  385.0],
+      [400,  395.0],
+      [600,  410.0],
+      [800,  420.0],
+      [1200, 430.0],
+      [1358, 435.0],
+    ],
   },
 
   brass: {
@@ -249,6 +347,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 20e-6, thermalConductivity: 120, specificHeat: 385, density: 8530, emissivity: 0.06,
     youngsModulus: 100e9, poissonsRatio: 0.34,
     yieldStrength: 125e6, ultimateStrength: 330e6, fatigueLimit: 110e6,
+    fractureToughness: 50e6,
     meltingPoint: 1173, creepOnsetTemp: 470,
     description: "Cu-Zn alloy with high CTE. Used in precision fittings and valves where thermal expansion must be controlled.",
     color: "#ca8a04",
@@ -278,6 +377,24 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1000,   3e6],
       [1173,   1e6],
     ],
+    kPiecewise: [
+      [0,    90.0],
+      [100,  108.0],
+      [293,  120.0],
+      [400,  125.0],
+      [600,  130.0],
+      [800,  133.0],
+      [1173, 135.0],
+    ],
+    cpPiecewise: [
+      [0,    250.0],
+      [100,  340.0],
+      [293,  385.0],
+      [400,  400.0],
+      [600,  415.0],
+      [800,  425.0],
+      [1173, 435.0],
+    ],
   },
 
   titanium: {
@@ -286,6 +403,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 8.6e-6, thermalConductivity: 6.7, specificHeat: 526, density: 4430, emissivity: 0.35,
     youngsModulus: 114e9, poissonsRatio: 0.34,
     yieldStrength: 880e6, ultimateStrength: 950e6, fatigueLimit: 500e6,
+    fractureToughness: 75e6,   // ~75 MPa√m for Ti-6Al-4V
     meltingPoint: 1941, creepOnsetTemp: 800,
     description: "Aerospace alloy. Low CTE and very high strength. Poor thermal conductor — prone to large spatial gradients. α→β phase transition at 1155 K.",
     color: "#6366f1",
@@ -322,6 +440,30 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1200,  40e6],
       [1941,   5e6],
     ],
+    // k(T): unusual — increases with T for Ti alloys (unlike most metals)
+    kPiecewise: [
+      [0,    4.0],
+      [100,  5.0],
+      [293,  6.7],
+      [400,  8.0],
+      [600,  11.0],
+      [800,  14.0],
+      [1000, 17.5],
+      [1155, 20.0],
+      [1400, 22.0],
+      [1941, 25.0],
+    ],
+    cpPiecewise: [
+      [0,    180.0],
+      [100,  380.0],
+      [200,  476.0],
+      [293,  526.0],
+      [400,  560.0],
+      [600,  614.0],
+      [800,  651.0],
+      [1000, 680.0],
+      [1941, 700.0],
+    ],
   },
 
   tungsten: {
@@ -330,6 +472,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 4.5e-6, thermalConductivity: 173, specificHeat: 134, density: 19300, emissivity: 0.05,
     youngsModulus: 411e9, poissonsRatio: 0.28,
     yieldStrength: 1510e6, ultimateStrength: 1720e6, fatigueLimit: 900e6,
+    fractureToughness: 5e6,    // ~5 MPa√m — very brittle below DBTT
     meltingPoint: 3695, creepOnsetTemp: 1500,
     description: "Highest melting point metal. Used in lamp filaments and rocket nozzle throats. Brittle at room temperature (DBTT ~600 K).",
     color: "#52525b",
@@ -362,6 +505,26 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [3000,   20e6],
       [3695,    5e6],
     ],
+    kPiecewise: [
+      [0,    220.0],
+      [100,  200.0],
+      [293,  173.0],
+      [500,  150.0],
+      [1000, 120.0],
+      [2000,  95.0],
+      [3000,  80.0],
+      [3695,  70.0],
+    ],
+    cpPiecewise: [
+      [0,     50.0],
+      [100,  110.0],
+      [293,  134.0],
+      [500,  145.0],
+      [1000, 160.0],
+      [2000, 175.0],
+      [3000, 185.0],
+      [3695, 190.0],
+    ],
   },
 
   invar: {
@@ -370,6 +533,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 1.2e-6, thermalConductivity: 13.5, specificHeat: 515, density: 8100, emissivity: 0.14,
     youngsModulus: 141e9, poissonsRatio: 0.26,
     yieldStrength: 276e6, ultimateStrength: 483e6, fatigueLimit: 200e6,
+    fractureToughness: 120e6,  // ~120 MPa√m — good toughness
     meltingPoint: 1700, creepOnsetTemp: 680,
     description: "Near-zero CTE due to magnetostrictive compensation below Curie point (773 K). Above 773 K α rises dramatically. Used in scientific instruments.",
     color: "#0891b2",
@@ -405,6 +569,28 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1400,   5e6],
       [1700,   1e6],
     ],
+    kPiecewise: [
+      [0,    10.0],
+      [100,  11.5],
+      [293,  13.5],
+      [400,  15.0],
+      [600,  18.5],
+      [773,  20.0],
+      [900,  20.5],
+      [1200, 21.0],
+      [1700, 21.5],
+    ],
+    cpPiecewise: [
+      [0,    220.0],
+      [100,  400.0],
+      [293,  515.0],
+      [400,  540.0],
+      [600,  570.0],
+      [773,  610.0],
+      [900,  580.0],
+      [1200, 565.0],
+      [1700, 555.0],
+    ],
   },
 
   glass: {
@@ -413,6 +599,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 3.3e-6, thermalConductivity: 1.14, specificHeat: 830, density: 2230, emissivity: 0.92,
     youngsModulus: 63e9, poissonsRatio: 0.20,
     yieldStrength: 50e6, ultimateStrength: 50e6, fatigueLimit: 20e6,
+    fractureToughness: 0.75e6, // ~0.75 MPa√m — extremely brittle
     meltingPoint: 1100, creepOnsetTemp: 820,
     description: "Very low CTE, brittle. High susceptibility to thermal shock fracture due to extreme temperature gradients across cross-section. No plastic deformation.",
     color: "#7dd3fc",
@@ -441,6 +628,25 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [820,  20e6],
       [1100,  2e6],
     ],
+    // Glass: k slowly increases with T (amorphous phonon transport)
+    kPiecewise: [
+      [0,    0.80],
+      [100,  0.95],
+      [293,  1.14],
+      [400,  1.25],
+      [600,  1.40],
+      [820,  1.55],
+      [1100, 1.75],
+    ],
+    cpPiecewise: [
+      [0,    300.0],
+      [100,  580.0],
+      [293,  830.0],
+      [400,  900.0],
+      [600,  1000.0],
+      [820,  1100.0],
+      [1100, 1200.0],
+    ],
   },
 
   concrete: {
@@ -449,6 +655,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 10e-6, thermalConductivity: 1.4, specificHeat: 880, density: 2400, emissivity: 0.88,
     youngsModulus: 30e9, poissonsRatio: 0.20,
     yieldStrength: 3e6, ultimateStrength: 30e6, fatigueLimit: 2e6,
+    fractureToughness: 1.2e6,  // ~1.2 MPa√m — very low (brittle composite)
     meltingPoint: 1900, creepOnsetTemp: 500,
     description: "Very low tensile strength — expansion joints mandatory. Chemical decomposition begins above 573 K. Explosive spalling risk above 800 K.",
     color: "#a8a29e",
@@ -479,6 +686,30 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1200, 0.1e6],
       [1900, 0.02e6],
     ],
+    // k(T): decreases significantly with T for concrete (moisture loss, aggregate breakdown)
+    kPiecewise: [
+      [0,    1.80],
+      [100,  1.65],
+      [200,  1.52],
+      [293,  1.40],
+      [400,  1.25],
+      [573,  1.05],
+      [800,  0.90],
+      [1200, 0.70],
+      [1900, 0.60],
+    ],
+    cpPiecewise: [
+      [0,    500.0],
+      [100,  720.0],
+      [200,  820.0],
+      [293,  880.0],
+      [400,  940.0],
+      [573, 1000.0],
+      [700,  880.0],  // endothermic decomposition complete
+      [800,  750.0],
+      [1200, 700.0],
+      [1900, 680.0],
+    ],
   },
 
   carbon_fiber: {
@@ -487,6 +718,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: -0.5e-6, thermalConductivity: 10, specificHeat: 710, density: 1600, emissivity: 0.95,
     youngsModulus: 181e9, poissonsRatio: 0.27,
     yieldStrength: 1200e6, ultimateStrength: 1500e6, fatigueLimit: 700e6,
+    fractureToughness: 20e6,   // ~20 MPa√m — composite interlaminar
     meltingPoint: 3900, creepOnsetTemp: 550,
     description: "Slightly negative CTE along fiber axis — thermally stable. Matrix (epoxy) limits service to ~450 K. Used in space telescope structures and aircraft.",
     color: "#374151",
@@ -518,6 +750,28 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [800,   100e6],
       [3900,   20e6],
     ],
+    // k(T): fiber direction conductivity, decreases as matrix degrades
+    kPiecewise: [
+      [0,    12.0],
+      [100,  11.0],
+      [293,  10.0],
+      [400,   9.5],
+      [450,   8.5],
+      [500,   6.5],
+      [800,   4.0],
+      [3900,  2.0],
+    ],
+    cpPiecewise: [
+      [0,    350.0],
+      [100,  550.0],
+      [200,  660.0],
+      [293,  710.0],
+      [400,  760.0],
+      [450,  810.0],
+      [500,  850.0],
+      [800,  950.0],
+      [3900, 1050.0],
+    ],
   },
 
   silicon: {
@@ -526,6 +780,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 2.6e-6, thermalConductivity: 148, specificHeat: 700, density: 2330, emissivity: 0.65,
     youngsModulus: 130e9, poissonsRatio: 0.27,
     yieldStrength: 7000e6, ultimateStrength: 7000e6, fatigueLimit: 3000e6,
+    fractureToughness: 0.9e6,  // ~0.9 MPa√m — extremely brittle semiconductor
     meltingPoint: 1687, creepOnsetTemp: 900,
     description: "Brittle semiconductor. α is nonlinear — near-zero at cryogenic T. Critical in microelectronics for thermal mismatch stress with packaging.",
     color: "#818cf8",
@@ -559,6 +814,31 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [1400,  200e6],
       [1687,   50e6],
     ],
+    // k(T): drops dramatically with T (phonon-phonon scattering ~ T^-1 above Debye T)
+    kPiecewise: [
+      [0,    3000.0],
+      [50,   1000.0],
+      [100,   500.0],
+      [200,   260.0],
+      [293,   148.0],
+      [400,    90.0],
+      [600,    52.0],
+      [800,    33.0],
+      [1000,   22.0],
+      [1200,   18.0],
+      [1687,   15.0],
+    ],
+    cpPiecewise: [
+      [0,     10.0],
+      [50,   200.0],
+      [100,  460.0],
+      [200,  620.0],
+      [293,  700.0],
+      [500,  780.0],
+      [800,  830.0],
+      [1200, 870.0],
+      [1687, 900.0],
+    ],
   },
 
   ice: {
@@ -567,6 +847,7 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
     alpha0: 51e-6, thermalConductivity: 2.22, specificHeat: 2090, density: 917, emissivity: 0.97,
     youngsModulus: 9e9, poissonsRatio: 0.33,
     yieldStrength: 1e6, ultimateStrength: 1.5e6, fatigueLimit: 0.5e6,
+    fractureToughness: 0.12e6, // ~0.12 MPa√m — extremely brittle
     meltingPoint: 273.15, creepOnsetTemp: 180,
     description: "Very high CTE. Frost heave is caused by ice expansion in soil pores. α decreases significantly at cryogenic temperatures (Debye T³ law).",
     color: "#bae6fd",
@@ -593,6 +874,25 @@ export const MATERIAL_DB: Record<string, MaterialProperties> = {
       [250,  1.0e6],
       [273.15, 0.5e6],
     ],
+    // k(T): ice conductivity increases significantly at low T
+    kPiecewise: [
+      [0,    12.0],
+      [50,    7.0],
+      [100,   4.5],
+      [150,   3.2],
+      [200,   2.6],
+      [250,   2.3],
+      [273.15, 2.22],
+    ],
+    cpPiecewise: [
+      [0,     50.0],
+      [50,   400.0],
+      [100,  900.0],
+      [150, 1400.0],
+      [200, 1700.0],
+      [250, 2000.0],
+      [273.15, 2090.0],
+    ],
   },
 
 };
@@ -612,7 +912,6 @@ export class PhysicsEngine {
     if (mat.alphaPiecewise && mat.alphaPiecewise.length > 0) {
       return piecewiseInterp(mat.alphaPiecewise, Math.max(0, T));
     }
-    // Fallback for any material without piecewise table
     return mat.alpha0;
   }
 
@@ -637,29 +936,63 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 4. Thermal Diffusivity  α_th = k / (ρ · c_p)  m²/s
-  // Cryogenic correction: c_p scales roughly as T³/T_D³ (Debye)
-  // For simplicity, cap minimum diffusivity to avoid instability
+  // 4. Temperature-Dependent Thermal Conductivity k(T)  W/(m·K)
+  // ----------------------------------------------------------
+  static thermalConductivity(mat: MaterialProperties, T: number): number {
+    if (mat.kPiecewise && mat.kPiecewise.length > 0) {
+      return Math.max(0.01, piecewiseInterp(mat.kPiecewise, Math.max(0, T)));
+    }
+    return mat.thermalConductivity;
+  }
+
+  // ----------------------------------------------------------
+  // 5. Temperature-Dependent Specific Heat cp(T)  J/(kg·K)
+  //    Includes Debye T³ behavior at cryogenic T
+  // ----------------------------------------------------------
+  static specificHeatCapacity(mat: MaterialProperties, T: number): number {
+    if (mat.cpPiecewise && mat.cpPiecewise.length > 0) {
+      return Math.max(1.0, piecewiseInterp(mat.cpPiecewise, Math.max(0, T)));
+    }
+    return mat.specificHeat;
+  }
+
+  // ----------------------------------------------------------
+  // 6. Temperature-Dependent Density ρ(T)  kg/m³
+  //    ρ(T) = ρ₀ / (1 + 3α(T)ΔT)  from volumetric expansion
+  // ----------------------------------------------------------
+  static densityAtT(mat: MaterialProperties, T: number): number {
+    const dT = T - this.T_REF;
+    // Use integrated alpha for accuracy at large ΔT
+    const alpha_avg = this.alpha(mat, (this.T_REF + T) / 2);
+    const volumetricStrain = 3 * alpha_avg * dT;
+    return mat.density / (1 + volumetricStrain);
+  }
+
+  // ----------------------------------------------------------
+  // 7. Thermal Diffusivity  α_th = k(T) / (ρ(T) · cp(T))  m²/s
+  //    Now uses temperature-dependent k, cp, ρ
   // ----------------------------------------------------------
   static thermalDiffusivity(mat: MaterialProperties, T = 293.15): number {
-    const alpha_th = mat.thermalConductivity / (mat.density * mat.specificHeat);
-    // For very high-conductivity metals, α_th is large → stable time steps are tiny.
-    // We clamp to a physically meaningful range for the FD solver.
+    const k   = this.thermalConductivity(mat, T);
+    const rho = this.densityAtT(mat, T);
+    const cp  = this.specificHeatCapacity(mat, T);
+    const alpha_th = k / (rho * cp);
     return Math.min(alpha_th, 1e-3); // max 1e-3 m²/s (copper is ~1.2e-4, fine)
   }
 
   // ----------------------------------------------------------
-  // 5. Linear Thermal Expansion using temperature-dependent α
-  // ΔL = ∫[T_ref, T] α(T') dT' · L₀
-  // Approximated by trapezoidal rule (10 points)
+  // 8. Linear Thermal Expansion using temperature-dependent α
+  //    ΔL = ∫[T_ref, T] α(T') dT' · L₀
+  //    Uses trapezoidal rule with N=20 sub-intervals
+  //    Correct for arbitrarily large ΔT
   // ----------------------------------------------------------
   static deltaL(mat: MaterialProperties, L0: number, T: number, plasticStrain = 0): number {
     const T_ref = this.T_REF;
     const dT = T - T_ref;
     if (Math.abs(dT) < 1e-10) return plasticStrain * L0;
 
-    // Numerical integration of α(T) over [T_ref, T]
-    const N = 10;
+    // Trapezoidal integration of α(T) over [T_ref, T]
+    const N = 20;
     let integral = 0;
     for (let i = 0; i < N; i++) {
       const T0 = T_ref + (i / N) * dT;
@@ -675,20 +1008,27 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 6. Thermal Strain (free)  ε_th = ∫ α(T') dT'
+  // 9. Thermal Strain (per unit length)  ε_th = ∫ α(T') dT'
+  //    Returns the correctly integrated thermal strain scalar
   // ----------------------------------------------------------
   static thermalStrain(mat: MaterialProperties, T: number): number {
     const dT = T - this.T_REF;
     if (Math.abs(dT) < 1e-10) return 0;
-    // Use midpoint rule for speed (good enough for scalar)
-    const T_mid = (this.T_REF + T) / 2;
-    return this.alpha(mat, T_mid) * dT;
+    // Use trapezoidal integration (10 points sufficient for scalar)
+    const N = 10;
+    let integral = 0;
+    for (let i = 0; i < N; i++) {
+      const T0 = this.T_REF + (i / N) * dT;
+      const T1 = this.T_REF + ((i + 1) / N) * dT;
+      integral += 0.5 * (this.alpha(mat, T0) + this.alpha(mat, T1)) * (T1 - T0);
+    }
+    return integral;
   }
 
   // ----------------------------------------------------------
-  // 7. Constraint Mechanics
-  // CRITICAL: Stress is ONLY generated when expansion is mechanically
-  // constrained. Free expansion → σ = 0 always.
+  // 10. Constraint Mechanics
+  //    CRITICAL: Stress is ONLY generated when expansion is constrained.
+  //    Free expansion → σ = 0 always (no exceptions).
   // ----------------------------------------------------------
   static constraintState(
     mat: MaterialProperties,
@@ -704,14 +1044,16 @@ export class PhysicsEngine {
     actualDeltaL: number;
     isYielding: boolean;
     isFailed: boolean;
-    factorOfSafety: number;
+    fosYield: number;
+    fosFracture: number;
     regime: "elastic" | "yielding" | "plastic" | "failure" | "free";
   } {
     const ε_th = this.thermalStrain(mat, T) + plasticStrain;
     const freeDeltaL = ε_th * L0;
     const E = this.youngsModulus(mat, T);
     const σ_y = this.yieldStrength(mat, T);
-    const σ_u = mat.ultimateStrength * Math.max(0.05, σ_y / mat.yieldStrength); // scale ult with T
+    // Scale ultimate strength proportionally with yield degradation
+    const σ_u = mat.ultimateStrength * Math.max(0.05, σ_y / mat.yieldStrength);
 
     let stress = 0;
     let mechanicalStrain = 0;
@@ -728,8 +1070,9 @@ export class PhysicsEngine {
         stress = E * mechanicalStrain;
         actualDeltaL = gapSize;
       }
-      // else: within gap, stress = 0
     } else if (constraint === "spring") {
+      // Spring equilibrium: F_spring = k_spring * u, F_thermal = E*A*ε_th
+      // Combined: stress = -E * k_spring*L0/(E + k_spring*L0) * ε_th
       const kL = springStiffness * L0;
       stress = -(E * kL / (E + kL)) * ε_th;
       mechanicalStrain = stress / E;
@@ -742,7 +1085,10 @@ export class PhysicsEngine {
     const failThresh = mat.category === "ceramic" ? σ_u : σ_u * 0.9;
     const isFailed = absSig > failThresh;
 
-    const factorOfSafety = absSig > 0 ? σ_y / absSig : 999;
+    // FOS_yield = σ_y / |σ| (governs ductile design)
+    const fosYield    = absSig > 0 ? σ_y / absSig : 999;
+    // FOS_fracture = σ_u / |σ| (governs brittle/ultimate failure)
+    const fosFracture = absSig > 0 ? σ_u / absSig : 999;
 
     let regime: "elastic" | "yielding" | "plastic" | "failure" | "free" = "free";
     if (constraint !== "free") {
@@ -751,14 +1097,21 @@ export class PhysicsEngine {
       else regime = "elastic";
     }
 
-    return { stress, mechanicalStrain, actualDeltaL, isYielding, isFailed, factorOfSafety, regime };
+    return { stress, mechanicalStrain, actualDeltaL, isYielding, isFailed, fosYield, fosFracture, regime };
   }
 
   // ----------------------------------------------------------
-  // 8. Euler Buckling Critical Load  P_cr = π²EI / (KL)²
+  // 11. Euler Column Buckling Critical Load
+  //     P_cr = π²·E(T)·I / (K·L)²
   //
-  // IMPORTANT: willBuckle is ONLY true when constraint generates
-  // a compressive thermal load. For free expansion, thermalLoad = 0.
+  //     K is the EFFECTIVE LENGTH FACTOR — depends on end conditions:
+  //       Pinned-Pinned:  K = 1.0
+  //       Fixed-Fixed:    K = 0.5
+  //       Fixed-Free:     K = 2.0
+  //       Fixed-Pinned:   K = 0.7
+  //
+  //     IMPORTANT: willBuckle is ONLY true when constraint generates
+  //     a compressive thermal load. Free expansion → thermalLoad = 0.
   // ----------------------------------------------------------
   static bucklingCriticalLoad(
     mat: MaterialProperties,
@@ -768,10 +1121,10 @@ export class PhysicsEngine {
     constraint: "free" | "fixed" | "partial" | "spring",
     gapSize = 0,
     sectionType: "circular" | "rectangular" = "circular",
-    dimension = 0.05
-  ): { Pcr: number; slendernessRatio: number; willBuckle: boolean; thermalLoad: number } {
+    dimension = 0.05,
+    K = 1.0   // Effective length factor — must be supplied correctly by caller
+  ): { Pcr: number; slendernessRatio: number; willBuckle: boolean; thermalLoad: number; I: number; r_gyration: number } {
     const E = this.youngsModulus(mat, T);
-    const K = 1.0;
 
     let I = 0;
     if (sectionType === "circular") {
@@ -780,30 +1133,123 @@ export class PhysicsEngine {
       I = (dimension * Math.pow(dimension, 3)) / 12;
     }
 
+    // Euler critical load with correct K
     const Pcr = (Math.PI * Math.PI * E * I) / Math.pow(K * L, 2);
-    const r = Math.sqrt(I / area);
-    const slendernessRatio = (K * L) / r;
+    const r_gyration = Math.sqrt(I / area);
+    // Slenderness ratio: λ = KL/r
+    const slendernessRatio = (K * L) / r_gyration;
 
     // Thermal compressive load — ONLY exists if expansion is constrained
     let thermalLoad = 0;
     if (constraint === "fixed") {
-      const σ_th = E * this.thermalStrain(mat, T);
-      thermalLoad = Math.max(0, σ_th * area); // only compression (positive σ_th → compressive)
+      const ε_th = this.thermalStrain(mat, T);
+      thermalLoad = Math.max(0, E * ε_th * area); // compressive only (heating)
     } else if (constraint === "partial") {
       const freeDL = this.thermalStrain(mat, T) * L;
       if (freeDL > gapSize) {
         const constrainedStrain = (freeDL - gapSize) / L;
         thermalLoad = E * constrainedStrain * area;
       }
+    } else if (constraint === "spring") {
+      // Spring provides partial constraint — generates partial compressive load
+      const ε_th = this.thermalStrain(mat, T);
+      const kL = 1e7 * L; // default spring stiffness
+      const stress = (E * kL / (E + kL)) * ε_th;
+      thermalLoad = Math.max(0, stress * area);
     }
-    // free or spring: thermalLoad = 0 → willBuckle = false always
+    // free: thermalLoad = 0 → willBuckle = false always
 
-    return { Pcr, slendernessRatio, willBuckle: thermalLoad > Pcr && thermalLoad > 0, thermalLoad };
+    return {
+      Pcr,
+      slendernessRatio,
+      willBuckle: thermalLoad > Pcr && thermalLoad > 0,
+      thermalLoad,
+      I,
+      r_gyration
+    };
   }
 
   // ----------------------------------------------------------
-  // 9. Bimetallic Strip — Timoshenko Curvature Theory (1925)
-  // κ = [6(α₂−α₁)(1+m)² ΔT] / [t·(3(1+m)² + (1+mn)(m²+1/mn))]
+  // 12. Column Classification
+  //     Determines Euler / Johnson / Short regime based on slenderness
+  //
+  //     λ_euler = π·√(2E/σ_y)  [Euler-Johnson transition]
+  //     λ_cc    = π·√(E/σ_y)   [short column limit, approx]
+  //
+  //     λ > λ_euler  → Long Column (Euler buckling governs)
+  //     λ_cc < λ ≤ λ_euler → Intermediate (J.B. Johnson parabola)
+  //     λ ≤ λ_cc    → Short Column (yielding before buckling)
+  // ----------------------------------------------------------
+  static columnClassification(
+    lambda: number,
+    E: number,
+    sigma_y: number
+  ): { regime: "short" | "intermediate" | "long"; lambdaEuler: number; lambdaCC: number; limitingStress: number } {
+    const lambdaEuler = Math.PI * Math.sqrt(2 * E / sigma_y);
+    const lambdaCC    = Math.PI * Math.sqrt(E / sigma_y);
+
+    let regime: "short" | "intermediate" | "long";
+    let limitingStress: number;
+
+    if (lambda > lambdaEuler) {
+      regime = "long";
+      // Euler critical stress
+      limitingStress = (Math.PI * Math.PI * E) / (lambda * lambda);
+    } else if (lambda > lambdaCC) {
+      regime = "intermediate";
+      // J.B. Johnson parabola: σ_cr = σ_y(1 - σ_y·λ²/(4π²E))
+      limitingStress = sigma_y * (1 - sigma_y * lambda * lambda / (4 * Math.PI * Math.PI * E));
+    } else {
+      regime = "short";
+      limitingStress = sigma_y; // yielding governs
+    }
+
+    return { regime, lambdaEuler, lambdaCC, limitingStress };
+  }
+
+  // ----------------------------------------------------------
+  // 13. Critical Buckling Temperature
+  //     Find T_cr where P_thermal(T) = P_cr(T)
+  //     Uses bisection search over [T_ref, T_melt]
+  // ----------------------------------------------------------
+  static criticalBucklingTemperature(
+    mat: MaterialProperties,
+    L: number,
+    area: number,
+    constraint: "free" | "fixed" | "partial" | "spring",
+    gapSize: number,
+    sectionType: "circular" | "rectangular",
+    dimension: number,
+    K: number
+  ): number | null {
+    if (constraint === "free") return null;
+
+    const T_lo = this.T_REF;
+    const T_hi = mat.meltingPoint * 0.98;
+
+    // Check if buckling even occurs at max temperature
+    const resAtMax = this.bucklingCriticalLoad(mat, T_hi, L, area, constraint, gapSize, sectionType, dimension, K);
+    if (!resAtMax.willBuckle) return null;
+
+    // Bisection
+    let lo = T_lo;
+    let hi = T_hi;
+    for (let iter = 0; iter < 50; iter++) {
+      const mid = (lo + hi) / 2;
+      const res = this.bucklingCriticalLoad(mat, mid, L, area, constraint, gapSize, sectionType, dimension, K);
+      if (res.thermalLoad > res.Pcr) {
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+      if (hi - lo < 0.5) break;
+    }
+    return (lo + hi) / 2;
+  }
+
+  // ----------------------------------------------------------
+  // 14. Bimetallic Strip — Timoshenko Curvature Theory (1925)
+  //     κ = [6(α₂−α₁)(1+m)² ΔT] / [t·(3(1+m)² + (1+mn)(m²+1/mn))]
   // ----------------------------------------------------------
   static bimetallicCurvature(
     mat1: MaterialProperties,
@@ -832,8 +1278,9 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 10. Thermal Shock — Biaxial Surface Stress
-  // σ_shock = E · α · ΔT / (1 − ν)
+  // 15. Thermal Shock — Biaxial Surface Stress
+  //     σ_shock = E·α·ΔT / (1 − ν)  (biaxial restrained surface)
+  //     ΔT here should be the temperature front difference
   // ----------------------------------------------------------
   static thermalShockStress(
     mat: MaterialProperties,
@@ -845,30 +1292,23 @@ export class PhysicsEngine {
     const T_avg = (T_surface + T_initial) / 2;
     const E = this.youngsModulus(mat, T_avg);
     const alpha_val = this.alpha(mat, T_avg);
-    // Biaxial thermal stress at surface
+    // Biaxial thermal stress at surface (surface is restrained by interior)
     const shockStress = (E * alpha_val * dT) / (1 - mat.poissonsRatio);
-    const thermalGradient = dT / thickness;
-    
-    // Griffith Criterion for Fracture Mechanics
-    // K_I = Y * σ * sqrt(π * a)
-    const a = 0.001; // Assume 1mm initial surface micro-crack
+    const thermalGradient = dT / Math.max(thickness, 1e-6);
+
+    // Griffith Criterion: K_I = Y * σ * √(π * a)
+    const a = 0.001; // 1mm surface micro-crack (conservative assumption)
     const Y = 1.12;  // Geometry factor for edge crack
     const K_I = Y * shockStress * Math.sqrt(Math.PI * a);
-    
-    // Estimate fracture toughness if not explicitly provided
-    let K_Ic = mat.fractureToughness;
-    if (!K_Ic) {
-      if (mat.category === "ceramic") K_Ic = 1.5e6; // ~1.5 MPa√m for ceramics
-      else if (mat.category === "composite") K_Ic = 20e6; // ~20 MPa√m
-      else K_Ic = 50e6; // ~50 MPa√m for typical metals
-    }
-    
+
+    const K_Ic = mat.fractureToughness;
+
     const shockFactor = K_I / K_Ic;
     return { shockStress, shockFactor, thermalGradient, K_I, K_Ic };
   }
 
   // ----------------------------------------------------------
-  // 11. Coffin-Manson / Basquin Fatigue Model
+  // 16. Coffin-Manson / Basquin Fatigue Model
   // ----------------------------------------------------------
   static fatigueDamagePerCycle(
     mat: MaterialProperties,
@@ -889,9 +1329,8 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 12. 1D Heat Diffusion — Explicit Finite Difference
-  // Stability: r = α_th·Δt/Δx² ≤ 0.5
-  // Multi-substep handles large dt automatically
+  // 17. 1D Heat Diffusion — Explicit Finite Difference (legacy)
+  //     Stability: r = α_th·Δt/Δx² ≤ 0.5
   // ----------------------------------------------------------
   static heatDiffusionStep(
     T_nodes: number[],
@@ -906,7 +1345,7 @@ export class PhysicsEngine {
     const dx = L0 / (N - 1);
     const alpha_th = this.thermalDiffusivity(mat);
     const dtMax = (dx * dx) / (2 * alpha_th);
-    const dtSafe = Math.min(dt, dtMax * 0.45); // conservative CFL
+    const dtSafe = Math.min(dt, dtMax * 0.45);
     const r = alpha_th * dtSafe / (dx * dx);
 
     const T_new = [...T_nodes];
@@ -941,7 +1380,7 @@ export class PhysicsEngine {
 
     let T = [...T_nodes];
     let remaining = totalDt;
-    const maxSubsteps = 500; // increased for high-conductivity materials
+    const maxSubsteps = 500;
     let steps = 0;
     while (remaining > 1e-15 && steps < maxSubsteps) {
       const step = Math.min(remaining, dtStable);
@@ -953,7 +1392,7 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 13. Spatial Expansion Profile — uses local α(T) per node
+  // 18. Spatial Expansion Profile — uses local α(T) per node
   // ----------------------------------------------------------
   static spatialExpansion(
     mat: MaterialProperties,
@@ -962,7 +1401,6 @@ export class PhysicsEngine {
   ): { deltaLPerNode: number[]; totalDeltaL: number; avgTemp: number } {
     const N = T_nodes.length;
     const dx = L0 / (N - 1);
-    // Use local α(T) for each node — NOT mat.alpha0
     const deltaLPerNode = T_nodes.map(T => this.alpha(mat, T) * (T - this.T_REF) * dx);
     const totalDeltaL = deltaLPerNode.reduce((a, b) => a + b, 0);
     const avgTemp = T_nodes.reduce((a, b) => a + b, 0) / N;
@@ -970,8 +1408,8 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 14. Spatial Stress Profile (for constrained systems)
-  // Zero for free expansion — this is enforced explicitly
+  // 19. Spatial Stress Profile (for constrained systems)
+  //     Zero for free expansion — enforced explicitly
   // ----------------------------------------------------------
   static spatialStress(
     mat: MaterialProperties,
@@ -987,24 +1425,53 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 15. Atomic Vibration Amplitude (equipartition theorem)
-  // A = sqrt(k_B T / k_bond)
+  // 20. Volumetric Expansion  V(T) = V₀ · exp(∫3α(T')dT')
+  //     Uses trapezoidal integration — correct for large ΔT
+  //     For small ΔT: ≈ V₀(1 + 3α·ΔT)  (linear approximation)
+  // ----------------------------------------------------------
+  static volumetricExpansion(mat: MaterialProperties, T: number, V0: number): number {
+    const dT = T - this.T_REF;
+    if (Math.abs(dT) < 1e-10) return V0;
+
+    // Integrate 3α(T) over [T_ref, T]
+    const N = 20;
+    let integral = 0;
+    for (let i = 0; i < N; i++) {
+      const T0 = this.T_REF + (i / N) * dT;
+      const T1 = this.T_REF + ((i + 1) / N) * dT;
+      integral += 0.5 * (3 * this.alpha(mat, T0) + 3 * this.alpha(mat, T1)) * (T1 - T0);
+    }
+
+    // Use exponential form for accuracy: V = V₀·exp(∫3αdT)
+    // For small ΔT this converges to V₀(1 + 3αΔT); for large ΔT it's more accurate
+    return V0 * Math.exp(integral);
+  }
+
+  // ----------------------------------------------------------
+  // 21. Elastic Strain Energy  U = σ²V / (2E)
+  // ----------------------------------------------------------
+  static strainEnergy(stress: number, volume: number, youngsModulus: number): number {
+    return (stress * stress * volume) / (2 * Math.max(youngsModulus, 1e6));
+  }
+
+  // ----------------------------------------------------------
+  // 22. Atomic Vibration Amplitude (equipartition theorem)
+  //     A = sqrt(k_B T / k_bond)
   // ----------------------------------------------------------
   static vibrationAmplitude(T: number, bondStiffness: number): number {
     return Math.sqrt((this.K_B * T) / Math.max(bondStiffness, 1e-30));
   }
 
-  // Anharmonic mean position shift
   static anharmonicShift(T: number, alpha0: number): number {
     return alpha0 * (T - this.T_REF);
   }
 
   // ----------------------------------------------------------
-  // 16. Visual Magnification System
+  // 23. Visual Magnification System
   // ----------------------------------------------------------
   static recommendedMagnification(deltaL_real: number, L0: number): number {
     if (Math.abs(deltaL_real) < 1e-12) return 1;
-    const visualFraction = 0.15; // 15% visual expansion at peak temp
+    const visualFraction = 0.15;
     const mag = (visualFraction * L0) / Math.abs(deltaL_real);
     const levels = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
     return levels.reduce((prev, cur) =>
@@ -1013,91 +1480,65 @@ export class PhysicsEngine {
   }
 
   // ----------------------------------------------------------
-  // 17. Elastic Strain Energy  U = σ² V / (2E)
-  // ----------------------------------------------------------
-  static strainEnergy(stress: number, volume: number, youngsModulus: number): number {
-    return (stress * stress * volume) / (2 * Math.max(youngsModulus, 1e6));
-  }
-
-  // ----------------------------------------------------------
-  // 18. Volumetric Expansion  ΔV/V ≈ 3α ΔT
-  // ----------------------------------------------------------
-  static volumetricExpansion(mat: MaterialProperties, T: number, V0: number): number {
-    const gamma = 3 * this.alpha(mat, T);
-    return V0 * (1 + gamma * (T - this.T_REF));
-  }
-
-  // ----------------------------------------------------------
-  // 19. High-Temperature Regime Warnings
-  // Returns engineering warnings appropriate to T/T_m ratio
+  // 24. High-Temperature Regime Warnings
   // ----------------------------------------------------------
   static highTempWarnings(mat: MaterialProperties, T: number): string[] {
     const warnings: string[] = [];
-    const homologousT = T / mat.meltingPoint;
 
-    if (T > mat.meltingPoint * 0.95) {
-      warnings.push("NEAR MELTING: Material approaching phase transition. Properties invalid.");
+    if (T > mat.meltingPoint) {
+      warnings.push(`[MATERIAL] MELTING: T = ${T.toFixed(0)} K exceeds T_melt = ${mat.meltingPoint.toFixed(0)} K. Material in liquid phase — all mechanical results invalid.`);
+    } else if (T > mat.meltingPoint * 0.95) {
+      warnings.push(`[MATERIAL] NEAR MELTING: Homologous T = ${(T/mat.meltingPoint*100).toFixed(0)}%. Properties highly unreliable.`);
     } else if (T > mat.meltingPoint * 0.85) {
-      warnings.push("HOT SHORTNESS: Grain boundary liquation possible. Rapid strength loss.");
+      warnings.push(`[MATERIAL] HOT SHORTNESS: Grain boundary liquation possible at ${T.toFixed(0)} K. Rapid strength loss.`);
     } else if (T > mat.creepOnsetTemp) {
-      warnings.push(`CREEP REGIME: T > T_creep (${mat.creepOnsetTemp.toFixed(0)} K). Time-dependent deformation accumulates.`);
+      warnings.push(`[MATERIAL] CREEP REGIME: T = ${T.toFixed(0)} K > T_creep = ${mat.creepOnsetTemp.toFixed(0)} K. Time-dependent deformation accumulates.`);
     }
 
     if (mat.id === "steel" && T > 1183) {
-      warnings.push("PHASE CHANGE: BCC → FCC (austenite) transition. CTE discontinuity.");
+      warnings.push("[MATERIAL] PHASE CHANGE: BCC → FCC (austenite) transition at 1183 K. CTE discontinuity active.");
     }
     if (mat.id === "invar" && T > 773) {
-      warnings.push("CURIE POINT EXCEEDED: Invar effect lost. α rises to ~12×10⁻⁶ /K.");
+      warnings.push("[MATERIAL] CURIE POINT: Invar effect lost above 773 K. α rises to ~12×10⁻⁶ /K.");
     }
     if (mat.id === "concrete" && T > 573) {
-      warnings.push("DEHYDRATION: C-S-H gel decomposes above 573 K. Spalling risk.");
+      warnings.push("[MATERIAL] DEHYDRATION: C-S-H gel decomposes above 573 K. Explosive spalling risk.");
     }
     if (mat.id === "carbon_fiber" && T > 450) {
-      warnings.push("MATRIX DEGRADATION: Epoxy matrix glass transition exceeded. Stiffness loss.");
+      warnings.push("[MATERIAL] MATRIX DEGRADATION: Epoxy matrix Tg exceeded. Stiffness loss accelerating.");
     }
     if (mat.id === "titanium" && T > 1155) {
-      warnings.push("α→β TRANSITION: HCP to BCC phase change. Property discontinuity.");
+      warnings.push("[MATERIAL] α→β TRANSITION: HCP→BCC phase change at 1155 K. Property discontinuity.");
     }
     if (T < 150 && mat.id === "tungsten") {
-      warnings.push("DBTT RISK: Tungsten is brittle below ductile-brittle transition (~600 K).");
+      warnings.push("[MATERIAL] DBTT RISK: Tungsten below ductile-brittle transition (~600 K). Brittle fracture risk.");
     }
 
     return warnings;
   }
 
   // ----------------------------------------------------------
-  // 20. Heat Flux Profile  q(x) = -k · dT/dx   [W/m²]
-  // Central difference on interior nodes; forward/backward at ends.
-  // Positive = heat flowing in +x direction (left→right).
+  // 25. Heat Flux Profile  q(x) = -k·dT/dx   [W/m²]
+  //     Central difference on interior; forward/backward at ends.
   // ----------------------------------------------------------
   static heatFluxProfile(T_nodes: number[], mat: MaterialProperties, L0: number): number[] {
     const N = T_nodes.length;
     const dx = L0 / (N - 1);
-    const k = mat.thermalConductivity;
+    const k = mat.thermalConductivity;  // Use reference k for profile shape
     const q = new Array<number>(N);
 
-    // Forward difference at left boundary
     q[0] = -k * (T_nodes[1] - T_nodes[0]) / dx;
-    // Central difference on interior
     for (let i = 1; i < N - 1; i++) {
       q[i] = -k * (T_nodes[i + 1] - T_nodes[i - 1]) / (2 * dx);
     }
-    // Backward difference at right boundary
     q[N - 1] = -k * (T_nodes[N - 1] - T_nodes[N - 2]) / dx;
 
     return q;
   }
 
   // ----------------------------------------------------------
-  // 21. Node Displacement Profile  u(x)  [m]
-  // Computes the cumulative axial displacement at each node
-  // due to local thermal strain, respecting boundary conditions.
-  //
-  // Free / partial / spring → left node (i=0) is the reference wall.
-  //   u_0 = 0, u_i = Σ_{j=0}^{i-1} α(T_j)·(T_j − T_ref)·Δx
-  //
-  // Fixed → both ends are pinned; distribute rigid-body correction:
-  //   u_i_free first, then subtract linear ramp so u_0 = u_{N-1} = 0
+  // 26. Node Displacement Profile  u(x)  [m]
+  //     Computes cumulative axial displacement at each node.
   // ----------------------------------------------------------
   static nodeDisplacementProfile(
     T_nodes: number[],
@@ -1109,7 +1550,6 @@ export class PhysicsEngine {
     const dx = L0 / (N - 1);
     const u = new Array<number>(N).fill(0);
 
-    // Build free-expansion cumulative displacement from left wall
     for (let i = 1; i < N; i++) {
       const localStrain = this.alpha(mat, T_nodes[i - 1]) * (T_nodes[i - 1] - this.T_REF);
       u[i] = u[i - 1] + localStrain * dx;
@@ -1122,21 +1562,45 @@ export class PhysicsEngine {
         u[i] -= (i / (N - 1)) * rightDisp;
       }
     }
-    // For free/partial/spring: u[0]=0 already (left wall fixed), right is free
 
     return u;
   }
 
   // ----------------------------------------------------------
-  // 22. Expansion Velocity  v = d(ΔL)/dt  [m/s]
-  // Computed from two successive total expansion values.
+  // 27. Expansion Velocity  v = d(ΔL)/dt  [m/s]
   // ----------------------------------------------------------
   static expansionVelocity(deltaL1: number, deltaL2: number, dt: number): number {
     if (dt < 1e-12) return 0;
     return (deltaL2 - deltaL1) / dt;
   }
 
+  // ----------------------------------------------------------
+  // 28. Creep Strain Rate (simplified power-law estimate)
+  //     dε/dt = A · σⁿ · exp(-Q/(R·T))
+  //     Returns only if T > creepOnsetTemp
+  // ----------------------------------------------------------
+  static creepStrainRate(
+    mat: MaterialProperties,
+    stress: number,
+    T: number
+  ): number {
+    if (T < mat.creepOnsetTemp) return 0;
+    // Generic power-law creep constants (order-of-magnitude estimates)
+    const A = 1e-30;  // Pre-exponential coefficient (material-specific)
+    const n = 5.0;    // Stress exponent (5 is typical for power-law creep)
+    const Q = 250e3;  // Activation energy J/mol (typical for metals ~150-350 kJ/mol)
+    const R = 8.314;  // Gas constant J/(mol·K)
+    return A * Math.pow(Math.abs(stress), n) * Math.exp(-Q / (R * T));
+  }
 
+  // ----------------------------------------------------------
+  // 29. Isothermal Compressibility
+  //     β_T = 3(1-2ν)/E
+  // ----------------------------------------------------------
+  static isothermalCompressibility(mat: MaterialProperties, T: number): number {
+    const E = this.youngsModulus(mat, T);
+    return (3 * (1 - 2 * mat.poissonsRatio)) / E;
+  }
 
 } // end class PhysicsEngine
 

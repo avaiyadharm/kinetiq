@@ -11,7 +11,8 @@ export class MechanicalSolver {
   
   // Solves 1D mechanical equilibrium
   // [K]{u} = {F_th} + {F_ext}
-  static solve1DStatic(mesh: Mesh, crossSectionArea: number): { iterations: number, error: number } {
+  static solve1DStatic(mesh: Mesh, crossSectionArea: number): { iterations: number; error: number; solveTimeMs: number; yieldedElementCount: number } {
+    const t0 = performance.now();
     const N = mesh.nodes.length;
     const builder = new MatrixBuilder(N);
     const rhs = new Float64Array(N);
@@ -126,12 +127,14 @@ export class MechanicalSolver {
       el.yielded = Math.abs(sigma) > sigma_y;
     }
     
-    return { iterations: result.iterations, error: result.error };
+    const yieldedElementCount = mesh.elements.filter(e => e.type === "truss1d" && e.yielded).length;
+    return { iterations: result.iterations, error: result.error, solveTimeMs: performance.now() - t0, yieldedElementCount };
   }
 
   // Solves 2D plane stress mechanics
   // Equations: [K]{u} = {F_th}
-  static solve2DStatic(mesh: Mesh, thickness: number): { iterations: number, error: number } {
+  static solve2DStatic(mesh: Mesh, thickness: number): { iterations: number; error: number; solveTimeMs: number; yieldedElementCount: number } {
+    const t0 = performance.now();
     const N = mesh.nodes.length;
     const size = 2 * N; // 2 DOFs per node: u_x, u_y
     const builder = new MatrixBuilder(size);
@@ -403,6 +406,7 @@ export class MechanicalSolver {
       el.yielded = sigma_vm > sigma_y;
     }
     
-    return { iterations: result.iterations, error: result.error };
+    const yieldedElementCount = mesh.elements.filter(e => e.type === "quad2d" && e.yielded).length;
+    return { iterations: result.iterations, error: result.error, solveTimeMs: performance.now() - t0, yieldedElementCount };
   }
 }
