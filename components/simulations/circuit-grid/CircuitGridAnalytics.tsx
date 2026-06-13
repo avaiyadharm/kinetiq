@@ -1,6 +1,6 @@
 "use client";
-import React, { useRef } from "react";
-import { useCircuitStore, AnalyticsPoint } from "@/store/circuitStore";
+import React from "react";
+import { useCircuitStore, AnalyticsPoint, verifyKCL, computeEquivalentR } from "@/store/circuitStore";
 
 // ─── Mini SVG chart ───────────────────────────────────────────────────────────
 function MiniChart({
@@ -172,16 +172,18 @@ function LiveStatsGrid({ history }: { history: AnalyticsPoint[] }) {
   const { components } = useCircuitStore();
   const battery = components.find((c) => c.type === "battery");
   const totalPower = components.reduce((s, c) => s + (c.power ?? 0), 0);
-  const allCurrents = components.filter((c) => c.current !== undefined && c.current! > 1e-6);
-  const maxCurrent = Math.max(...allCurrents.map((c) => c.current!), 0);
+  const I_bat = battery ? Math.abs(battery.signedCurrent ?? 0) : 0;
+  const R_eq = computeEquivalentR(components);
+  const r_int = battery?.internalR ?? 0;
+  const V_terminal = (battery?.value ?? 0) - I_bat * r_int;
 
   const stats = [
-    { label: "Supply Voltage", value: battery ? `${battery.value.toFixed(2)} V` : "—", color: "#10b981" },
-    { label: "Max Current", value: `${(maxCurrent * 1000).toFixed(3)} mA`, color: "#3b82f6" },
-    { label: "Total Power", value: `${totalPower.toFixed(4)} W`, color: "#f59e0b" },
-    { label: "Component Count", value: `${components.length}`, color: "#94a3b8" },
+    { label: "EMF", value: battery ? `${battery.value.toFixed(2)} V` : "—", color: "#10b981" },
+    { label: "Terminal V", value: battery ? `${V_terminal.toFixed(3)} V` : "—", color: "#34d399" },
+    { label: "I_supply", value: `${(I_bat * 1000).toFixed(3)} mA`, color: "#3b82f6" },
+    { label: "R_equivalent", value: isFinite(R_eq) ? `${R_eq.toFixed(2)} Ω` : "∞ (open)", color: "#f59e0b" },
+    { label: "Total Power", value: `${totalPower.toFixed(4)} W`, color: "#f97316" },
     { label: "Time Elapsed", value: `${last.t.toFixed(2)} s`, color: "#ffffff60" },
-    { label: "Data Points", value: `${history.length}`, color: "#ffffff40" },
   ];
 
   return (
@@ -199,6 +201,52 @@ function LiveStatsGrid({ history }: { history: AnalyticsPoint[] }) {
   );
 }
 
+// ─── KCL Verification Table ───────────────────────────────────────────────────
+function KCLVerificationTable() {
+  const { components } = useCircuitStore();
+  const kclResults = verifyKCL(components);
+  if (kclResults.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-3">
+      <div className="text-[11px] font-black uppercase tracking-wider text-white/40">KCL Node Verification</div>
+      <p className="text-[10px] font-mono text-white/30">
+        At every node: Σ currents in = Σ currents out (charge conservation)
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px] font-mono">
+          <thead>
+            <tr className="bg-white/5">
+              <th className="py-1.5 px-3 text-left text-white/40 font-bold">Node</th>
+              <th className="py-1.5 px-3 text-right text-white/40 font-bold">Σ I_in</th>
+              <th className="py-1.5 px-3 text-right text-white/40 font-bold">Σ I_out</th>
+              <th className="py-1.5 px-3 text-right text-white/40 font-bold">Error</th>
+              <th className="py-1.5 px-3 text-right text-white/40 font-bold">KCL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {kclResults.slice(0, 8).map((node, i) => {
+              const sumIn = node.currentsIn.reduce((s, c) => s + c.current, 0);
+              const sumOut = node.currentsOut.reduce((s, c) => s + c.current, 0);
+              return (
+                <tr key={i} className={i % 2 === 0 ? "bg-white/2" : ""}>
+                  <td className="py-1.5 px-3 text-white/60">N{node.nodeId}</td>
+                  <td className="py-1.5 px-3 text-blue-400 text-right">{(sumIn * 1000).toFixed(3)} mA</td>
+                  <td className="py-1.5 px-3 text-orange-400 text-right">{(sumOut * 1000).toFixed(3)} mA</td>
+                  <td className="py-1.5 px-3 text-white/50 text-right">{(node.error * 1e6).toFixed(2)} μA</td>
+                  <td className={`py-1.5 px-3 text-right font-bold ${node.ok ? "text-emerald-400" : "text-rose-400"}`}>
+                    {node.ok ? "✓" : "✗"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Analytics ───────────────────────────────────────────────────────────
 export const CircuitGridAnalytics: React.FC = () => {
   const { history, isRunning, components } = useCircuitStore();
@@ -207,25 +255,28 @@ export const CircuitGridAnalytics: React.FC = () => {
     ? history.filter((_, i) => i % Math.ceil(history.length / 300) === 0)
     : history;
 
-  const powerData  = sample.map((h) => h.totalPower);
-  const currData   = sample.map((h) => h.totalCurrent * 1000);
-  const compData   = sample.map((h) => h.componentCount);
-  const vsrcData   = sample.map((h) => h.voltageSource);
+  const powerData    = sample.map((h) => h.totalPower);
+  const currData     = sample.map((h) => h.batteryCurrent * 1000);  // battery supply current in mA
+  const termVData    = sample.map((h) => h.terminalVoltage);
+  const reqData      = sample.map((h) => isFinite(h.equivalentR) ? h.equivalentR : 0);
+  const energyData   = sample.map((h) => h.storedEnergy * 1000);    // in mJ
+  const vsrcData     = sample.map((h) => h.voltageSource);
 
   if (!isRunning && history.length === 0) {
     return (
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-black text-white tracking-tight">Circuit Analytics</h2>
-          <p className="text-white/40 text-xs font-mono">Real-time power, current, and component data</p>
+          <p className="text-white/40 text-xs font-mono">Real-time power, current, and node verification</p>
         </div>
         <ComponentBreakdown />
         <PowerDistribution />
+        <KCLVerificationTable />
         {components.length === 0 && (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <div className="text-4xl opacity-25">⚡</div>
             <div className="text-[13px] text-white/30 font-mono text-center">
-              Build a circuit and click<br />"Start Analytics" to see live charts
+              Build a circuit and click<br />"Run Simulation" to see live charts
             </div>
           </div>
         )}
@@ -233,41 +284,51 @@ export const CircuitGridAnalytics: React.FC = () => {
     );
   }
 
+  const hasCaps = components.some((c) => c.type === "capacitor");
+
   return (
     <div className="flex flex-col gap-5 pb-8">
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-black text-white tracking-tight">Circuit Analytics</h2>
         <p className="text-white/40 text-xs font-mono">
-          {history.length} data points · updating at physics rate
+          {history.length} data points · physics-accurate solver
         </p>
       </div>
 
       <LiveStatsGrid history={history} />
       <ComponentBreakdown />
       <PowerDistribution />
+      <KCLVerificationTable />
 
       {history.length >= 2 && (
         <div className="grid grid-cols-1 gap-4">
           <ChartCard
             title="Total Power Dissipation"
-            subtitle="P = I²R — summed across all resistive elements"
+            subtitle="P = I²R — summed across all resistive loads"
             data={powerData} color="#f59e0b" unit="W" yMin={0}
           />
           <ChartCard
-            title="Average Branch Current"
-            subtitle="Mean current across active branches"
+            title="Battery Supply Current"
+            subtitle="I_battery — actual current delivered by voltage source"
             data={currData} color="#3b82f6" unit="mA" yMin={0}
           />
           <ChartCard
-            title="Component Count"
-            subtitle="Total circuit elements placed"
-            data={compData} color="#94a3b8" unit="" yMin={0}
+            title="Terminal Voltage"
+            subtitle="V_terminal = EMF − I·r (drops under load with internal R)"
+            data={termVData} color="#10b981" unit="V" yMin={0}
           />
           <ChartCard
-            title="Voltage Source EMF"
-            subtitle="Battery voltage over time"
-            data={vsrcData} color="#10b981" unit="V" yMin={0}
+            title="Equivalent Resistance"
+            subtitle="R_eq = V / I — valid for any circuit topology"
+            data={reqData} color="#f59e0b" unit="Ω" yMin={0}
           />
+          {hasCaps && (
+            <ChartCard
+              title="Capacitor Stored Energy"
+              subtitle="E = ½CV² — rises exponentially during RC charging"
+              data={energyData} color="#a78bfa" unit="mJ" yMin={0}
+            />
+          )}
         </div>
       )}
     </div>
