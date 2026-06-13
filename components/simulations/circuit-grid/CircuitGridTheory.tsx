@@ -34,7 +34,7 @@ function Derive({ steps }: { steps: { eq: string; note: string }[] }) {
   );
 }
 
-function Table({ rows, headers }: { rows: (string | number)[][]; headers: string[] }) {
+function Table({ rows, headers }: { rows: (string | React.ReactNode)[][]; headers: string[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-white/8">
       <table className="w-full text-[12px] font-mono">
@@ -78,250 +78,194 @@ export const CircuitGridTheory: React.FC = () => {
 
       {/* Header */}
       <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-black text-white tracking-tight">Electric Circuits — Complete Theory</h2>
+        <h2 className="text-2xl font-black text-white tracking-tight">Electric Circuits — Engineering Theory</h2>
         <p className="text-white/50 text-sm leading-relaxed">
-          A comprehensive derivation of circuit analysis: Ohm's Law, Kirchhoff's Laws, series and parallel networks,
-          power dissipation, RC transients, and the Modified Nodal Analysis (MNA) solver used by this simulation.
+          A rigorous derivation of circuit analysis bridging physics and electrical engineering. Covers fundamental laws, real-world component imperfections, and the Modified Nodal Analysis (MNA) solver that powers this simulation.
         </p>
       </div>
 
       {/* 1. Electric Potential & Voltage */}
-      <Section title="1. Electric Potential & Voltage" color="#10b981">
+      <Section title="1. Electric Potential, EMF, & Voltage" color="#10b981">
         <p>
-          Voltage is the difference in electric potential energy per unit charge between two points in a circuit.
-          It acts as the "pressure" that drives charge through conductors.
+          <strong>Electric Potential ($V$)</strong> is the electric potential energy ($U$) per unit charge at a specific location in space.
         </p>
-        <Formula tex="V = ΔU_e / q     [Unit: Volt = J/C]" block />
-        <Table
-          headers={["Concept", "Analogy", "Equation"]}
-          rows={[
-            ["Voltage (V)", "Water pressure (Pa)", "V = W/q"],
-            ["Current (I)", "Flow rate (L/s)", "I = dq/dt"],
-            ["Resistance (R)", "Pipe narrowing", "R = V/I"],
-            ["Power (P)", "Pump power (W)", "P = IV"],
-          ]}
-        />
-        <InfoBox type="info">
-          The SI unit of voltage is the <strong>Volt (V = J/C)</strong>. A battery maintains a constant potential
-          difference between its terminals by converting chemical energy to electrical energy.
+        <Formula tex="V = U / q     [Unit: Volt = J/C]" block />
+        <p>
+          It is critical to distinguish between two closely related concepts:
+        </p>
+        <ul className="list-disc pl-5 space-y-2">
+          <li><strong>Electromotive Force (EMF, {"$\\mathcal{E}$"}):</strong> The work done per unit charge by a non-electrical source (like chemical reactions in a battery) to move charge from low to high potential.</li>
+          <li><strong>Potential Difference ({"$\\Delta V$"}):</strong> The change in potential energy per unit charge as it moves through an electric field. Often casually called "Voltage Drop" across a component.</li>
+        </ul>
+        <InfoBox type="key">
+          A 9V battery has an EMF of 9V. It converts 9 Joules of chemical energy into electrical energy for every 1 Coulomb of charge it pumps to the positive terminal.
         </InfoBox>
       </Section>
 
-      {/* 2. Ohm's Law */}
-      <Section title="2. Ohm's Law & Resistance" color="#f59e0b">
+      {/* 2. Electric Current */}
+      <Section title="2. Electric Current & Charge Transport" color="#3b82f6">
         <p>
-          Ohm's Law states that the current through a conductor is directly proportional to the voltage across it,
-          provided temperature remains constant:
+          <strong>Electric Current ($I$)</strong> is the macroscopic rate of charge flow through a cross-section.
         </p>
-        <Formula tex="V = I R     ↔     I = V/R     ↔     R = V/I" block />
+        <Formula tex="I = dq / dt     [Unit: Ampere = C/s]" block />
         <p>
-          At the microscopic level (Drude model), conduction electrons are accelerated by the electric field
-          and scattered by lattice ions, giving rise to resistivity:
+          By convention, established by Benjamin Franklin before the discovery of the electron, <strong>Conventional Current</strong> is defined as the flow of <em>positive</em> charge (moving from + to -). In metallic conductors, the actual physical charge carriers are electrons, which move in the opposite direction (<strong>Electron Flow</strong>). Circuit analysis exclusively uses Conventional Current.
+        </p>
+        <InfoBox type="warning">
+          <strong>MISCONCEPTION ALERT: Drift Velocity vs Signal Speed</strong><br/><br/>
+          Students often believe electrons zip around a circuit instantly. In reality, electrons collide constantly with lattice ions. Their average macroscopic speed (<strong>Drift Velocity</strong>, $v_d$) is extremely slow:
+          <br/><br/>
+          <Formula tex="v_d = I / (n A q) ≈ 0.1 \text{ mm/s}" />
+          <br/><br/>
+          It would take an electron roughly an hour to travel 1 meter down a wire! However, the <strong>electric field</strong> (the signal) propagates through the wire at nearly the speed of light ($c$). This is why a lightbulb turns on instantly.
+        </InfoBox>
+      </Section>
+
+      {/* 3. Ohm's Law & Real Resistance */}
+      <Section title="3. Ohm's Law & Temperature Dependence" color="#f59e0b">
+        <p>
+          Ohm's Law states that current is proportional to voltage across an <em>Ohmic</em> material.
+        </p>
+        <Formula tex="\Delta V = I R     ↔     I = \Delta V/R     ↔     R = \Delta V/I" block />
+        <p>
+          At the microscopic level (Drude model), electrons are accelerated by the electric field and scattered by lattice ions:
         </p>
         <Derive steps={[
           { eq: "E-field accelerates electrons:  a = eE/mₑ",           note: "Drude model" },
-          { eq: "Average drift velocity:         v_d = aτ = eEτ/mₑ",   note: "τ = relaxation time" },
-          { eq: "Current density:               J = nev_d = (ne²τ/mₑ)E", note: "J = σE" },
-          { eq: "Conductivity:                   σ = ne²τ/mₑ",          note: "→ R = ρL/A" },
+          { eq: "Average drift velocity:         v_d = eEτ/mₑ",   note: "τ = mean collision time" },
+          { eq: "Current density:               J = nev_d = (ne²τ/mₑ)E", note: "J = σE (Microscopic Ohm's Law)" },
         ]} />
-        <Table
-          headers={["Material", "Resistivity ρ (Ω·m)", "Type"]}
-          rows={[
-            ["Silver", "1.59×10⁻⁸", "Conductor"],
-            ["Copper", "1.72×10⁻⁸", "Conductor"],
-            ["Silicon", "6.4×10²", "Semiconductor"],
-            ["Glass", "10¹⁰–10¹⁴", "Insulator"],
-            ["Nichrome", "1.10×10⁻⁶", "Resistor alloy"],
-          ]}
-        />
-        <InfoBox type="warning">
-          Ohm's Law is a <em>material property</em>, not a universal law. Diodes, transistors, and light bulbs
-          with temperature-dependent resistance are <strong>non-ohmic</strong> — their I-V curve is nonlinear.
+        <p className="mt-4 border-t border-white/10 pt-4">
+          <strong>Non-Ideal Behavior: Temperature Coefficient</strong><br/>
+          Ohm's Law is a material approximation, not a universal law like gravity. As a conductor heats up, lattice vibrations increase, causing more frequent electron collisions ($\tau$ decreases). The resistance changes according to:
+        </p>
+        <Formula tex="R(T) = R₀ [1 + \alpha (T - T₀)]" block />
+        <InfoBox type="key">
+          Incandescent bulbs are highly <strong>non-ohmic</strong>. A tungsten bulb ({"$\\alpha \\approx 0.0045 \\text{ K}^{-1}$"}) might have {"$10\\Omega$"} resistance at room temperature, but {"$150\\Omega$"} when glowing at {"$2700\\text{ K}$"}. This simulator actively models this nonlinear thermal dynamic.
         </InfoBox>
       </Section>
 
-      {/* 3. Kirchhoff's Laws */}
-      <Section title="3. Kirchhoff's Laws (KCL & KVL)" color="#ef4444">
+      {/* 4. Real Batteries & Internal Resistance */}
+      <Section title="4. Real Batteries & Internal Resistance" color="#ef4444">
         <p>
-          Kirchhoff's laws are consequences of charge conservation (KCL) and energy conservation (KVL).
-          Together they allow analysis of any arbitrary circuit network.
+          An ideal voltage source supplies constant voltage regardless of current. Real batteries are fundamentally limited by the chemical reaction rate and internal structure, modeled as an <strong>Internal Resistance ({"$r_{int}$"})</strong> in series with an ideal EMF ({"$\\mathcal{E}$"}).
+        </p>
+        <Formula tex="V_{terminal} = \mathcal{E} - I \cdot r_{int}" block />
+        <p>
+          As the current demand ($I$) increases, the voltage drop across the internal resistance increases, causing the terminal voltage available to the circuit to "sag".
+        </p>
+        <InfoBox type="warning">
+          <strong>MISCONCEPTION ALERT: Short Circuits</strong><br/>
+          If you short-circuit an ideal battery ({"$R_{load} \\to 0$"}), Ohm's Law predicts infinite current ({"$I = V/0$"}). In reality, a short circuit current is safely capped by the internal resistance: {"$I_{short} = \\mathcal{E} / r_{int}$"}. However, this generates massive internal Joule heating ({"$P = I^2 r_{int}$"}), which can cause the battery to catastrophically fail or catch fire.
+        </InfoBox>
+      </Section>
+
+      {/* 5. Kirchhoff's Laws (KCL & KVL) */}
+      <Section title="5. Kirchhoff's Laws (KCL & KVL)" color="#8b5cf6">
+        <p>
+          Kirchhoff's laws are direct consequences of fundamental physics conservation laws. They are the absolute foundation of all circuit analysis algorithms.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-            <div className="text-[11px] font-black text-blue-400 uppercase tracking-widest mb-2">KCL — Current Law</div>
-            <Formula tex="Σ I_in = Σ I_out" />
+            <div className="text-[11px] font-black text-blue-400 uppercase tracking-widest mb-2">KCL — Charge Conservation</div>
+            <Formula tex="\sum I_{in} = \sum I_{out}" />
             <p className="text-[12px] text-white/50 mt-2">
-              At any node, the algebraic sum of currents is zero. Charge is conserved — it cannot accumulate
-              at a junction.
+              At any node, the algebraic sum of currents is zero. Charge cannot be created or destroyed, nor can it accumulate at a junction ($\partial \rho / \partial t = 0$).
             </p>
           </div>
           <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
-            <div className="text-[11px] font-black text-rose-400 uppercase tracking-widest mb-2">KVL — Voltage Law</div>
-            <Formula tex="Σ V_k = 0 (around loop)" />
+            <div className="text-[11px] font-black text-rose-400 uppercase tracking-widest mb-2">KVL — Energy Conservation</div>
+            <Formula tex="\sum \Delta V_k = 0 \text{ (around closed loop)}" />
             <p className="text-[12px] text-white/50 mt-2">
-              Around any closed loop, the sum of potential drops equals the sum of EMFs. The electric field
-              is conservative.
+              Around any closed loop, the sum of potential drops equals the sum of EMFs. The electrostatic field is conservative ({"$\\oint \\vec{E} \\cdot d\\vec{l} = 0$"}).
             </p>
           </div>
         </div>
-        <InfoBox type="key">
-          A circuit with <strong>n nodes and b branches</strong> has exactly <strong>n−1 independent KCL equations</strong> and
-          <strong> b−n+1 independent KVL equations</strong>. Together these fully determine all unknowns.
+        <InfoBox type="warning">
+          <strong>MISCONCEPTION ALERT: "Used Up" Current</strong><br/>
+          Students often believe a resistor "consumes" current, so less current comes out than goes in. <strong>KCL mathematically proves this is false.</strong> Current is exactly the same on both sides of a resistor. The resistor consumes <em>energy</em> (voltage drops), not charge (current).
         </InfoBox>
       </Section>
 
-      {/* 4. Series & Parallel */}
-      <Section title="4. Series & Parallel Resistor Networks" color="#8b5cf6">
+      {/* 6. Series, Parallel & Divider Rules */}
+      <Section title="6. Topology & Divider Rules" color="#ec4899">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black text-violet-400 uppercase tracking-widest">Series</div>
-            <Formula tex="R_total = R₁ + R₂ + … + Rₙ" />
-            <Formula tex="I_same = V_total / R_total" />
-            <p className="text-[12px] text-white/50">Same current, voltages add. R_total always larger than any single R.</p>
+            <div className="text-[11px] font-black text-pink-400 uppercase tracking-widest">Series (Same Current)</div>
+            <Formula tex="R_{eq} = R_1 + R_2 + … + R_n" />
+            <div className="text-[10px] font-bold text-white/30 uppercase mt-2">Voltage Divider Rule:</div>
+            <Formula tex="V_x = V_{total} \left( \frac{R_x}{R_{eq}} \right)" />
           </div>
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-black text-violet-400 uppercase tracking-widest">Parallel</div>
-            <Formula tex="1/R_total = 1/R₁ + 1/R₂ + … + 1/Rₙ" />
-            <Formula tex="V_same = I_total × R_total" />
-            <p className="text-[12px] text-white/50">Same voltage, currents add. R_total always smaller than any single R.</p>
+            <div className="text-[11px] font-black text-pink-400 uppercase tracking-widest">Parallel (Same Voltage)</div>
+            <Formula tex="\frac{1}{R_{eq}} = \frac{1}{R_1} + \frac{1}{R_2} + …" />
+            <div className="text-[10px] font-bold text-white/30 uppercase mt-2">Current Divider Rule (2 paths):</div>
+            <Formula tex="I_1 = I_{total} \left( \frac{R_2}{R_1 + R_2} \right)" />
           </div>
         </div>
-        <Table
-          headers={["Config", "R_eq formula", "Example (100Ω, 200Ω)", "R_eq"]}
-          rows={[
-            ["Series",   "R₁ + R₂",           "100 + 200",       "300 Ω"],
-            ["Parallel", "R₁R₂/(R₁+R₂)",      "100×200/300",     "66.7 Ω"],
-            ["3 equal (series)",  "3R",         "3×100",           "300 Ω"],
-            ["3 equal (parallel)", "R/3",       "100/3",           "33.3 Ω"],
-          ]}
-        />
       </Section>
 
-      {/* 5. Power & Joule Heating */}
-      <Section title="5. Power & Joule Heating" color="#f97316">
+      {/* 7. Power & Joule Heating */}
+      <Section title="7. Power & Joule Heating" color="#f97316">
         <p>
-          When current flows through a resistor, electrical energy is converted to heat (Joule heating).
-          The power dissipated is:
+          When current flows through a resistance, electrical potential energy is converted into thermal energy (Joule Heating).
         </p>
-        <Formula tex="P = IV = I²R = V²/R     [Unit: Watt = J/s]" block />
+        <Formula tex="P = I \Delta V = I^2 R = \frac{\Delta V^2}{R}     [Unit: Watt = J/s]" block />
         <Derive steps={[
           { eq: "Work done moving charge dq through voltage V:  dW = V dq", note: "definition" },
-          { eq: "Power = dW/dt = V × dq/dt = V × I",             note: "P = IV" },
-          { eq: "Substitute V = IR:  P = I²R",                    note: "Joule heating" },
-          { eq: "Substitute I = V/R:  P = V²/R",                 note: "alternative" },
-        ]} />
-        <Table
-          headers={["Component", "Power Formula", "Energy Form"]}
-          rows={[
-            ["Resistor",   "P = I²R",   "Heat (Joule)"],
-            ["Battery",    "P = IV_emf","Chemical → Electrical"],
-            ["Bulb",       "P = I²R",   "Heat + Light (radiation)"],
-            ["Motor",      "P = IV",    "Electrical → Mechanical"],
-            ["Capacitor",  "P = 0 (DC)","Energy stored in E-field"],
-          ]}
-        />
-        <InfoBox type="warning">
-          Joule heating is the basis of incandescent bulbs, electric stoves, and fuses. A fuse melts (opens the
-          circuit) when the current exceeds the rated value, protecting downstream components.
-        </InfoBox>
-      </Section>
-
-      {/* 6. Capacitors & RC */}
-      <Section title="6. Capacitors & RC Transients" color="#a78bfa">
-        <p>
-          A capacitor stores energy in an electric field between two conducting plates.
-          Capacitance C relates stored charge Q to voltage V:
-        </p>
-        <Formula tex="Q = CV     →     C = ε₀εᵣA/d     [Unit: Farad = C/V]" block />
-        <p>
-          In an RC circuit, charging and discharging follow exponential transients governed by the <em>time constant τ = RC</em>:
-        </p>
-        <Derive steps={[
-          { eq: "KVL:  V₀ - IR - Q/C = 0  →  V₀ - R(dq/dt) - q/C = 0", note: "circuit equation" },
-          { eq: "Charging: Q(t) = CV₀(1 - e^(-t/RC))",                    note: "initial Q=0" },
-          { eq: "Vc(t) = V₀(1 - e^(-t/τ)),  I(t) = (V₀/R)e^(-t/τ)",     note: "τ = RC" },
-          { eq: "Discharging: Vc(t) = V₀e^(-t/τ)",                        note: "source removed" },
-        ]} />
-        <Table
-          headers={["t/τ", "Vc (charging)", "Vc (discharging)"]}
-          rows={[
-            ["0",   "0%",   "100%"],
-            ["0.5", "39.3%","60.7%"],
-            ["1",   "63.2%","36.8%"],
-            ["2",   "86.5%","13.5%"],
-            ["3",   "95.0%","5.0%"],
-            ["5",   "99.3%","0.7%"],
-          ]}
-        />
-        <InfoBox type="info">
-          After <strong>5τ</strong>, a capacitor is considered fully charged (99.3%). RC circuits are used in
-          timer circuits, audio filters, and signal coupling.
-        </InfoBox>
-      </Section>
-
-      {/* 7. Modified Nodal Analysis */}
-      <Section title="7. Modified Nodal Analysis (MNA)" color="#22d3ee">
-        <p>
-          This simulation uses <strong>Modified Nodal Analysis (MNA)</strong> to solve arbitrary circuits in real time.
-          The method formulates a linear system of equations using KCL at every non-reference node.
-        </p>
-        <Formula tex="[G  B] [v]   [j]" block />
-        <Formula tex="[Bᵀ D] [i] = [e]" block />
-        <Derive steps={[
-          { eq: "1. Choose reference (ground) node → set V_ground = 0",       note: "removes one DOF" },
-          { eq: "2. Apply KCL at each remaining node: Σ(V_n - V_k)/R_nk = 0", note: "conductance stamp" },
-          { eq: "3. Stamp battery: V_+ - V_- = V_emf  (constraint eq.)",      note: "voltage source" },
-          { eq: "4. Build G matrix: G_ii = Σ conductances at node i",          note: "diagonal" },
-          { eq: "5. Solve Ax = b with Gaussian elimination",                   note: "LU decomposition" },
-          { eq: "6. Extract I_branch = (V_n1 - V_n2) / R_branch",             note: "Ohm's Law" },
+          { eq: "Power = dW/dt = V \cdot (dq/dt) = V I",             note: "P = IV" },
+          { eq: "Substitute V = IR (Ohm's Law):  P = I²R",                    note: "Joule heating" },
         ]} />
         <InfoBox type="key">
-          MNA is used in industrial SPICE circuit simulators. It handles any topology including voltage sources,
-          dependent sources, and nonlinear elements via Newton-Raphson iteration.
+          <strong>Power vs Energy:</strong> Power is a <em>rate</em> (Joules per second). Energy is an <em>amount</em>. Total energy dissipated over time is $E = P \cdot t$, measured in Joules (or kWh on your electrical bill).
         </InfoBox>
       </Section>
 
-      {/* 8. Bulb & LED Physics */}
-      <Section title="8. Light Bulb & LED Physics" color="#fbbf24">
+      {/* 8. Non-Ideal Meters */}
+      <Section title="8. Measurement & Non-Ideal Meters" color="#14b8a6">
         <p>
-          <strong>Incandescent bulbs</strong> emit light via blackbody radiation when the tungsten filament
-          is heated to ~2700K by Joule heating. Efficiency is very low (~5% visible light).
+          Measuring a circuit inherently alters it. Real-world measurement devices are not perfectly "invisible".
         </p>
-        <p>
-          <strong>LEDs</strong> (Light-Emitting Diodes) emit photons via electroluminescence — electrons
-          recombine with holes across a p-n junction, releasing energy as photons with energy:
-        </p>
-        <Formula tex="E_photon = hf = hc/λ     (λ determines color)" block />
         <Table
-          headers={["LED Color", "Wavelength (nm)", "Vf (forward voltage)", "Energy Gap"]}
+          headers={["Device", "Ideal", "Real World", "Connection", "Consequence if misused"]}
           rows={[
-            ["Red",    "625–740", "1.8–2.1 V", "1.8–2.0 eV"],
-            ["Green",  "520–560", "2.0–2.2 V", "2.1–2.4 eV"],
-            ["Blue",   "450–490", "2.7–3.5 V", "2.7–3.5 eV"],
-            ["White",  "broad",   "3.0–3.5 V", "~3.0 eV (YAG phosphor)"],
+            ["Ammeter", "$R = 0\Omega$", "$R \approx 0.1\Omega$ to $1\Omega$", "Series", "If placed in parallel, acts as a short circuit and blows the meter's fuse."],
+            ["Voltmeter", "$R \to \infty$", "$R \approx 1\text{ M}\Omega$ to $10\text{ M}\Omega$", "Parallel", "If placed in series, acts as a near-open circuit, stopping all current."],
           ]}
         />
-        <InfoBox type="key">
-          LEDs are ~20× more efficient than incandescent bulbs. A 10W LED produces the same luminous flux as a
-          ~150W incandescent. This is why LEDs have replaced traditional lighting.
-        </InfoBox>
       </Section>
 
-      {/* 9. Wheatstone Bridge */}
-      <Section title="9. Wheatstone Bridge" color="#ec4899">
+      {/* 9. Capacitors & RC */}
+      <Section title="9. Capacitors & RC Transients" color="#a78bfa">
         <p>
-          The Wheatstone bridge is a circuit for precisely measuring unknown resistances by balancing two
-          parallel branches of a voltage divider:
+          A capacitor stores energy in an electric field between two conducting plates separated by a dielectric.
         </p>
-        <Formula tex="Balance condition: R₁/R₂ = R₃/R₄  →  V_meter = 0" block />
+        <Formula tex="Q = C V     \text{ and }     E_{stored} = \frac{1}{2}CV^2     [Unit: Farad = C/V]" block />
         <p>
-          When balanced, no current flows through the meter, and the unknown resistance R₄ can be determined from:
+          In an RC circuit, voltages and currents do not change instantly. They follow exponential transients governed by the time constant $\tau = RC$.
         </p>
-        <Formula tex="R₄ = R₃ × (R₂/R₁)" block />
-        <InfoBox type="info">
-          Wheatstone bridges are used in strain gauges, temperature sensors (RTDs), and pressure sensors.
-          Modern digital multimeters use bridge circuits internally for precision measurements.
-        </InfoBox>
+        <Derive steps={[
+          { eq: "KVL:  V_0 - I R - V_c = 0  →  V_0 - R(dq/dt) - q/C = 0", note: "differential equation" },
+          { eq: "Charging: V_c(t) = V_0(1 - e^{-t/\tau})",                    note: "voltage rises" },
+          { eq: "Discharging: V_c(t) = V_0 e^{-t/\tau}",                        note: "source removed" },
+          { eq: "Discharging Current: I(t) = -(V_0/R) e^{-t/\tau}",                        note: "negative = reverse flow" },
+        ]} />
+      </Section>
+
+      {/* 10. Modified Nodal Analysis */}
+      <Section title="10. Computational Solver: MNA" color="#64748b">
+        <p>
+          This simulator uses <strong>Modified Nodal Analysis (MNA)</strong>, the algorithm behind professional SPICE simulators, to solve the circuit in real-time.
+        </p>
+        <p className="mb-2">MNA constructs a system of linear equations from KCL at every node, expanding the standard conductance matrix to include voltage constraints (like batteries).</p>
+        <Formula tex="\begin{bmatrix} G & B \\ B^T & D \end{bmatrix} \begin{bmatrix} v \\ i \end{bmatrix} = \begin{bmatrix} j \\ e \end{bmatrix}" block />
+        <ul className="list-disc pl-5 space-y-1 text-sm text-white/60 mb-4">
+          <li><strong>G</strong>: Conductance matrix (from $1/R$)</li>
+          <li><strong>B</strong>: Voltage source connection incidence matrix</li>
+          <li><strong>v</strong>: Unknown node voltage vector</li>
+          <li><strong>i</strong>: Unknown branch current vector (through batteries)</li>
+        </ul>
+        <p>The simulator performs an <strong>LU Decomposition</strong> with partial pivoting on this matrix every frame to calculate precisely accurate currents and voltages for any arbitrary circuit graph.</p>
       </Section>
 
     </div>
